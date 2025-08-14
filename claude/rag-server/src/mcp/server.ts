@@ -10,19 +10,19 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { DatabaseManager } from '../database/connection.js';
-import { SimpleRAGService } from '../services/simple-rag.js';
+import { RAGService } from '../services/rag.js';
 import { ServerConfig } from '../types/index.js';
 
 export class MCPRAGServer {
   private server: Server;
   private db: DatabaseManager;
-  private ragService: SimpleRAGService;
+  private ragService: RAGService;
   private config: ServerConfig;
 
   constructor(config: ServerConfig) {
     this.config = config;
     this.db = new DatabaseManager(config.databasePath);
-    this.ragService = new SimpleRAGService(this.db, config);
+    this.ragService = new RAGService(this.db, config);
     
     this.server = new Server(
       {
@@ -74,6 +74,23 @@ export class MCPRAGServer {
                   type: 'object',
                   description: 'Filter by custom metadata key-value pairs',
                   additionalProperties: { type: 'string' },
+                },
+                useSemanticSearch: {
+                  type: 'boolean',
+                  description: 'Use semantic search with embeddings (default: true)',
+                  default: true,
+                },
+                useHybridSearch: {
+                  type: 'boolean',
+                  description: 'Combine semantic and keyword search (default: false)',
+                  default: false,
+                },
+                semanticWeight: {
+                  type: 'number',
+                  description: 'Weight for semantic search vs keyword search (0-1, default: 0.7)',
+                  default: 0.7,
+                  minimum: 0,
+                  maximum: 1,
                 },
               },
               required: ['query'],
@@ -189,11 +206,17 @@ export class MCPRAGServer {
             const topK = args?.['topK'] as number;
             const fileTypes = args?.['fileTypes'] as string[];
             const metadataFilters = args?.['metadataFilters'] as Record<string, string>;
+            const useSemanticSearch = args?.['useSemanticSearch'] as boolean;
+            const useHybridSearch = args?.['useHybridSearch'] as boolean;
+            const semanticWeight = args?.['semanticWeight'] as number;
             
             const results = await this.ragService.search(query, {
               topK,
               fileTypes,
               metadataFilters,
+              useSemanticSearch,
+              useHybridSearch,
+              semanticWeight,
             });
 
             return {
@@ -202,13 +225,18 @@ export class MCPRAGServer {
                   type: 'text',
                   text: JSON.stringify({
                     query,
+                    searchType: useHybridSearch ? 'hybrid' : (useSemanticSearch !== false ? 'semantic' : 'keyword'),
                     results: results.map(result => ({
                       content: result.content,
                       score: result.score,
+                      semanticScore: 'semanticScore' in result ? result.semanticScore : undefined,
+                      keywordScore: 'keywordScore' in result ? result.keywordScore : undefined,
+                      hybridScore: 'hybridScore' in result ? result.hybridScore : undefined,
                       metadata: {
-                        fileName: result.metadata.name,
-                        filePath: result.metadata.path,
+                        fileName: result.metadata.name || result.metadata.fileName || 'unknown',
+                        filePath: result.metadata.path || result.metadata.filePath || 'unknown',
                         chunkIndex: result.chunkIndex,
+                        fileType: result.metadata.fileType || 'unknown',
                         ...result.metadata
                       }
                     })),
@@ -387,6 +415,14 @@ export class MCPRAGServer {
             const isReady = this.ragService.isReady();
             const isDbHealthy = this.db.isHealthy();
 
+            // Get vector store info
+            let vectorStoreInfo = null;
+            try {
+              vectorStoreInfo = await this.ragService.getVectorStoreInfo();
+            } catch (error) {
+              console.warn('Could not get vector store info:', error);
+            }
+
             return {
               content: [
                 {
@@ -397,14 +433,22 @@ export class MCPRAGServer {
                       databaseHealthy: isDbHealthy,
                       indexedFiles,
                       indexedChunks,
+                      serviceType: 'rag',
+                      vectorStore: vectorStoreInfo,
                     },
                     stats: {
                       totalFiles: indexedFiles,
                       totalChunks: indexedChunks,
                       avgChunksPerFile: indexedFiles > 0 ? 
                         Math.round(indexedChunks / indexedFiles) : 0,
+                      vectorDocuments: vectorStoreInfo?.count || 0,
                     },
-                    dataDirectory: this.config.dataDir,
+                    config: {
+                      dataDirectory: this.config.dataDir,
+                      embeddingService: this.config.embeddingService,
+                      chunkSize: this.config.chunkSize,
+                      similarityTopK: this.config.similarityTopK,
+                    },
                     supportedFormats: ['.txt', '.md', '.json', '.xml', '.html', '.csv'],
                   }, null, 2),
                 },
@@ -600,18 +644,36 @@ export class MCPRAGServer {
   }
 
   async start(): Promise<void> {
-    // Initialize RAG service
-    await this.ragService.initialize();
+    try {
+      console.log('🔄 Initializing RAG service...');
+      await this.ragService.initialize();
+      console.log('✅ RAG service initialized successfully');
 
-    // Start MCP server
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    
-    console.log('MCP RAG Server started and ready for connections');
+      console.log('🔗 Starting stdio MCP server transport...');
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      
+      console.log('🎯 RAG MCP Server started and ready for stdio connections');
+      console.log(`📁 Data directory: ${this.config.dataDir}`);
+      console.log(`📊 Indexed files: ${this.ragService.getIndexedFilesCount()}`);
+      console.log(`📄 Indexed chunks: ${this.ragService.getIndexedChunksCount()}`);
+      
+      const vectorStoreInfo = await this.ragService.getVectorStoreInfo();
+      console.log(`🔍 Vector store: ${vectorStoreInfo.name} (${vectorStoreInfo.count} documents)`);
+    } catch (error) {
+      console.error('❌ Failed to start RAG MCP Server:', error);
+      throw error;
+    }
   }
 
   async shutdown(): Promise<void> {
-    await this.ragService.shutdown();
-    this.db.close();
+    console.log('🔄 Shutting down RAG MCP Server...');
+    try {
+      await this.ragService.shutdown();
+      this.db.close();
+      console.log('✅ RAG MCP Server shutdown completed');
+    } catch (error) {
+      console.error('❌ Error during shutdown:', error);
+    }
   }
 }

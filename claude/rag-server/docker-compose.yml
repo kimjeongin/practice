@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: rag-chroma
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - ANONYMIZED_TELEMETRY=False
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    volumes:
+      - chroma_data:/chroma/chroma
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Optional: PostgreSQL for production (alternative to SQLite)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: rag-postgres
+  #   environment:
+  #     - POSTGRES_DB=rag_db
+  #     - POSTGRES_USER=rag_user
+  #     - POSTGRES_PASSWORD=rag_password
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  chroma_data:
+    driver: local
+  # postgres_data:
+  #   driver: local
+
+networks:
+  default:
+    name: rag-network

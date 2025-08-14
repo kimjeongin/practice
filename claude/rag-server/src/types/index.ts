@@ -59,8 +59,6 @@ export interface McpResponse {
 }
 
 export interface ServerConfig {
-  port: number;
-  host: string;
   databasePath: string;
   dataDir: string;
   chunkSize: number;
@@ -69,4 +67,13 @@ export interface ServerConfig {
   embeddingModel: string;
   embeddingDevice: string;
   logLevel: string;
+  // Vector DB configuration (for future ChromaDB integration)
+  chromaServerUrl: string;
+  chromaCollectionName: string;
+  // Embedding configuration
+  openaiApiKey?: string | undefined;
+  embeddingService: string;
+  embeddingBatchSize: number;
+  embeddingDimensions: number;
+  similarityThreshold: number;
 }
