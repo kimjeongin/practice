@@ -2,12 +2,12 @@
   "name": "rag-mcp-server",
   "version": "1.0.0",
   "description": "Local RAG MCP server with LangChain, FAISS vector search, Ollama embeddings, and SQLite",
-  "main": "dist/index.js",
+  "main": "dist/app/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "start": "node dist/app/index.js",
+    "dev": "tsx watch src/app/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
     "test": "jest"

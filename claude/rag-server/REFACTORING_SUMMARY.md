@@ -1,136 +1,217 @@
-# RAG Server 리팩토링 완료 보고서
+# RAG Server 도메인 기반 리팩토링 완료 보고서
 
 ## 🎯 리팩토링 목표
-- **가독성 향상**: 거대한 단일 파일들을 역할별로 분리
-- **유지보수성 증대**: 각 컴포넌트의 책임을 명확히 분리
-- **테스트 용이성**: 독립적인 모듈로 단위 테스트 가능
-- **확장성 확보**: 새로운 기능 추가 시 구조적 유연성
+- **도메인 중심 설계**: 기능별이 아닌 비즈니스 도메인별로 코드 구성
+- **확장성 향상**: 새로운 임베딩 모델, 벡터 DB 추가 용이성
+- **유지보수성 증대**: 각 도메인의 책임을 명확히 분리
+- **Electron 통합 준비**: 독립적인 도메인 모듈로 데스크톱 앱 통합 용이
 
 ## 📊 리팩토링 전후 비교
 
-### Before (기존 구조)
+### Before (역할 중심 구조)
 ```
 src/
-├── mcp-index.ts (47줄) - 진입점
-├── mcp/server.ts (862줄) - 거대한 MCP 서버
-├── services/langchain-rag-service.ts (783줄) - 복잡한 RAG 서비스
-├── database/connection.ts (296줄)
-├── utils/config.ts (109줄)
-└── types/index.ts (84줄)
+├── controllers/mcp-controller.ts
+├── handlers/
+│   ├── search-handler.ts
+│   ├── file-handler.ts
+│   ├── system-handler.ts
+│   └── model-handler.ts
+├── services/
+│   ├── search-service.ts
+│   ├── file-processing-service.ts
+│   ├── embedding-factory.ts
+│   ├── faiss-vector-store.ts
+│   └── model-management-service.ts
+├── repositories/
+├── infrastructure/
+├── domain/
+└── types/
 ```
 
-### After (리팩토링된 구조)
+### After (도메인 중심 구조)
 ```
 src/
-├── index.ts (47줄) - 진입점
-├── application.ts (143줄) - 애플리케이션 조립
-├── controllers/
-│   └── mcp-controller.ts (264줄) - MCP 요청 라우팅
-├── handlers/ (각 도구별 전용 핸들러)
-│   ├── search-handler.ts (52줄)
-│   ├── file-handler.ts (126줄)
-│   ├── system-handler.ts (63줄)
-│   └── model-handler.ts (88줄)
-├── services/ (비즈니스 로직 분리)
-│   ├── search-service.ts (184줄)
-│   ├── file-processing-service.ts (216줄)
-│   └── model-management-service.ts (95줄)
-├── repositories/ (데이터 접근 계층)
-│   ├── file-repository.ts (62줄)
-│   └── chunk-repository.ts (25줄)
-├── domain/ (도메인 모델과 인터페이스)
-│   ├── interfaces.ts (68줄)
-│   └── models.ts (32줄)
-└── infrastructure/ (외부 의존성 어댑터)
-    ├── vector-store-adapter.ts (84줄)
-    └── embedding-adapter.ts (91줄)
+├── domains/
+│   ├── mcp/                    # MCP 서버 도메인
+│   │   ├── server/
+│   │   ├── handlers/
+│   │   └── types/
+│   ├── documents/              # 문서 처리 도메인
+│   │   ├── processing/
+│   │   ├── storage/
+│   │   ├── watching/
+│   │   └── models/
+│   ├── knowledge/              # 지식베이스 도메인
+│   │   ├── embeddings/
+│   │   │   ├── openai/
+│   │   │   ├── ollama/
+│   │   │   └── local/
+│   │   └── vectorstore/
+│   │       ├── faiss/
+│   │       └── chroma/
+│   ├── ai/                     # AI 모델 도메인
+│   │   ├── models/
+│   │   ├── management/
+│   │   └── safety/
+│   └── search/                 # 검색 도메인
+│       ├── semantic/
+│       ├── hybrid/
+│       └── ranking/
+├── infrastructure/            # 인프라 계층
+│   ├── database/
+│   ├── filesystem/
+│   └── config/
+├── shared/                    # 공통 코드
+│   ├── types/
+│   ├── utils/
+│   └── errors/
+└── app/                       # 애플리케이션 엔트리
+    ├── application.ts
+    └── index.ts
 ```
 
-## 🏗️ 아키텍처 개선사항
+## 🏗️ 도메인별 아키텍처
 
-### 1. 계층화된 아키텍처 도입
-- **Controllers**: MCP 요청 라우팅 및 응답 포맷팅
-- **Handlers**: 각 도구별 비즈니스 로직 처리
-- **Services**: 핵심 비즈니스 로직 (검색, 파일처리, 모델관리)
-- **Repositories**: 데이터 접근 추상화
-- **Domain**: 비즈니스 모델과 인터페이스
-- **Infrastructure**: 외부 시스템 어댑터
+### 1. **MCP 도메인** (`domains/mcp/`)
+- **server/**: MCP 서버 구현
+- **handlers/**: MCP 요청 처리
+- **types/**: MCP 관련 타입 정의
 
-### 2. 단일 책임 원칙 적용
-- **SearchHandler**: 문서 검색 전용
-- **FileHandler**: 파일 메타데이터 관리
-- **SystemHandler**: 시스템 상태 관리  
-- **ModelHandler**: 임베딩 모델 관리
+### 2. **Documents 도메인** (`domains/documents/`)
+- **processing/**: 파일 처리 및 핸들링
+- **storage/**: 파일/청크 리포지토리
+- **watching/**: 파일 시스템 감시
+- **models/**: 문서 관련 도메인 모델
 
-### 3. 의존성 역전 원칙 적용
-- 인터페이스 기반 의존성 주입
-- 어댑터 패턴으로 외부 라이브러리 분리
-- 테스트 가능한 구조
+### 3. **Knowledge 도메인** (`domains/knowledge/`)
+- **embeddings/**: 임베딩 서비스별 구현
+  - `openai/`: OpenAI 임베딩
+  - `ollama/`: Ollama 임베딩
+  - `local/`: 로컬 Transformers 임베딩
+- **vectorstore/**: 벡터 저장소별 구현
+  - `faiss/`: FAISS 구현
+  - `chroma/`: ChromaDB 구현 (준비)
 
-## 📈 정량적 개선 효과
+### 4. **AI 도메인** (`domains/ai/`)
+- **models/**: LLM 모델 관련
+- **management/**: 모델 관리 서비스
+- **safety/**: AI 안전성 관련
 
-| 지표 | Before | After | 개선률 |
-|------|--------|-------|--------|
-| 평균 파일 크기 | 352줄 | 89줄 | **-75%** |
-| 최대 파일 크기 | 862줄 | 264줄 | **-69%** |
-| 단일 책임 위반 | 높음 | 낮음 | **개선** |
-| 테스트 복잡도 | 높음 | 낮음 | **개선** |
-| 의존성 결합도 | 높음 | 낮음 | **개선** |
+### 5. **Search 도메인** (`domains/search/`)
+- **semantic/**: 의미 검색
+- **hybrid/**: 하이브리드 검색 (준비)
+- **ranking/**: 검색 결과 랭킹
 
-## 🔧 주요 변경사항
+## 📈 주요 개선 효과
 
-### 1. 진입점 정리
-- `mcp-index.ts` → `index.ts` (표준 명명 규칙)
-- `package.json` 스크립트 업데이트
+### 🔧 확장성 향상
+- **새로운 임베딩 모델 추가**: `knowledge/embeddings/` 에 새 폴더만 추가
+- **새로운 벡터 DB 추가**: `knowledge/vectorstore/` 에 구현체 추가
+- **새로운 검색 알고리즘**: `search/` 도메인에 독립적으로 추가
 
-### 2. MCP 서버 분해
-- 862줄 거대 파일을 9개 작은 모듈로 분리
-- 각 도구별 전용 핸들러 생성
-- 컨트롤러 패턴 적용
+### 🎯 도메인 중심 개발
+- 각 도메인이 독립적으로 발전 가능
+- 비즈니스 로직이 기술적 관심사와 분리
+- 팀별 도메인 담당 가능
 
-### 3. RAG 서비스 세분화
-- 검색, 파일처리, 모델관리 서비스로 분리
-- 어댑터 패턴으로 벡터스토어/임베딩 서비스 분리
+### 📱 Electron 통합 준비
+- 각 도메인을 독립적인 모듈로 import 가능
+- UI와 백엔드 로직의 명확한 분리
+- 데스크톱 앱에서 필요한 도메인만 선택적 로딩
 
-### 4. 타입 시스템 개선
-- 도메인 모델과 인터페이스 분리
-- 명확한 경계와 계약 정의
+## 🔧 기술적 개선사항
+
+### 1. **임베딩 서비스 확장성**
+```typescript
+// 새로운 임베딩 서비스 추가 예시
+domains/knowledge/embeddings/
+├── openai/
+├── ollama/
+├── local/
+├── huggingface/     # 새로 추가
+└── cohere/          # 새로 추가
+```
+
+### 2. **벡터 저장소 확장성**
+```typescript
+// 새로운 벡터 DB 추가 예시
+domains/knowledge/vectorstore/
+├── faiss/
+├── chroma/
+├── pinecone/        # 새로 추가
+├── weaviate/        # 새로 추가
+└── qdrant/          # 새로 추가
+```
+
+### 3. **검색 알고리즘 확장성**
+```typescript
+// 새로운 검색 방식 추가 예시
+domains/search/
+├── semantic/
+├── hybrid/          # 하이브리드 검색
+├── keyword/         # 키워드 검색
+└── neural/          # 신경망 기반 검색
+```
 
 ## ✅ 달성된 이점
 
-### 🧪 테스트 용이성
-- 각 핸들러와 서비스를 독립적으로 테스트 가능
-- Mock 객체 사용 용이
-- 단위 테스트 작성 간편화
+### 🧩 모듈성
+- 각 도메인이 독립적으로 테스트 가능
+- 도메인별 의존성 최소화
+- 명확한 경계와 인터페이스
 
-### 🔧 유지보수성
-- 기능별 코드 위치 명확
-- 버그 수정 범위 최소화
-- 코드 리뷰 효율성 증대
+### 🔄 유지보수성
+- 변경 사항의 영향 범위가 도메인 내로 제한
+- 새로운 기능 추가 시 기존 코드 영향 최소화
+- 코드 위치 예측 가능
 
-### 📚 가독성
-- 파일 크기 75% 감소
-- 명확한 책임 분리
-- 직관적인 디렉토리 구조
+### 🚀 개발 생산성
+- 새로운 임베딩 모델 추가: 해당 폴더에만 구현
+- 새로운 벡터 DB 지원: 독립적인 어댑터 구현
+- 팀별 도메인 담당으로 병렬 개발 가능
 
-### 🚀 확장성
-- 새로운 MCP 도구 추가 용이
-- 새로운 검색 알고리즘 추가 가능
-- 새로운 벡터스토어 백엔드 지원 용이
+### 📱 Electron 통합 준비
+- UI에서 필요한 도메인만 선택적 import
+- 각 도메인의 독립적인 라이프사이클 관리
+- 데스크톱 앱의 모듈화된 아키텍처
 
-## 🎯 향후 개선 방향
+## 🎯 향후 확장 계획
 
-1. **테스트 코드 작성**: 각 모듈별 단위/통합 테스트
-2. **설정 관리 개선**: 환경별 설정 분리
-3. **로깅 시스템**: 구조화된 로깅 도입
-4. **에러 처리**: 일관된 에러 처리 패턴
-5. **성능 모니터링**: 메트릭 수집 및 모니터링
+### 1. **Knowledge 도메인 확장**
+```typescript
+// Hugging Face 임베딩 추가
+domains/knowledge/embeddings/huggingface/
 
-## 🔄 마이그레이션 가이드
+// Pinecone 벡터 DB 추가
+domains/knowledge/vectorstore/pinecone/
+```
 
-기존 코드는 `src/mcp/server.ts`에 그대로 유지되어 있으므로, 필요시 점진적 마이그레이션이 가능합니다.
+### 2. **Search 도메인 확장**
+```typescript
+// 하이브리드 검색 구현
+domains/search/hybrid/
 
-새로운 진입점: `src/index.ts` → `RAGApplication`
-기존 진입점: `src/mcp-index.ts` → `MCPRAGServer` (Deprecated)
+// 신경망 리랭킹 추가
+domains/search/ranking/neural/
+```
 
-리팩토링이 완료되어 더 깔끔하고 유지보수 가능한 코드베이스가 되었습니다! 🎉
+### 3. **AI 도메인 확장**
+```typescript
+// LLM 통합
+domains/ai/llm/
+
+// RAG 체인 관리
+domains/ai/chains/
+```
+
+## 🔄 마이그레이션 완료
+
+- ✅ 모든 파일이 새로운 도메인 구조로 이동 완료
+- ✅ Import 경로 자동 수정 완료
+- ✅ 빌드 및 테스트 성공 확인
+- ✅ 서버 정상 동작 확인
+
+이제 더욱 확장 가능하고 유지보수하기 쉬운 도메인 중심 아키텍처가 완성되었습니다! 🎉
+
+새로운 임베딩 모델이나 벡터 DB를 추가할 때는 해당 도메인 폴더에만 새 구현체를 추가하면 됩니다.
