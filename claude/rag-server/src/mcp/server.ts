@@ -10,19 +10,19 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { DatabaseManager } from '../database/connection.js';
-import { RAGService } from '../services/rag.js';
+import { LangChainRAGService } from '../services/langchain-rag-service.js';
 import { ServerConfig } from '../types/index.js';
 
 export class MCPRAGServer {
   private server: Server;
   private db: DatabaseManager;
-  private ragService: RAGService;
+  private ragService: LangChainRAGService;
   private config: ServerConfig;
 
   constructor(config: ServerConfig) {
     this.config = config;
     this.db = new DatabaseManager(config.databasePath);
-    this.ragService = new RAGService(this.db, config);
+    this.ragService = new LangChainRAGService(this.db, config);
     
     this.server = new Server(
       {

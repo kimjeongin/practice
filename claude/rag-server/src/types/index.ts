@@ -76,4 +76,6 @@ export interface ServerConfig {
   embeddingBatchSize: number;
   embeddingDimensions: number;
   similarityThreshold: number;
+  // Ollama configuration
+  ollamaBaseUrl?: string;
 }

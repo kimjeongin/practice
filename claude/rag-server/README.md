@@ -1,22 +1,48 @@
 # RAG MCP Server
 
-A TypeScript-based Model Context Protocol (MCP) server that provides Retrieval Augmented Generation (RAG) capabilities with vector database integration, advanced semantic search, and hybrid search capabilities.
+A TypeScript-based Model Context Protocol (MCP) server that provides fully local Retrieval Augmented Generation (RAG) capabilities using LangChain, FAISS vector search, and Ollama embeddings - no remote dependencies required!
 
 ## Features
 
-- **Vector Database Integration**: ChromaDB for high-performance semantic search
-- **Hybrid RAG Architecture**: Combines SQLite metadata with vector embeddings
-- **Multiple Embedding Services**: OpenAI embeddings and local HuggingFace models
-- **Semantic Search**: Advanced vector similarity search with configurable thresholds
-- **Hybrid Search**: Combines keyword and semantic search with adjustable weights
-- **File Monitoring**: Automatic file watching and indexing using chokidar
-- **Metadata Management**: SQLite database for file metadata and custom tags
-- **MCP Protocol**: Full Model Context Protocol implementation
-- **RESTful API**: Additional REST endpoints for direct access
-- **TypeScript**: Full type safety and modern development experience
-- **Docker Support**: Containerized ChromaDB deployment
+- **🏠 Fully Local**: No remote dependencies - everything runs on your machine
+- **⚡ LangChain Pipeline**: Industry-standard RAG implementation  
+- **🔍 FAISS Vector Search**: High-performance local vector database
+- **🤖 Ollama Integration**: Local embeddings with multiple model options
+- **📁 Smart Document Processing**: Adaptive chunking strategies per file type
+- **🔄 Real-time File Monitoring**: Automatic indexing using chokidar
+- **🔀 Hybrid Search**: Combines semantic and keyword search with adjustable weights
+- **💾 SQLite Metadata**: Efficient file metadata and custom tags storage
+- **🔌 MCP Protocol**: Full Model Context Protocol implementation
+- **🔧 TypeScript**: Complete type safety and modern development experience
+- **📊 Smart Chunking**: Markdown header-based, JSON object-based chunking
 
 ## Quick Start
+
+### Option 1: Using Ollama (Local Embeddings - Recommended)
+
+1. **Install and start Ollama:**
+   ```bash
+   # Install Ollama (visit https://ollama.com)
+   ollama pull nomic-embed-text
+   ```
+
+2. **Start ChromaDB (Vector Database):**
+   ```bash
+   docker-compose up -d chroma
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pnpm install
+   ```
+
+4. **Set up environment:**
+   ```bash
+   cp .env.example .env
+   # Default configuration uses Ollama - no API key needed!
+   ```
+
+### Option 2: Using OpenAI Embeddings
 
 1. **Start ChromaDB (Vector Database):**
    ```bash
@@ -31,8 +57,10 @@ A TypeScript-based Model Context Protocol (MCP) server that provides Retrieval A
 3. **Set up environment:**
    ```bash
    cp .env.example .env
-   # Edit .env with your preferred settings (especially OPENAI_API_KEY for better embeddings)
+   # Edit .env: set EMBEDDING_SERVICE=openai and add your OPENAI_API_KEY
    ```
+
+### Continue for both options:
 
 4. **Build the project:**
    ```bash
@@ -53,14 +81,28 @@ A TypeScript-based Model Context Protocol (MCP) server that provides Retrieval A
 
 The server can be configured via environment variables in `.env`:
 
-- `PORT`: Server port (default: 3000)
-- `HOST`: Server host (default: localhost)
+### Core Settings
 - `DATABASE_PATH`: SQLite database file path (default: ./data/rag.db)
 - `DATA_DIR`: Directory to watch for documents (default: ./data)
-- `EMBEDDING_MODEL`: HuggingFace embedding model (default: BAAI/bge-small-en-v1.5)
 - `CHUNK_SIZE`: Text chunk size for processing (default: 1024)
 - `CHUNK_OVERLAP`: Overlap between chunks (default: 20)
 - `SIMILARITY_TOP_K`: Number of similar chunks to retrieve (default: 5)
+
+### Embedding Service Configuration
+- `EMBEDDING_SERVICE`: Choose 'ollama' or 'openai' (default: ollama)
+- `EMBEDDING_DIMENSIONS`: Vector dimensions (768 for Ollama, 1536 for OpenAI)
+
+### Ollama Configuration (Local)
+- `OLLAMA_BASE_URL`: Ollama server URL (default: http://localhost:11434)
+- `EMBEDDING_MODEL`: Ollama model name (default: nomic-embed-text)
+
+### OpenAI Configuration (API)
+- `OPENAI_API_KEY`: Your OpenAI API key (required for OpenAI service)
+- `EMBEDDING_MODEL`: OpenAI model name (default: text-embedding-3-small)
+
+### ChromaDB Configuration
+- `CHROMA_SERVER_URL`: ChromaDB server URL (default: http://localhost:8000)
+- `CHROMA_COLLECTION_NAME`: Collection name (default: rag_documents)
 
 ## Usage
 
@@ -159,32 +201,40 @@ pnpm lint
 ## Architecture
 
 ### Core Components
-- **Fastify**: Fast and efficient web framework
-- **ChromaDB**: Vector database for semantic search
+- **LangChain**: Industry-standard RAG framework
+- **FAISS**: High-performance local vector database
+- **Ollama**: Local embedding generation server
 - **SQLite**: Metadata storage and file management  
-- **Chokidar**: File system monitoring
-- **TypeScript**: Type safety and developer experience
+- **Chokidar**: Real-time file system monitoring
+- **TypeScript**: Complete type safety and developer experience
 
 ### Embedding Services
-- **OpenAI**: High-quality embeddings via API (recommended)
-- **HuggingFace Transformers**: Local embeddings (no API required)
+- **Ollama (Default)**: Local embeddings with no API costs
+  - `nomic-embed-text`: Fast and efficient (768 dimensions)
+  - `all-minilm`: Smaller and faster (384 dimensions)
+  - `mxbai-embed-large`: Larger and more accurate (1024 dimensions)
+- **OpenAI (Optional)**: Cloud-based high-quality embeddings
 
-### Data Flow
-1. **File Processing**: Documents are chunked and processed
-2. **Dual Storage**: Metadata goes to SQLite, embeddings to ChromaDB  
-3. **Search**: Queries can use keyword (SQLite) or semantic (ChromaDB) search
-4. **Hybrid Search**: Combines both approaches with configurable weights
+### Local RAG Pipeline
+1. **File Detection**: Chokidar monitors data directory for changes
+2. **Smart Processing**: Adaptive chunking based on file type (Markdown headers, JSON objects)
+3. **Local Embedding**: Ollama generates embeddings without network calls
+4. **Dual Storage**: Metadata in SQLite, vectors in FAISS (both local)
+5. **Hybrid Search**: Combines FAISS semantic search + SQLite keyword search
+6. **Real-time Updates**: Incremental index updates on file changes
 
 ## Database Schema
 
-### SQLite Tables
-- `files` - Basic file information (path, size, hash, etc.)
-- `file_metadata` - Custom key-value metadata for files
-- `document_chunks` - Processed text chunks with references to vector embeddings
+### SQLite Tables (Metadata & Coordination)
+- `files` - Basic file information (path, size, hash, modification dates)
+- `file_metadata` - Custom key-value metadata for files  
+- `document_chunks` - Processed text chunks with FAISS index references
 
-### ChromaDB Collections
-- `rag_documents` - Vector embeddings with metadata for semantic search
-- Each document chunk is stored with its embedding and associated metadata
+### FAISS Vector Index (Local File System)
+- **Index Files**: Stored in `data/faiss_index/` directory
+- **Document Vectors**: High-dimensional embeddings for semantic search
+- **Metadata**: File references, chunk positions, and search metadata
+- **Persistence**: Automatically saved/loaded from local files
 
 ## License
 
