@@ -1,0 +1,9 @@
+{
+  "title": "Machine Learning Concepts",
+  "topics": [
+    "supervised learning",
+    "unsupervised learning",
+    "reinforcement learning"
+  ],
+  "description": "Overview of different machine learning paradigms and their applications"
+}

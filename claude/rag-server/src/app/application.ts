@@ -1,31 +1,31 @@
 import { DatabaseManager } from '../infrastructure/database/connection.js';
-import { SearchService } from '../domains/search/semantic/search-service.js';
-import { RAGWorkflowService } from '../domains/search/rag-workflow-service.js';
-import { FileProcessingService } from '../domains/documents/processing/file-processing-service.js';
-import { ModelManagementService } from '../domains/ai/management/model-management-service.js';
+import { SearchService } from '../rag/services/searchService.js';
+import { RAGWorkflow } from '../rag/workflows/ragWorkflow.js';
+import { FileProcessingService } from '../rag/services/documentService.js';
+import { ModelManagementService } from '../rag/services/modelService.js';
 
-import { FileRepository } from '../domains/documents/storage/file-repository.js';
-import { ChunkRepository } from '../domains/documents/storage/chunk-repository.js';
+import { FileRepository } from '../rag/repositories/documentRepository.js';
+import { ChunkRepository } from '../rag/repositories/chunkRepository.js';
 
-import { SearchHandler } from '../domains/search/search-handler.js';
-import { FileHandler } from '../domains/documents/processing/file-handler.js';
-import { SystemHandler } from '../domains/search/system-handler.js';
-import { ModelHandler } from '../domains/ai/management/model-handler.js';
+import { SearchHandler } from '../mcp/handlers/searchHandler.js';
+import { DocumentHandler } from '../mcp/handlers/documentHandler.js';
+import { SystemHandler } from '../mcp/handlers/systemHandler.js';
+import { ModelHandler } from '../mcp/handlers/modelHandler.js';
 
-import { MCPController } from '../domains/mcp/handlers/mcp-controller.js';
-import { VectorStoreAdapter } from '../domains/knowledge/vectorstore/vector-store-adapter.js';
-import { EmbeddingAdapter } from '../domains/knowledge/embeddings/embedding-adapter.js';
+import { MCPServer } from '../mcp/server/mcpServer.js';
+import { VectorStoreAdapter } from '../infrastructure/vectorstore/base.js';
+import { EmbeddingAdapter } from '../infrastructure/embeddings/base.js';
 
-import { FileWatcher } from '../domains/documents/watching/file-watcher.js';
-import { EmbeddingFactory } from '../domains/knowledge/embeddings/embedding-factory.js';
-import { FaissVectorStoreManager } from '../domains/knowledge/vectorstore/faiss/faiss-vector-store.js';
+import { FileWatcher } from '../infrastructure/monitoring/fileWatcher.js';
+import { EmbeddingFactory } from '../infrastructure/embeddings/index.js';
+import { FaissVectorStoreManager } from '../infrastructure/vectorstore/providers/faiss.js';
 import { ServerConfig } from '../shared/types/index.js';
 
 export class RAGApplication {
   private db: DatabaseManager;
-  private mcpController: MCPController;
+  private mcpController: MCPServer;
   private fileWatcher: FileWatcher;
-  private ragWorkflowService: RAGWorkflowService;
+  private ragWorkflowService: RAGWorkflow;
   private isInitialized = false;
 
   constructor(private config: ServerConfig) {
@@ -73,7 +73,7 @@ export class RAGApplication {
       );
 
       // Initialize RAG workflow service
-      this.ragWorkflowService = new RAGWorkflowService(
+      this.ragWorkflowService = new RAGWorkflow(
         searchService,
         fileRepository,
         chunkRepository,
@@ -82,12 +82,12 @@ export class RAGApplication {
 
       // Initialize handlers
       const searchHandler = new SearchHandler(this.ragWorkflowService);
-      const fileHandler = new FileHandler(fileRepository);
+      const fileHandler = new DocumentHandler(fileRepository);
       const systemHandler = new SystemHandler(searchService, fileRepository, chunkRepository, this.config);
       const modelHandler = new ModelHandler(modelManagementService);
 
       // Initialize MCP controller
-      this.mcpController = new MCPController(
+      this.mcpController = new MCPServer(
         searchHandler,
         fileHandler,
         systemHandler,
