@@ -1,0 +1,1 @@
+Data science combines statistical analysis, machine learning, and domain expertise to extract insights from data. It involves data collection, cleaning, analysis, and interpretation to solve business problems.
