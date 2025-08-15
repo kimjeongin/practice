@@ -18,35 +18,25 @@ A TypeScript-based Model Context Protocol (MCP) server that provides fully local
 
 ## Quick Start
 
-### Option 1: Using Ollama (Local Embeddings - Recommended)
+### Option 1: Using Built-in Transformers.js (Recommended - No External Dependencies)
+
+1. **Install dependencies:**
+   ```bash
+   pnpm install
+   ```
+
+2. **Set up environment:**
+   ```bash
+   cp .env.example .env
+   # Default configuration uses built-in Transformers.js - no setup needed!
+   ```
+
+### Option 2: Using External Ollama (Higher Quality)
 
 1. **Install and start Ollama:**
    ```bash
    # Install Ollama (visit https://ollama.com)
    ollama pull nomic-embed-text
-   ```
-
-2. **Start ChromaDB (Vector Database):**
-   ```bash
-   docker-compose up -d chroma
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   pnpm install
-   ```
-
-4. **Set up environment:**
-   ```bash
-   cp .env.example .env
-   # Default configuration uses Ollama - no API key needed!
-   ```
-
-### Option 2: Using OpenAI Embeddings
-
-1. **Start ChromaDB (Vector Database):**
-   ```bash
-   docker-compose up -d chroma
    ```
 
 2. **Install dependencies:**
@@ -55,6 +45,19 @@ A TypeScript-based Model Context Protocol (MCP) server that provides fully local
    ```
 
 3. **Set up environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env: set EMBEDDING_SERVICE=ollama
+   ```
+
+### Option 3: Using OpenAI Embeddings (Cloud-based)
+
+1. **Install dependencies:**
+   ```bash
+   pnpm install
+   ```
+
+2. **Set up environment:**
    ```bash
    cp .env.example .env
    # Edit .env: set EMBEDDING_SERVICE=openai and add your OPENAI_API_KEY
@@ -89,14 +92,21 @@ The server can be configured via environment variables in `.env`:
 - `SIMILARITY_TOP_K`: Number of similar chunks to retrieve (default: 5)
 
 ### Embedding Service Configuration
-- `EMBEDDING_SERVICE`: Choose 'ollama' or 'openai' (default: ollama)
-- `EMBEDDING_DIMENSIONS`: Vector dimensions (768 for Ollama, 1536 for OpenAI)
+- `EMBEDDING_SERVICE`: Choose 'transformers', 'ollama', or 'openai' (default: transformers)
+- `EMBEDDING_DIMENSIONS`: Vector dimensions (384 for Transformers.js, 768 for Ollama, 1536 for OpenAI)
 
-### Ollama Configuration (Local)
+### Transformers.js Configuration (Built-in - Default)
+- `EMBEDDING_MODEL`: Model name (default: all-MiniLM-L6-v2)
+  - `all-MiniLM-L6-v2`: Fast and efficient (384 dims)
+  - `all-MiniLM-L12-v2`: Larger and more accurate (384 dims)
+  - `bge-small-en`: High quality English embeddings (384 dims)
+  - `bge-base-en`: Better quality, slower (768 dims)
+
+### Ollama Configuration (External Local Server)
 - `OLLAMA_BASE_URL`: Ollama server URL (default: http://localhost:11434)
 - `EMBEDDING_MODEL`: Ollama model name (default: nomic-embed-text)
 
-### OpenAI Configuration (API)
+### OpenAI Configuration (Cloud API)
 - `OPENAI_API_KEY`: Your OpenAI API key (required for OpenAI service)
 - `EMBEDDING_MODEL`: OpenAI model name (default: text-embedding-3-small)
 
@@ -203,13 +213,18 @@ pnpm lint
 ### Core Components
 - **LangChain**: Industry-standard RAG framework
 - **FAISS**: High-performance local vector database
-- **Ollama**: Local embedding generation server
+- **Transformers.js**: Built-in local embedding models (default)
 - **SQLite**: Metadata storage and file management  
 - **Chokidar**: Real-time file system monitoring
 - **TypeScript**: Complete type safety and developer experience
 
 ### Embedding Services
-- **Ollama (Default)**: Local embeddings with no API costs
+- **Transformers.js (Default)**: Built-in local embeddings with zero setup
+  - `all-MiniLM-L6-v2`: Fast and efficient (384 dimensions) - Default
+  - `all-MiniLM-L12-v2`: Larger and more accurate (384 dimensions)
+  - `bge-small-en`: High quality English embeddings (384 dimensions)
+  - `bge-base-en`: Better quality, slower (768 dimensions)
+- **Ollama (Optional)**: External local embeddings with higher quality
   - `nomic-embed-text`: Fast and efficient (768 dimensions)
   - `all-minilm`: Smaller and faster (384 dimensions)
   - `mxbai-embed-large`: Larger and more accurate (1024 dimensions)
@@ -218,10 +233,11 @@ pnpm lint
 ### Local RAG Pipeline
 1. **File Detection**: Chokidar monitors data directory for changes
 2. **Smart Processing**: Adaptive chunking based on file type (Markdown headers, JSON objects)
-3. **Local Embedding**: Ollama generates embeddings without network calls
+3. **Local Embedding**: Transformers.js generates embeddings completely offline (or Ollama if configured)
 4. **Dual Storage**: Metadata in SQLite, vectors in FAISS (both local)
 5. **Hybrid Search**: Combines FAISS semantic search + SQLite keyword search
 6. **Real-time Updates**: Incremental index updates on file changes
+7. **Zero Setup**: Works out of the box with built-in models
 
 ## Database Schema
 

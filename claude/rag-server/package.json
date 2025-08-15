@@ -26,6 +26,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@huggingface/transformers": "^3.0.2",
     "@langchain/community": "^0.3.22",
     "@langchain/core": "^0.3.24",
     "@modelcontextprotocol/sdk": "^1.17.2",
@@ -36,6 +37,8 @@
     "langchain": "^0.3.6",
     "mime-types": "^2.1.35",
     "node-fetch": "^3.3.2",
+    "onnxruntime-common": "^1.22.0",
+    "onnxruntime-node": "1.22.0-rev",
     "openai": "^4.0.0",
     "uuid": "^11.0.3",
     "zod": "^3.24.1"

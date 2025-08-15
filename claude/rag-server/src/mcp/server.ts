@@ -191,6 +191,78 @@ export class MCPRAGServer {
               required: [],
             },
           },
+          {
+            name: 'list_available_models',
+            description: 'List all available embedding models with their specifications',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+              required: [],
+            },
+          },
+          {
+            name: 'switch_embedding_model',
+            description: 'Switch to a different embedding model',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                modelName: {
+                  type: 'string',
+                  description: 'The name of the model to switch to (e.g., "all-MiniLM-L6-v2", "bge-small-en")',
+                  enum: ['all-MiniLM-L6-v2', 'all-MiniLM-L12-v2', 'bge-small-en', 'bge-base-en'],
+                },
+              },
+              required: ['modelName'],
+            },
+          },
+          {
+            name: 'download_model',
+            description: 'Download and cache an embedding model for offline use',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                modelName: {
+                  type: 'string',
+                  description: 'The name of the model to download (optional, uses current model if not specified)',
+                  enum: ['all-MiniLM-L6-v2', 'all-MiniLM-L12-v2', 'bge-small-en', 'bge-base-en'],
+                },
+              },
+              required: [],
+            },
+          },
+          {
+            name: 'get_model_cache_info',
+            description: 'Get information about cached models and cache usage',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+              required: [],
+            },
+          },
+          {
+            name: 'get_download_progress',
+            description: 'Get the current download progress for models being downloaded',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+              required: [],
+            },
+          },
+          {
+            name: 'force_reindex',
+            description: 'Force complete reindexing of all files with current embedding model',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                clearCache: {
+                  type: 'boolean',
+                  description: 'Whether to clear the vector cache before reindexing (default: false)',
+                  default: false,
+                },
+              },
+              required: [],
+            },
+          },
         ],
       };
     });
@@ -450,6 +522,118 @@ export class MCPRAGServer {
                       similarityTopK: this.config.similarityTopK,
                     },
                     supportedFormats: ['.txt', '.md', '.json', '.xml', '.html', '.csv'],
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          case 'list_available_models': {
+            const availableModels = await this.ragService.getAvailableModels();
+            const currentModel = await this.ragService.getCurrentModelInfo();
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    currentModel,
+                    availableModels,
+                    usage: {
+                      switchModel: 'Use switch_embedding_model tool to change models',
+                      downloadModel: 'Use download_model tool to pre-download models',
+                    },
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          case 'switch_embedding_model': {
+            const modelName = args?.['modelName'] as string;
+            
+            if (!modelName) {
+              throw new Error('modelName is required');
+            }
+
+            await this.ragService.switchEmbeddingModel(modelName);
+            const newModelInfo = await this.ragService.getCurrentModelInfo();
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    success: true,
+                    message: `Successfully switched to model: ${modelName}`,
+                    newModel: newModelInfo,
+                    note: 'Vector index will be rebuilt with the new model when documents are reprocessed',
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          case 'download_model': {
+            const modelName = args?.['modelName'] as string;
+            
+            const result = await this.ragService.downloadModel(modelName);
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    success: true,
+                    ...result,
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          case 'get_model_cache_info': {
+            const cacheInfo = await this.ragService.getModelCacheInfo();
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(cacheInfo, null, 2),
+                },
+              ],
+            };
+          }
+
+          case 'get_download_progress': {
+            const progress = await this.ragService.getDownloadProgress();
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    downloadProgress: progress,
+                    isDownloading: Object.keys(progress).length > 0,
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          case 'force_reindex': {
+            const clearCache = args?.['clearCache'] as boolean;
+            
+            await this.ragService.forceReindex(clearCache);
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    success: true,
+                    message: 'Force reindexing completed successfully',
+                    clearedCache: clearCache || false,
                   }, null, 2),
                 },
               ],

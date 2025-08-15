@@ -1,8 +1,9 @@
 import { DatabaseManager } from '../database/connection.js';
 import { FileMetadata, SearchResult, ServerConfig, DocumentChunk } from '../types/index.js';
 import { FileWatcher, FileChangeEvent } from './file-watcher.js';
-import { OllamaEmbeddings } from './langchain-ollama-embedding.js';
+import { EmbeddingFactory, EmbeddingServiceType } from './embedding-factory.js';
 import { FaissVectorStoreManager, VectorDocument, VectorSearchResult } from './faiss-vector-store.js';
+import { Embeddings } from '@langchain/core/embeddings';
 import { readFileSync } from 'fs';
 import { extname, basename } from 'path';
 import { createHash } from 'crypto';
@@ -31,20 +32,15 @@ export class LangChainRAGService {
   private db: DatabaseManager;
   private config: ServerConfig;
   private fileWatcher: FileWatcher;
-  private embeddings: OllamaEmbeddings;
+  private embeddings: Embeddings;
   private vectorStore: FaissVectorStoreManager;
   private isInitialized = false;
   private processingQueue = new Set<string>(); // Track files being processed
+  private actualEmbeddingService: EmbeddingServiceType = 'transformers';
 
   constructor(db: DatabaseManager, config: ServerConfig) {
     this.db = db;
     this.config = config;
-    
-    // Ollama 임베딩 초기화
-    this.embeddings = new OllamaEmbeddings(config);
-    
-    // FAISS 벡터 스토어 초기화
-    this.vectorStore = new FaissVectorStoreManager(this.embeddings, config);
 
     // Initialize file watcher
     this.fileWatcher = new FileWatcher(db, config.dataDir);
@@ -58,48 +54,52 @@ export class LangChainRAGService {
 
   async initialize(): Promise<void> {
     try {
-      console.log('Initializing LangChain RAG Service...');
+      console.log('🚀 Initializing LangChain RAG Service...');
       
-      // Ollama 서버 상태 확인 및 진단
-      console.log('🔍 Checking Ollama server status...');
-      const isHealthy = await this.embeddings.healthCheck();
+      // Validate configuration
+      const configValidation = EmbeddingFactory.validateConfig(this.config);
+      if (configValidation.warnings.length > 0) {
+        configValidation.warnings.forEach(warning => console.warn(`⚠️  ${warning}`));
+      }
+      if (!configValidation.isValid) {
+        configValidation.errors.forEach(error => console.error(`❌ ${error}`));
+        throw new Error('Invalid embedding service configuration');
+      }
+
+      // Create embedding service with fallback
+      console.log('🔍 Setting up embedding service...');
+      const { embeddings, actualService } = await EmbeddingFactory.createWithFallback(this.config);
+      this.embeddings = embeddings;
+      this.actualEmbeddingService = actualService;
+
+      // Show service information
+      const serviceInfo = EmbeddingFactory.getServiceInfo()[actualService];
+      console.log(`✅ Using embedding service: ${serviceInfo.name}`);
+      console.log(`📋 ${serviceInfo.description}`);
+      console.log(`🎯 Advantages: ${serviceInfo.advantages.slice(0, 2).join(', ')}`);
+
+      // Test embedding service
+      console.log('🧪 Testing embedding service...');
+      const isHealthy = await this.embeddings.embedQuery('test').then(() => true).catch(() => false);
       
       if (!isHealthy) {
-        console.warn('⚠️  Ollama server is not accessible at ' + this.config.ollamaBaseUrl);
-        console.log('📋 To fix this:');
-        console.log('   1. Install Ollama: https://ollama.com');
-        console.log('   2. Start Ollama: ollama serve');
-        console.log('   3. Verify it\'s running: curl http://localhost:11434/api/tags');
-        console.log('');
-        console.log('⚡ The server will continue in offline mode. Some features may be limited.');
+        console.warn('⚠️  Embedding service health check failed, continuing anyway...');
       } else {
-        console.log('✅ Ollama server is accessible');
+        console.log('✅ Embedding service is working correctly');
         
-        const isModelAvailable = await this.embeddings.isModelAvailable();
-        if (!isModelAvailable) {
-          console.warn(`⚠️  Ollama model '${this.config.embeddingModel}' is not available.`);
-          console.log('📋 To fix this:');
-          console.log(`   Run: ollama pull ${this.config.embeddingModel}`);
-          console.log('');
-          console.log('💡 Alternative models:');
-          console.log('   - ollama pull all-minilm (faster, smaller)');
-          console.log('   - ollama pull mxbai-embed-large (better quality)');
-          console.log('');
-          console.log('⚡ The server will continue in offline mode.');
-        } else {
-          console.log(`✅ Model '${this.config.embeddingModel}' is available`);
-          
-          // 임베딩 차원 수 확인
-          try {
-            const dimensions = await this.embeddings.getEmbeddingDimensions();
+        // Get embedding dimensions if possible
+        try {
+          if ('getEmbeddingDimensions' in this.embeddings) {
+            const dimensions = await (this.embeddings as any).getEmbeddingDimensions();
             console.log(`📐 Embedding dimensions: ${dimensions}`);
-          } catch (error) {
-            console.warn('⚠️  Could not determine embedding dimensions, using default');
           }
+        } catch (error) {
+          console.warn('⚠️  Could not determine embedding dimensions');
         }
       }
 
-      // FAISS 벡터 스토어 초기화
+      // Initialize FAISS vector store
+      this.vectorStore = new FaissVectorStoreManager(this.embeddings, this.config);
       await this.vectorStore.initialize();
       
       // Start file watcher
@@ -437,11 +437,15 @@ export class LangChainRAGService {
     } catch (error) {
       console.error('❌ Error during RAG search:', error);
       
-      // Ollama 연결 오류인 경우 친화적인 메시지
+      // 임베딩 서비스 연결 오류인 경우 친화적인 메시지
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('request to http://localhost:11434')) {
+      if (this.actualEmbeddingService === 'ollama' && 
+          (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('request to http://localhost:11434'))) {
         console.log('💡 Ollama server appears to be offline. Falling back to keyword search.');
         console.log('   To enable semantic search, start Ollama: ollama serve');
+      } else if (this.actualEmbeddingService === 'transformers') {
+        console.log('💡 Transformers.js model not loaded yet. Falling back to keyword search.');
+        console.log('   Models will be downloaded automatically on first use.');
       }
       
       // Fallback to keyword search
@@ -626,7 +630,21 @@ export class LangChainRAGService {
 
   async getVectorStoreInfo(): Promise<{ name: string; count: number; metadata?: any }> {
     const indexInfo = this.vectorStore.getIndexInfo();
-    const embeddingInfo = this.embeddings.getModelInfo();
+    
+    // Get embedding info safely
+    let embeddingInfo: any = {
+      model: this.config.embeddingModel || 'unknown',
+      service: this.actualEmbeddingService,
+      dimensions: this.config.embeddingDimensions || 384
+    };
+    
+    try {
+      if ('getModelInfo' in this.embeddings) {
+        embeddingInfo = (this.embeddings as any).getModelInfo();
+      }
+    } catch (error) {
+      console.warn('Could not get embedding model info:', error);
+    }
     
     return {
       name: 'FAISS Local Index',
@@ -635,8 +653,10 @@ export class LangChainRAGService {
         type: 'faiss',
         indexPath: indexInfo.indexPath,
         embeddingModel: embeddingInfo.model,
-        embeddingService: 'ollama',
+        embeddingService: embeddingInfo.service,
+        embeddingDimensions: embeddingInfo.dimensions,
         isHealthy: this.vectorStore.isHealthy(),
+        actualService: this.actualEmbeddingService,
       },
     };
   }
@@ -645,12 +665,15 @@ export class LangChainRAGService {
     return this.isInitialized && this.vectorStore.isHealthy();
   }
 
-  async forceReindex(): Promise<void> {
+  async forceReindex(clearCache: boolean = false): Promise<void> {
     console.log('🔄 Force reindexing all files...');
     
     try {
-      // Rebuild vector index
-      await this.vectorStore.rebuildIndex();
+      // Clear vector cache if requested
+      if (clearCache) {
+        console.log('🗑️ Clearing vector cache...');
+        await this.vectorStore.rebuildIndex();
+      }
       
       // Clear document chunks from SQLite
       const allFiles = this.db.getAllFiles();
@@ -667,6 +690,94 @@ export class LangChainRAGService {
     } catch (error) {
       console.error('❌ Error during force reindex:', error);
       throw error;
+    }
+  }
+
+  // New methods for model management
+  async getAvailableModels(): Promise<Record<string, any>> {
+    try {
+      if ('getAvailableModels' in this.embeddings.constructor) {
+        return (this.embeddings.constructor as any).getAvailableModels();
+      }
+      return {};
+    } catch (error) {
+      console.error('Error getting available models:', error);
+      return {};
+    }
+  }
+
+  async getCurrentModelInfo(): Promise<any> {
+    try {
+      if ('getModelInfo' in this.embeddings) {
+        return (this.embeddings as any).getModelInfo();
+      }
+      return {
+        model: this.config.embeddingModel || 'unknown',
+        service: this.actualEmbeddingService,
+        dimensions: this.config.embeddingDimensions || 384
+      };
+    } catch (error) {
+      console.error('Error getting current model info:', error);
+      return { error: 'Could not get model info' };
+    }
+  }
+
+  async switchEmbeddingModel(modelName: string): Promise<void> {
+    try {
+      if ('switchModel' in this.embeddings) {
+        await (this.embeddings as any).switchModel(modelName);
+        console.log(`✅ Successfully switched to model: ${modelName}`);
+      } else {
+        throw new Error('Model switching not supported for current embedding service');
+      }
+    } catch (error) {
+      console.error('Error switching model:', error);
+      throw error;
+    }
+  }
+
+  async downloadModel(modelName?: string): Promise<any> {
+    try {
+      if ('downloadModel' in this.embeddings) {
+        if (modelName && 'switchModel' in this.embeddings) {
+          // Switch to model first, then download
+          await (this.embeddings as any).switchModel(modelName);
+        }
+        await (this.embeddings as any).downloadModel();
+        return {
+          message: `Model ${modelName || 'current'} downloaded successfully`,
+          modelName: modelName || 'current'
+        };
+      } else {
+        throw new Error('Model downloading not supported for current embedding service');
+      }
+    } catch (error) {
+      console.error('Error downloading model:', error);
+      throw error;
+    }
+  }
+
+  async getModelCacheInfo(): Promise<any> {
+    try {
+      if ('getCacheStats' in this.embeddings) {
+        return await (this.embeddings as any).getCacheStats();
+      }
+      return { message: 'Cache info not available for current embedding service' };
+    } catch (error) {
+      console.error('Error getting cache info:', error);
+      return { error: 'Could not get cache info' };
+    }
+  }
+
+  async getDownloadProgress(): Promise<any> {
+    try {
+      if ('getDownloadProgress' in this.embeddings) {
+        return (this.embeddings as any).getDownloadProgress();
+      }
+      return {};
+    } catch (error) {
+      console.error('Error getting download progress:', error);
+      return {};
     }
   }
 }

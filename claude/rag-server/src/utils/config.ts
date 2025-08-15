@@ -9,13 +9,16 @@ config();
 export const appConfig = loadConfig();
 
 export function loadConfig(): ServerConfig {
+  const service = process.env['EMBEDDING_SERVICE'] || 'transformers';
+  
   return {
+    nodeEnv: process.env['NODE_ENV'] || 'development',
     databasePath: resolve(process.env['DATABASE_PATH'] || './data/rag.db'),
     dataDir: resolve(process.env['DATA_DIR'] || './data'),
     chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1024', 10),
     chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '20', 10),
     similarityTopK: parseInt(process.env['SIMILARITY_TOP_K'] || '5', 10),
-    embeddingModel: process.env['EMBEDDING_MODEL'] || getDefaultEmbeddingModel(process.env['EMBEDDING_SERVICE'] || 'ollama'),
+    embeddingModel: process.env['EMBEDDING_MODEL'] || getDefaultEmbeddingModel(service),
     embeddingDevice: process.env['EMBEDDING_DEVICE'] || 'cpu',
     logLevel: process.env['LOG_LEVEL'] || 'info',
     // Vector DB configuration
@@ -23,12 +26,14 @@ export function loadConfig(): ServerConfig {
     chromaCollectionName: process.env['CHROMA_COLLECTION_NAME'] || 'rag_documents',
     // Embedding configuration
     openaiApiKey: process.env['OPENAI_API_KEY'],
-    embeddingService: process.env['EMBEDDING_SERVICE'] || 'ollama',
+    embeddingService: service,
     embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '10', 10),
-    embeddingDimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || getDefaultEmbeddingDimensions(process.env['EMBEDDING_SERVICE'] || 'ollama'), 10),
+    embeddingDimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || getDefaultEmbeddingDimensions(service), 10),
     similarityThreshold: parseFloat(process.env['SIMILARITY_THRESHOLD'] || '0.6'),
     // Ollama configuration
     ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434',
+    // Transformers.js configuration
+    transformersCacheDir: process.env['TRANSFORMERS_CACHE_DIR'] || './data/.transformers-cache',
   };
 }
 
@@ -38,8 +43,10 @@ function getDefaultEmbeddingModel(service: string): string {
       return 'text-embedding-3-small';
     case 'ollama':
       return 'nomic-embed-text';
+    case 'transformers':
+      return 'all-MiniLM-L6-v2';
     default:
-      return 'nomic-embed-text';
+      return 'all-MiniLM-L6-v2';
   }
 }
 
@@ -49,8 +56,10 @@ function getDefaultEmbeddingDimensions(service: string): string {
       return '1536';
     case 'ollama':
       return '768'; // nomic-embed-text default dimensions
+    case 'transformers':
+      return '384'; // all-MiniLM-L6-v2 default dimensions
     default:
-      return '768';
+      return '384';
   }
 }
 
@@ -74,8 +83,8 @@ export function validateConfig(config: ServerConfig): void {
   }
 
   // Validate embedding service specific configurations
-  if (!['openai', 'ollama'].includes(config.embeddingService)) {
-    errors.push('Embedding service must be either "openai" or "ollama"');
+  if (!['openai', 'ollama', 'transformers'].includes(config.embeddingService)) {
+    errors.push('Embedding service must be "openai", "ollama", or "transformers"');
   }
 
   if (config.embeddingService === 'openai' && !config.openaiApiKey) {

@@ -78,4 +78,7 @@ export interface ServerConfig {
   similarityThreshold: number;
   // Ollama configuration
   ollamaBaseUrl?: string;
+  // Transformers.js configuration
+  transformersCacheDir?: string;
+  nodeEnv: string;
 }
