@@ -37,6 +37,19 @@ export class ModelHandler {
     };
   }
 
+  async handleGetCurrentModelInfo() {
+    const currentModel = await this.modelService.getCurrentModelInfo();
+    
+    return {
+      currentModel,
+      status: 'active',
+      usage: {
+        changeModel: 'Use switch_embedding_model tool to change to a different model',
+        listModels: 'Use list_available_models tool to see all available models',
+      },
+    };
+  }
+
   async handleSwitchEmbeddingModel(args: SwitchEmbeddingModelArgs) {
     const { modelName } = args;
     

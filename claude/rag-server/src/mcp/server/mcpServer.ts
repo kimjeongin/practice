@@ -124,6 +124,11 @@ export class MCPServer {
             inputSchema: { type: 'object', properties: {}, required: [] },
           },
           {
+            name: 'get_current_model_info',
+            description: 'Get information about the currently selected embedding model',
+            inputSchema: { type: 'object', properties: {}, required: [] },
+          },
+          {
             name: 'switch_embedding_model',
             description: 'Switch to a different embedding model',
             inputSchema: {
@@ -184,6 +189,9 @@ export class MCPServer {
             break;
           case 'list_available_models':
             result = await this.modelHandler.handleListAvailableModels();
+            break;
+          case 'get_current_model_info':
+            result = await this.modelHandler.handleGetCurrentModelInfo();
             break;
           case 'switch_embedding_model':
             result = await this.modelHandler.handleSwitchEmbeddingModel(args as any);
