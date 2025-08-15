@@ -6,10 +6,6 @@ export interface DownloadModelArgs {
   modelName?: string;
 }
 
-export interface ForceReindexArgs {
-  clearCache?: boolean;
-}
-
 export interface IModelManagementService {
   getAvailableModels(): Promise<Record<string, any>>;
   getCurrentModelInfo(): Promise<any>;
@@ -17,7 +13,6 @@ export interface IModelManagementService {
   downloadModel(modelName?: string): Promise<any>;
   getModelCacheInfo(): Promise<any>;
   getDownloadProgress(): Promise<any>;
-  forceReindex(clearCache?: boolean): Promise<void>;
 }
 
 export class ModelHandler {
@@ -91,15 +86,4 @@ export class ModelHandler {
     };
   }
 
-  async handleForceReindex(args: ForceReindexArgs) {
-    const { clearCache = false } = args;
-    
-    await this.modelService.forceReindex(clearCache);
-
-    return {
-      success: true,
-      message: 'Force reindexing completed successfully',
-      clearedCache: clearCache,
-    };
-  }
 }

@@ -206,7 +206,7 @@ export class MCPServer {
             result = await this.modelHandler.handleGetDownloadProgress();
             break;
           case 'force_reindex':
-            result = await this.modelHandler.handleForceReindex(args as any);
+            result = await this.documentHandler.handleForceReindex(args as any);
             break;
           default:
             throw new Error(`Unknown tool: ${name}`);
