@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { MCPRAGServer } from './mcp/server.js';
+import { RAGApplication } from './application.js';
 import { loadConfig, validateConfig } from './utils/config.js';
 
 async function main() {
@@ -11,12 +11,12 @@ async function main() {
     validateConfig(config);
     
     console.log('🚀 Starting RAG MCP Server (stdio mode)...');
-    const server = new MCPRAGServer(config);
+    const app = new RAGApplication(config);
     
     // Handle graceful shutdown
     const shutdown = async () => {
       console.log('\n📴 Received shutdown signal...');
-      await server.shutdown();
+      await app.shutdown();
       process.exit(0);
     };
     
@@ -31,8 +31,8 @@ async function main() {
       shutdown();
     });
 
-    // Start the MCP server
-    await server.start();
+    // Start the application
+    await app.start();
   } catch (error) {
     console.error('❌ Failed to start RAG MCP Server:', error);
     process.exit(1);

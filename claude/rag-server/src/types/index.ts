@@ -1,34 +1,6 @@
-export interface FileMetadata {
-  id: string;
-  path: string;
-  name: string;
-  size: number;
-  modifiedAt: Date;
-  createdAt: Date;
-  fileType: string;
-  hash: string;
-}
-
-export interface CustomMetadata {
-  fileId: string;
-  key: string;
-  value: string;
-}
-
-export interface DocumentChunk {
-  id: string;
-  fileId: string;
-  chunkIndex: number;
-  content: string;
-  embeddingId?: string;
-}
-
-export interface SearchResult {
-  content: string;
-  score: number;
-  metadata: FileMetadata & { [key: string]: any };
-  chunkIndex: number;
-}
+// Re-export domain models for backward compatibility
+export type { FileMetadata, CustomMetadata, DocumentChunk } from '../domain/models.js';
+export type { SearchResult, SearchOptions } from '../domain/interfaces.js';
 
 export interface McpTool {
   name: string;
