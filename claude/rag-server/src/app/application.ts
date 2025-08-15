@@ -66,10 +66,7 @@ export class RAGApplication {
       );
 
       const modelManagementService = new ModelManagementService(
-        embeddingAdapter,
-        vectorStoreAdapter,
-        fileProcessingService,
-        fileRepository
+        embeddingAdapter
       );
 
       // Initialize RAG workflow service
@@ -82,7 +79,7 @@ export class RAGApplication {
 
       // Initialize handlers
       const searchHandler = new SearchHandler(this.ragWorkflowService);
-      const fileHandler = new DocumentHandler(fileRepository);
+      const fileHandler = new DocumentHandler(fileRepository, fileProcessingService);
       const systemHandler = new SystemHandler(searchService, fileRepository, chunkRepository, this.config);
       const modelHandler = new ModelHandler(modelManagementService);
 

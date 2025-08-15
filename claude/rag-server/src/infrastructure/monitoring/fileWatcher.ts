@@ -1,11 +1,10 @@
 import chokidar from 'chokidar';
-import { join, basename, extname } from 'path';
-import { stat, readFile } from 'fs/promises';
+import { basename, extname } from 'path';
+import { stat } from 'fs/promises';
 import { EventEmitter } from 'events';
 import { DatabaseManager } from '../database/connection.js';
 import { FileMetadata } from '../../shared/types/index.js';
 import { calculateFileHash } from '../../shared/utils/crypto.js';
-import { randomUUID } from 'crypto';
 
 export interface FileChangeEvent {
   type: 'added' | 'changed' | 'removed';
@@ -69,13 +68,11 @@ export class FileWatcher extends EventEmitter {
         // File already exists, check if it changed
         if (existingFile.hash !== metadata.hash) {
           this.db.updateFile(existingFile.id, metadata);
-          await this.processFileContent(existingFile.id, path);
           this.emit('change', { type: 'changed', path, metadata: { ...existingFile, ...metadata } });
         }
       } else {
         // New file
         const fileId = this.db.insertFile(metadata);
-        await this.processFileContent(fileId, path);
         const fullMetadata = { id: fileId, ...metadata };
         this.emit('change', { type: 'added', path, metadata: fullMetadata });
       }
@@ -97,7 +94,6 @@ export class FileWatcher extends EventEmitter {
       if (existingFile) {
         if (existingFile.hash !== metadata.hash) {
           this.db.updateFile(existingFile.id, metadata);
-          await this.processFileContent(existingFile.id, path);
           this.emit('change', { type: 'changed', path, metadata: { ...existingFile, ...metadata } });
         }
       } else {
@@ -204,68 +200,4 @@ export class FileWatcher extends EventEmitter {
     this.supportedExtensions.add(ext.toLowerCase());
   }
 
-  // Process file content and store chunks in database
-  private async processFileContent(fileId: string, filePath: string): Promise<void> {
-    try {
-      const content = await this.readFileContent(filePath);
-      if (!content) {
-        return;
-      }
-
-      // Delete existing chunks for this file
-      this.db.deleteDocumentChunks(fileId);
-
-      // Simple text chunking
-      const chunkSize = 1024; // Default chunk size
-      const chunks: string[] = [];
-      
-      for (let i = 0; i < content.length; i += chunkSize) {
-        chunks.push(content.slice(i, i + chunkSize));
-      }
-
-      // Store chunks in database
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        if (chunk) {
-          this.db.insertDocumentChunk({
-            fileId,
-            chunkIndex: i,
-            content: chunk
-          });
-        }
-      }
-
-      console.log(`Processed ${chunks.length} chunks for file: ${basename(filePath)}`);
-    } catch (error) {
-      console.error(`Error processing file content for ${filePath}:`, error);
-    }
-  }
-
-  // Read file content based on file type
-  private async readFileContent(filePath: string): Promise<string | null> {
-    try {
-      const ext = extname(filePath).toLowerCase().substring(1);
-      
-      switch (ext) {
-        case 'txt':
-        case 'md':
-        case 'json':
-        case 'xml':
-        case 'html':
-        case 'csv':
-          return await readFile(filePath, 'utf-8');
-          
-        case 'pdf':
-          console.warn(`PDF parsing not implemented for ${filePath}`);
-          return null;
-          
-        default:
-          console.warn(`Unsupported file type: ${ext} for ${filePath}`);
-          return null;
-      }
-    } catch (error) {
-      console.error(`Error reading file ${filePath}:`, error);
-      return null;
-    }
-  }
 }

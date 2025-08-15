@@ -103,25 +103,33 @@ export class SearchService implements ISearchService {
     }
 
     const results: SearchResult[] = [];
+    const searchQuery = query.toLowerCase();
     
-    for (const file of files.slice(0, topK * 2)) {
+    for (const file of files.slice(0, topK * 3)) {
+      // Use synchronized chunks from SQLite (same as Vector DB chunking)
       const chunks = this.chunkRepository.getDocumentChunks(file.id);
       const customMetadata = this.fileRepository.getFileMetadata(file.id);
       
       for (const chunk of chunks) {
         const content = chunk.content.toLowerCase();
-        const searchQuery = query.toLowerCase();
         
         if (content.includes(searchQuery)) {
-          const matches = (content.match(new RegExp(searchQuery, 'g')) || []).length;
-          const keywordScore = matches / content.length;
+          // Improved keyword scoring
+          const matches = (content.match(new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+          const totalWords = content.split(/\s+/).length;
+          const keywordScore = Math.min(matches / Math.max(totalWords, 1), 1.0);
           
           results.push({
             content: chunk.content,
             score: keywordScore,
             keywordScore,
             metadata: {
-              ...file,
+              fileId: file.id,
+              fileName: file.name,
+              filePath: file.path,
+              fileType: file.fileType,
+              createdAt: file.createdAt.toISOString(),
+              embeddingId: chunk.embeddingId, // Cross-reference with Vector DB
               ...customMetadata
             },
             chunkIndex: chunk.chunkIndex
@@ -153,9 +161,9 @@ export class SearchService implements ISearchService {
     const combined = new Map<string, SearchResult>();
     const keywordWeight = 1 - semanticWeight;
 
-    // Add semantic results
+    // Add semantic results - use embeddingId as the key for consistency
     for (const result of vectorResults) {
-      const key = `${result.metadata.fileId}_${result.metadata.chunkIndex}`;
+      const key = result.id || `${result.metadata.fileId}_${result.metadata.chunkIndex}`;
       combined.set(key, {
         content: result.content,
         score: result.score * semanticWeight,
@@ -165,17 +173,20 @@ export class SearchService implements ISearchService {
       });
     }
 
-    // Merge with keyword results
+    // Merge with keyword results - use embeddingId for exact matching
     for (const result of keywordResults) {
-      const key = `${result.metadata.id}_${result.chunkIndex}`;
+      const key = result.metadata.embeddingId || `${result.metadata.fileId}_${result.chunkIndex}`;
       const existing = combined.get(key);
       
       if (existing) {
+        // Found matching chunk - combine scores
         existing.score = (existing.semanticScore || 0) * semanticWeight + 
                         (result.keywordScore || 0) * keywordWeight;
         existing.keywordScore = result.keywordScore;
         existing.hybridScore = existing.score;
+        console.log(`🔗 Combined scores for chunk ${key}: semantic=${existing.semanticScore?.toFixed(3)}, keyword=${result.keywordScore?.toFixed(3)}, hybrid=${existing.score.toFixed(3)}`);
       } else {
+        // Keyword-only result
         combined.set(key, {
           ...result,
           score: (result.keywordScore || 0) * keywordWeight,
@@ -184,8 +195,12 @@ export class SearchService implements ISearchService {
       }
     }
 
-    return Array.from(combined.values())
+    const results = Array.from(combined.values())
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
+      
+    console.log(`🔄 Hybrid search combined ${vectorResults.length} semantic + ${keywordResults.length} keyword → ${results.length} final results`);
+    
+    return results;
   }
 }

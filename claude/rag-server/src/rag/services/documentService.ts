@@ -92,17 +92,7 @@ export class FileProcessingService implements IFileProcessingService {
         const chunkIndex = startIndex + i;
         const chunkId = this.generateChunkId(fileMetadata.id, chunkIndex);
         
-        // Store in SQLite for metadata
-        const dbChunk: Omit<DocumentChunk, 'id'> = {
-          fileId: fileMetadata.id,
-          chunkIndex,
-          content: chunks[i],
-          embeddingId: chunkId,
-        };
-        
-        const insertedChunkId = this.chunkRepository.insertDocumentChunk(dbChunk);
-        
-        // Prepare for vector store
+        // Prepare for vector store first to ensure consistent chunking
         const vectorDoc: VectorDocument = {
           id: chunkId,
           content: chunks[i],
@@ -113,17 +103,29 @@ export class FileProcessingService implements IFileProcessingService {
             chunkIndex,
             fileType: fileMetadata.fileType,
             createdAt: fileMetadata.createdAt.toISOString(),
-            sqliteId: insertedChunkId,
           },
         };
 
         vectorDocuments.push(vectorDoc);
+        
+        // Store in SQLite for metadata and reference (using same chunking result)
+        const dbChunk: Omit<DocumentChunk, 'id'> = {
+          fileId: fileMetadata.id,
+          chunkIndex,
+          content: chunks[i],
+          embeddingId: chunkId,
+        };
+        
+        const insertedChunkId = this.chunkRepository.insertDocumentChunk(dbChunk);
+        
+        // Add SQLite ID to vector document metadata for cross-reference
+        vectorDoc.metadata.sqliteId = insertedChunkId;
       }
 
       // Add to vector store with embeddings
       await this.vectorStoreService.addDocuments(vectorDocuments);
       
-      console.log(`✅ Processed batch of ${chunks.length} chunks`);
+      console.log(`✅ Processed batch of ${chunks.length} chunks with synchronized storage`);
     } catch (error) {
       console.error(`❌ Error processing batch starting at index ${startIndex}:`, error);
       throw error;
@@ -138,6 +140,31 @@ export class FileProcessingService implements IFileProcessingService {
     return hash || `chunk_${fileId}_${chunkIndex}`;
   }
 
+
+  async forceReindex(clearCache: boolean = false): Promise<void> {
+    console.log('🔄 Force reindexing all files...');
+    
+    try {
+      // Clear vector cache if requested
+      if (clearCache) {
+        console.log('🗑️ Clearing vector cache...');
+        if ('rebuildIndex' in this.vectorStoreService) {
+          await (this.vectorStoreService as any).rebuildIndex();
+        }
+      }
+      
+      // Reprocess all files
+      const allFiles = this.fileRepository.getAllFiles();
+      for (const file of allFiles) {
+        await this.processFile(file.path);
+      }
+      
+      console.log('✅ Force reindexing completed');
+    } catch (error) {
+      console.error('❌ Error during force reindex:', error);
+      throw error;
+    }
+  }
 
   getProcessingStatus() {
     return {

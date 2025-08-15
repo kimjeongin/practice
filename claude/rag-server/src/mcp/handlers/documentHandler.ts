@@ -1,4 +1,5 @@
 import { IFileRepository } from '../../rag/repositories/documentRepository.js';
+import { IFileProcessingService } from '../../shared/types/interfaces.js';
 
 export interface ListFilesArgs {
   fileType?: string;
@@ -22,8 +23,15 @@ export interface SearchFilesByMetadataArgs {
   value?: string;
 }
 
+export interface ForceReindexArgs {
+  clearCache?: boolean;
+}
+
 export class DocumentHandler {
-  constructor(private fileRepository: IFileRepository) {}
+  constructor(
+    private fileRepository: IFileRepository,
+    private fileProcessingService: IFileProcessingService
+  ) {}
 
   async handleListFiles(args: ListFilesArgs) {
     const { fileType, limit = 100, offset = 0 } = args;
@@ -144,6 +152,18 @@ export class DocumentHandler {
         customMetadata: this.fileRepository.getFileMetadata(file.id),
       })),
       totalResults: files.length,
+    };
+  }
+
+  async handleForceReindex(args: ForceReindexArgs) {
+    const { clearCache = false } = args;
+    
+    await (this.fileProcessingService as any).forceReindex(clearCache);
+
+    return {
+      success: true,
+      message: 'Force reindexing completed successfully',
+      clearedCache: clearCache,
     };
   }
 }
