@@ -9,6 +9,15 @@ import { Document } from '@langchain/core/documents';
 import { ServerConfig } from '../../shared/types/index.js';
 import { LangChainFileReader } from '../utils/langchainFileReader.js';
 import { LangChainChunkingService } from './langchainChunkingService.js';
+import { 
+  FileProcessingError, 
+  VectorStoreError, 
+  ErrorCode,
+  TimeoutError
+} from '../../shared/errors/index.js';
+import { logger, startTiming } from '../../shared/logger/index.js';
+import { withTimeout, withRetry, BatchProcessor } from '../../shared/utils/resilience.js';
+import { errorMonitor } from '../../shared/monitoring/errorMonitor.js';
 
 export class FileProcessingService implements IFileProcessingService {
   private processingQueue = new Set<string>();
@@ -27,24 +36,49 @@ export class FileProcessingService implements IFileProcessingService {
 
   async processFile(filePath: string): Promise<void> {
     if (this.processingQueue.has(filePath)) {
-      console.log(`⏳ File ${filePath} is already being processed`);
+      logger.debug('File already being processed', { filePath, component: 'DocumentService' });
       return;
     }
 
     this.processingQueue.add(filePath);
+    const endTiming = startTiming('file_processing', { filePath, component: 'DocumentService' });
 
     try {
-      console.log(`🔄 Processing file: ${basename(filePath)}`);
+      logger.info('Starting file processing', { filePath, fileName: basename(filePath) });
       
       let fileMetadata = this.fileRepository.getFileByPath(filePath);
       if (!fileMetadata) {
-        console.log(`❌ File ${filePath} not found in database, skipping`);
+        const error = new FileProcessingError(
+          'File not found in database', 
+          filePath, 
+          'file_lookup'
+        );
+        errorMonitor.recordError(error);
+        logger.warn('File not found in database, skipping', { filePath });
         return;
       }
 
-      const document = await this.fileReader.readFileContent(filePath);
+      // 타임아웃 적용된 파일 읽기 (PDF 처리 시 오래 걸릴 수 있음)
+      const document = await withTimeout(
+        this.fileReader.readFileContent(filePath),
+        {
+          timeoutMs: 60000, // 1분
+          operation: 'file_reading',
+          fallback: async () => {
+            logger.warn('File reading timed out, attempting fallback', { filePath });
+            return null;
+          }
+        }
+      );
+
       if (!document) {
-        console.log(`❌ Could not read content from ${filePath}`);
+        const error = new FileProcessingError(
+          'Could not read file content', 
+          filePath, 
+          'content_reading'
+        );
+        errorMonitor.recordError(error);
+        logger.error('Failed to read file content', error, { filePath });
         return;
       }
 
@@ -58,44 +92,108 @@ export class FileProcessingService implements IFileProcessingService {
         createdAt: fileMetadata.createdAt.toISOString(),
       };
 
-      const documentChunks = await this.textChunker.chunkDocument(document);
-      console.log(`📄 Split ${basename(filePath)} into ${documentChunks.length} chunks`);
+      // 재시도 로직 적용된 청킹
+      const documentChunks = await withRetry(
+        () => this.textChunker.chunkDocument(document),
+        'document_chunking',
+        { retries: 2 }
+      );
+      
+      logger.info('Document chunked successfully', { 
+        filePath, 
+        chunkCount: documentChunks.length 
+      });
 
       // Clear existing chunks for this file
       this.chunkRepository.deleteDocumentChunks(fileMetadata.id);
       await this.vectorStoreService.removeDocumentsByFileId(fileMetadata.id);
 
-      // Process chunks in batches
+      // Process chunks in batches with enhanced error handling
       const batchSize = this.config.embeddingBatchSize || 10;
       
       for (let i = 0; i < documentChunks.length; i += batchSize) {
         const batch = documentChunks.slice(i, i + batchSize);
-        await this.processBatch(fileMetadata, batch, i);
+        await withRetry(
+          () => this.processBatch(fileMetadata, batch, i),
+          `batch_processing_${i}`,
+          { retries: 3, minTimeout: 2000 }
+        );
       }
 
-      console.log(`✅ Successfully processed ${documentChunks.length} chunks for ${basename(filePath)}`);
+      logger.info('File processing completed successfully', {
+        filePath,
+        fileName: basename(filePath),
+        chunkCount: documentChunks.length
+      });
     } catch (error) {
-      console.error(`❌ Error processing file ${filePath}:`, error);
+      const processingError = new FileProcessingError(
+        `Failed to process file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        filePath,
+        'file_processing',
+        error instanceof Error ? error : undefined
+      );
+      
+      errorMonitor.recordError(processingError);
+      logger.error('File processing failed', processingError, { filePath });
+      throw processingError;
     } finally {
       this.processingQueue.delete(filePath);
+      endTiming();
     }
   }
 
   async removeFile(filePath: string): Promise<void> {
+    const endTiming = startTiming('file_removal', { filePath, component: 'DocumentService' });
+    
     try {
       const fileMetadata = this.fileRepository.getFileByPath(filePath);
       if (fileMetadata) {
-        await this.vectorStoreService.removeDocumentsByFileId(fileMetadata.id);
-        console.log(`🗑️  Removed file ${basename(filePath)} from vector store`);
+        await withTimeout(
+          this.vectorStoreService.removeDocumentsByFileId(fileMetadata.id),
+          {
+            timeoutMs: 30000, // 30초
+            operation: 'vector_store_removal'
+          }
+        );
+        
+        logger.info('File removed from vector store', {
+          filePath,
+          fileName: basename(filePath),
+          fileId: fileMetadata.id
+        });
+      } else {
+        logger.warn('File not found for removal', { filePath });
       }
     } catch (error) {
-      console.error(`❌ Error removing file ${filePath} from vector store:`, error);
+      const removalError = new VectorStoreError(
+        `Failed to remove file from vector store: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'file_removal',
+        { filePath },
+        error instanceof Error ? error : undefined
+      );
+      
+      errorMonitor.recordError(removalError);
+      logger.error('File removal failed', removalError, { filePath });
+      throw removalError;
+    } finally {
+      endTiming();
     }
   }
 
   private async processBatch(fileMetadata: FileMetadata, chunks: Document[], startIndex: number): Promise<void> {
+    const endTiming = startTiming('batch_processing', {
+      fileId: fileMetadata.id,
+      batchSize: chunks.length,
+      startIndex,
+      component: 'DocumentService'
+    });
+    
     try {
-      console.log(`⚙️  Processing batch of ${chunks.length} chunks (starting at index ${startIndex})`);
+      logger.debug('Processing chunk batch', {
+        fileId: fileMetadata.id,
+        batchSize: chunks.length,
+        startIndex
+      });
       
       const vectorDocuments: VectorDocument[] = [];
 
@@ -135,13 +233,37 @@ export class FileProcessingService implements IFileProcessingService {
         vectorDoc.metadata.sqliteId = insertedChunkId;
       }
 
-      // Add to vector store with embeddings
-      await this.vectorStoreService.addDocuments(vectorDocuments);
+      // Add to vector store with embeddings (타임아웃 및 재시도 적용)
+      await withTimeout(
+        this.vectorStoreService.addDocuments(vectorDocuments),
+        {
+          timeoutMs: 120000, // 2분 (임베딩 생성 시간 고려)
+          operation: 'vector_store_addition'
+        }
+      );
       
-      console.log(`✅ Processed batch of ${chunks.length} chunks with synchronized storage`);
+      logger.debug('Batch processed successfully', {
+        fileId: fileMetadata.id,
+        batchSize: chunks.length,
+        startIndex
+      });
     } catch (error) {
-      console.error(`❌ Error processing batch starting at index ${startIndex}:`, error);
-      throw error;
+      const batchError = new VectorStoreError(
+        `Failed to process batch starting at index ${startIndex}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'batch_processing',
+        {
+          fileId: fileMetadata.id,
+          batchSize: chunks.length,
+          startIndex
+        },
+        error instanceof Error ? error : undefined
+      );
+      
+      errorMonitor.recordError(batchError);
+      logger.error('Batch processing failed', batchError);
+      throw batchError;
+    } finally {
+      endTiming();
     }
   }
 
@@ -155,27 +277,58 @@ export class FileProcessingService implements IFileProcessingService {
 
 
   async forceReindex(clearCache: boolean = false): Promise<void> {
-    console.log('🔄 Force reindexing all files...');
+    const endTiming = startTiming('force_reindex', { clearCache, component: 'DocumentService' });
     
     try {
+      logger.info('Starting force reindex', { clearCache });
+      
       // Clear vector cache if requested
       if (clearCache) {
-        console.log('🗑️ Clearing vector cache...');
+        logger.info('Clearing vector cache');
         if ('rebuildIndex' in this.vectorStoreService) {
-          await (this.vectorStoreService as any).rebuildIndex();
+          await withTimeout(
+            (this.vectorStoreService as any).rebuildIndex(),
+            {
+              timeoutMs: 300000, // 5분
+              operation: 'vector_cache_rebuild'
+            }
+          );
         }
       }
       
-      // Reprocess all files
+      // Reprocess all files with batch processing
       const allFiles = this.fileRepository.getAllFiles();
-      for (const file of allFiles) {
-        await this.processFile(file.path);
-      }
+      logger.info('Reprocessing all files', { fileCount: allFiles.length });
       
-      console.log('✅ Force reindexing completed');
+      await BatchProcessor.processBatch(
+        allFiles,
+        async (file) => {
+          await this.processFile(file.path);
+          return file;
+        },
+        {
+          batchSize: 5, // 동시 처리 파일 수 제한
+          concurrency: 2,
+          operation: 'force_reindex_batch'
+        }
+      );
+      
+      logger.info('Force reindexing completed successfully', { 
+        processedFiles: allFiles.length 
+      });
     } catch (error) {
-      console.error('❌ Error during force reindex:', error);
-      throw error;
+      const reindexError = new VectorStoreError(
+        `Force reindex failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'force_reindex',
+        { clearCache },
+        error instanceof Error ? error : undefined
+      );
+      
+      errorMonitor.recordError(reindexError);
+      logger.error('Force reindex failed', reindexError);
+      throw reindexError;
+    } finally {
+      endTiming();
     }
   }
 
