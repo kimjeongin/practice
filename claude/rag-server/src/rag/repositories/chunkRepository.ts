@@ -1,5 +1,5 @@
-import { DatabaseManager } from '../../infrastructure/database/connection.js';
-import { DocumentChunk } from '../models/models.js';
+import { DatabaseManager } from '@/infrastructure/database/connection';
+import { DocumentChunk } from '@/rag/models/models';
 
 export interface IChunkRepository {
   insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): string;

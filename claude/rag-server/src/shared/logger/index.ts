@@ -4,7 +4,7 @@
  */
 
 import pino, { Logger as PinoLogger } from 'pino';
-import { ErrorCode, StructuredError, ErrorUtils } from '../errors/index.js';
+import { ErrorCode, StructuredError, ErrorUtils } from '@/shared/errors/index';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -209,7 +209,7 @@ export class Logger {
         errorData.error = {
           name: error.name,
           message: error.message,
-          stack: error.stack
+          stack: error.stack || undefined
         };
         errorData.errorCode = ErrorCode.UNKNOWN_ERROR;
         
@@ -234,7 +234,7 @@ export class Logger {
         errorData.error = {
           name: error.name,
           message: error.message,
-          stack: error.stack
+          stack: error.stack || undefined
         };
         errorData.errorCode = ErrorCode.UNKNOWN_ERROR;
       }
@@ -276,7 +276,11 @@ export class Logger {
     const metrics: { code: ErrorCode; count: number; lastOccurred: Date }[] = [];
     
     for (const [code, count] of this.errorMetrics.entries()) {
-      const lastOccurred = this.lastErrorTime.get(code)!;
+      const lastOccurred = this.lastErrorTime.get(code);
+      if (!lastOccurred) {
+        console.warn(`No last occurrence time found for error code: ${code}`);
+        continue;
+      }
       metrics.push({ code, count, lastOccurred });
     }
     

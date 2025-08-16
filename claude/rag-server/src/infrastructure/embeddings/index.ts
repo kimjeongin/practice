@@ -1,7 +1,7 @@
 import { Embeddings } from '@langchain/core/embeddings';
-import { ServerConfig } from '../../shared/types/index.js';
-import { OllamaEmbeddings } from './providers/ollama.js';
-import { TransformersEmbeddings } from './providers/transformers.js';
+import { ServerConfig } from '@/shared/types'
+import { OllamaEmbeddings } from '@/infrastructure/embeddings/providers/ollama'
+import { TransformersEmbeddings } from '@/infrastructure/embeddings/providers/transformers'
 
 export type EmbeddingServiceType = 'transformers' | 'ollama';
 

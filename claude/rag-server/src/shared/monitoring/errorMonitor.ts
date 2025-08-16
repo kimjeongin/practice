@@ -4,8 +4,8 @@
  */
 
 import { EventEmitter } from 'events';
-import { StructuredError, ErrorCode, ErrorUtils } from '../errors/index.js';
-import { logger } from '../logger/index.js';
+import { StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index';
+import { logger } from '@/shared/logger/index';
 
 export interface ErrorMetric {
   code: ErrorCode;
@@ -51,7 +51,7 @@ export class ErrorMonitor extends EventEmitter {
   private alertThresholds: AlertThreshold[] = [];
   private startTime: Date = new Date();
   private maxErrorHistory = 1000;
-  private cleanupInterval: NodeJS.Timeout;
+  private cleanupInterval!: NodeJS.Timeout;
 
   private constructor() {
     super();
@@ -193,14 +193,16 @@ export class ErrorMonitor extends EventEmitter {
         e.context.component === component
       );
       const lastError = componentRecentErrors.length > 0 
-        ? componentRecentErrors[componentRecentErrors.length - 1].timestamp
+        ? componentRecentErrors[componentRecentErrors.length - 1]?.timestamp
         : undefined;
 
-      componentHealth.set(component, {
+      const healthStatus: { status: 'healthy' | 'unhealthy'; errorCount: number; lastError?: Date } = {
         status: componentRecentErrors.length > 10 ? 'unhealthy' : 'healthy',
         errorCount: componentRecentErrors.length,
-        lastError
-      });
+        ...(lastError && { lastError })
+      };
+
+      componentHealth.set(component, healthStatus);
     }
 
     // 전체 시스템 상태 결정
@@ -218,11 +220,13 @@ export class ErrorMonitor extends EventEmitter {
       errorRate: Math.round(errorRate * 100) / 100,
       totalErrors,
       uptime,
-      lastError: lastError ? {
-        code: lastError.code,
-        message: lastError.message,
-        timestamp: lastError.timestamp
-      } : undefined,
+      ...(lastError && {
+        lastError: {
+          code: lastError.code,
+          message: lastError.message,
+          timestamp: lastError.timestamp
+        }
+      }),
       componentHealth
     };
   }
@@ -370,6 +374,11 @@ export class ErrorMonitor extends EventEmitter {
    * 주기적 정리 작업 시작
    */
   private startCleanup() {
+    // 테스트 환경에서는 정리 작업을 시작하지 않음
+    if (process.env.NODE_ENV === 'test') {
+      return;
+    }
+
     this.cleanupInterval = setInterval(() => {
       const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
       const originalLength = this.errors.length;
@@ -393,6 +402,16 @@ export class ErrorMonitor extends EventEmitter {
       clearInterval(this.cleanupInterval);
     }
     this.removeAllListeners();
+  }
+
+  /**
+   * 테스트용 인스턴스 리셋
+   */
+  static resetForTesting() {
+    if (ErrorMonitor.instance) {
+      ErrorMonitor.instance.destroy();
+      ErrorMonitor.instance = null as any;
+    }
   }
 }
 

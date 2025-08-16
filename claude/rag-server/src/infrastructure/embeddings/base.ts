@@ -1,4 +1,4 @@
-import { IEmbeddingService, ModelInfo } from '../../shared/types/interfaces.js';
+import { IEmbeddingService, ModelInfo } from '@/shared/types/interfaces';
 import { Embeddings } from '@langchain/core/embeddings';
 
 export class EmbeddingAdapter implements IEmbeddingService {

@@ -2,9 +2,9 @@ import chokidar from 'chokidar';
 import { basename, extname } from 'path';
 import { stat } from 'fs/promises';
 import { EventEmitter } from 'events';
-import { DatabaseManager } from '../../database/connection.js';
-import { FileMetadata } from '../../../shared/types/index.js';
-import { calculateFileHash } from '../../../shared/utils/crypto.js';
+import { DatabaseManager } from '@/infrastructure/database/connection';
+import { FileMetadata } from '@/shared/types/index';
+import { calculateFileHash } from '@/shared/utils/crypto';
 
 export interface FileChangeEvent {
   type: 'added' | 'changed' | 'removed';

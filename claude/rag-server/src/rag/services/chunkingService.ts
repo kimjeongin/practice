@@ -1,6 +1,6 @@
 import { Document } from '@langchain/core/documents';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import { ServerConfig } from '../../shared/types/index.js';
+import { ServerConfig } from '@/shared/types/index';
 
 export interface ChunkingOptions {
   chunkSize: number;
@@ -110,19 +110,34 @@ export class ChunkingService {
 
   private getSplitterForFileType(fileType: string): RecursiveCharacterTextSplitter {
     switch (fileType.toLowerCase()) {
-      case 'md':
-        return this.splitters.get('md')!;
+      case 'md': {
+        const splitter = this.splitters.get('md');
+        if (!splitter) throw new Error('Markdown splitter not initialized');
+        return splitter;
+      }
       case 'json':
       case 'xml':
-      case 'html':
-        return this.splitters.get('code')!;
-      case 'csv':
-        return this.splitters.get('csv')!;
+      case 'html': {
+        const splitter = this.splitters.get('code');
+        if (!splitter) throw new Error('Code splitter not initialized');
+        return splitter;
+      }
+      case 'csv': {
+        const splitter = this.splitters.get('csv');
+        if (!splitter) throw new Error('CSV splitter not initialized');
+        return splitter;
+      }
       case 'pdf':
-      case 'docx':
-        return this.splitters.get('document')!;
-      default:
-        return this.splitters.get('default')!;
+      case 'docx': {
+        const splitter = this.splitters.get('document');
+        if (!splitter) throw new Error('Document splitter not initialized');
+        return splitter;
+      }
+      default: {
+        const splitter = this.splitters.get('default');
+        if (!splitter) throw new Error('Default splitter not initialized');
+        return splitter;
+      }
     }
   }
 

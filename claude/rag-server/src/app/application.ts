@@ -1,47 +1,47 @@
-import { DatabaseManager } from '../infrastructure/database/connection.js';
-import { SearchService } from '../rag/services/searchService.js';
-import { RAGWorkflow } from '../rag/workflows/ragWorkflow.js';
-import { FileProcessingService } from '../rag/services/documentService.js';
-import { ModelManagementService } from '../rag/services/modelService.js';
+import { DatabaseManager } from '@/infrastructure/database/connection';
+import { SearchService } from '@/rag/services/searchService';
+import { RAGWorkflow } from '@/rag/workflows/ragWorkflow';
+import { FileProcessingService } from '@/rag/services/documentService';
+import { ModelManagementService } from '@/rag/services/modelService';
 
-import { FileRepository } from '../rag/repositories/documentRepository.js';
-import { ChunkRepository } from '../rag/repositories/chunkRepository.js';
+import { FileRepository } from '@/rag/repositories/documentRepository';
+import { ChunkRepository } from '@/rag/repositories/chunkRepository';
 
-import { SearchHandler } from '../mcp/handlers/searchHandler.js';
-import { DocumentHandler } from '../mcp/handlers/documentHandler.js';
-import { SystemHandler } from '../mcp/handlers/systemHandler.js';
-import { ModelHandler } from '../mcp/handlers/modelHandler.js';
+import { SearchHandler } from '@/mcp/handlers/searchHandler';
+import { DocumentHandler } from '@/mcp/handlers/documentHandler';
+import { SystemHandler } from '@/mcp/handlers/systemHandler';
+import { ModelHandler } from '@/mcp/handlers/modelHandler';
 
-import { MCPServer } from '../mcp/server/mcpServer.js';
-import { VectorStoreAdapter } from '../infrastructure/vectorstore/base.js';
-import { EmbeddingAdapter } from '../infrastructure/embeddings/base.js';
+import { MCPServer } from '@/mcp/server/mcpServer';
+import { VectorStoreAdapter } from '@/infrastructure/vectorstore/base';
+import { EmbeddingAdapter } from '@/infrastructure/embeddings/base';
 
-import { FileWatcher } from '../infrastructure/filesystem/watcher/fileWatcher.js';
-import { EmbeddingFactory } from '../infrastructure/embeddings/index.js';
-import { FaissVectorStoreManager } from '../infrastructure/vectorstore/providers/faiss.js';
-import { ServerConfig } from '../shared/types/index.js';
+import { FileWatcher } from '@/infrastructure/filesystem/watcher/fileWatcher';
+import { EmbeddingFactory } from '@/infrastructure/embeddings';
+import { FaissVectorStoreManager } from '@/infrastructure/vectorstore/providers/faiss';
+import { ServerConfig } from '@/shared/types';
 import { 
   StructuredError, 
   DatabaseError, 
   ConfigurationError, 
   ErrorCode 
-} from '../shared/errors/index.js';
-import { logger, startTiming } from '../shared/logger/index.js';
-import { withTimeout, withRetry, CircuitBreakerManager } from '../shared/utils/resilience.js';
-import { errorMonitor, setupGlobalErrorHandling } from '../shared/monitoring/errorMonitor.js';
-import { monitoringDashboard } from '../infrastructure/dashboard/webDashboard.js';
+} from '@/shared/errors';
+import { logger, startTiming } from '@/shared/logger';
+import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience';
+import { errorMonitor, setupGlobalErrorHandling } from '@/shared/monitoring/errorMonitor';
+import { monitoringDashboard } from '@/infrastructure/dashboard/webDashboard';
 
 export class RAGApplication {
   private db: DatabaseManager;
-  private mcpController: MCPServer;
-  private fileWatcher: FileWatcher;
-  private ragWorkflowService: RAGWorkflow;
+  private mcpController!: MCPServer;
+  private fileWatcher!: FileWatcher;
+  private ragWorkflowService!: RAGWorkflow;
   private isInitialized = false;
   private monitoringEnabled: boolean;
 
   constructor(private config: ServerConfig) {
     this.db = new DatabaseManager(config.databasePath);
-    this.monitoringEnabled = process.env.ENABLE_MONITORING !== 'false'; // 기본값: true
+    this.monitoringEnabled = process.env['ENABLE_MONITORING'] !== 'false'; // 기본값: true
   }
 
   async initialize(): Promise<void> {

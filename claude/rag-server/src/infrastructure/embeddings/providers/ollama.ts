@@ -1,6 +1,6 @@
 import { Embeddings } from '@langchain/core/embeddings';
 import fetch from 'node-fetch';
-import { ServerConfig } from '../../../shared/types/index.js';
+import { ServerConfig } from '@/shared/types/index';
 
 /**
  * LangChain 호환 Ollama 임베딩 클래스

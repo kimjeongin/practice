@@ -6,8 +6,8 @@
 import pTimeout from 'p-timeout';
 import pRetry, { AbortError, FailedAttemptError } from 'p-retry';
 import CircuitBreaker from 'opossum';
-import { TimeoutError, StructuredError, ErrorCode, ErrorUtils } from '../errors/index.js';
-import { logger } from '../logger/index.js';
+import { TimeoutError, StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index';
+import { logger } from '@/shared/logger/index';
 
 export interface RetryOptions {
   retries?: number;
@@ -170,7 +170,11 @@ export class CircuitBreakerManager {
     options: CircuitBreakerOptions = {}
   ): CircuitBreaker {
     if (CircuitBreakerManager.breakers.has(name)) {
-      return CircuitBreakerManager.breakers.get(name)!;
+      const existingBreaker = CircuitBreakerManager.breakers.get(name);
+      if (!existingBreaker) {
+        throw new Error(`Circuit breaker ${name} exists in map but is undefined`);
+      }
+      return existingBreaker;
     }
 
     const defaultOptions = {

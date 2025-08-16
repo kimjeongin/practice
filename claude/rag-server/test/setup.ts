@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ErrorMonitor } from '@/shared/monitoring/errorMonitor';
 
 const TEST_DATA_DIR = path.join(process.cwd(), 'test-data');
 const TEST_DB_PATH = path.join(process.cwd(), 'data', 'test-rag.db');
@@ -19,6 +20,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   console.log('🧹 Cleaning up test environment...');
+  
+  // Clean up error monitor
+  ErrorMonitor.resetForTesting();
   
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
