@@ -3,13 +3,13 @@ import { Document } from '@langchain/core/documents';
 import { Embeddings } from '@langchain/core/embeddings';
 import { existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
-import { ServerConfig } from '../../../shared/types/index.js';
+import { ServerConfig } from '@/shared/types';
 
 export interface VectorDocument {
   id: string;
   content: string;
   metadata: {
-    fileId: string;
+    fileId: string
     fileName: string;
     filePath: string;
     chunkIndex: number;
@@ -222,6 +222,10 @@ export class FaissVectorStoreManager {
 
       // 대용량 배치의 경우 청크 단위로 처리
       const chunkSize = 50; // 메모리 사용량 제한
+      if (!this.store) {
+        throw new Error('Vector store not initialized. Call initialize() first.');
+      }
+
       if (documents.length > chunkSize) {
         for (let i = 0; i < langchainDocs.length; i += chunkSize) {
           const chunk = langchainDocs.slice(i, i + chunkSize);

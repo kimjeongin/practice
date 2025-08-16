@@ -1,5 +1,5 @@
-import { DatabaseManager } from '../../infrastructure/database/connection.js';
-import { FileMetadata, DocumentChunk } from '../models/models.js';
+import { DatabaseManager } from '@/infrastructure/database/connection';
+import { FileMetadata, DocumentChunk } from '@/rag/models/models';
 
 export interface IFileRepository {
   insertFile(file: Omit<FileMetadata, 'id'>): string;

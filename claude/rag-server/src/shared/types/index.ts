@@ -1,6 +1,6 @@
 // Re-export domain models for backward compatibility
-export type { FileMetadata, CustomMetadata, DocumentChunk } from '../../rag/models/models.js';
-export type { SearchResult, SearchOptions } from './interfaces.js';
+export type { FileMetadata, CustomMetadata, DocumentChunk } from '@/rag/models/models';
+export type { SearchResult, SearchOptions } from '@/shared/types/interfaces';
 
 export interface McpTool {
   name: string;

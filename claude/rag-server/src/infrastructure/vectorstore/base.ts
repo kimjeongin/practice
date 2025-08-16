@@ -1,5 +1,5 @@
-import { IVectorStoreService, VectorDocument, VectorSearchResult, SearchOptions } from '../../shared/types/interfaces.js';
-import { FaissVectorStoreManager } from './providers/faiss.js';
+import { IVectorStoreService, VectorDocument, VectorSearchResult, SearchOptions } from '@/shared/types/interfaces'
+import { FaissVectorStoreManager } from '@/infrastructure/vectorstore/providers/faiss'
 
 export class VectorStoreAdapter implements IVectorStoreService {
   constructor(private faissVectorStore: FaissVectorStoreManager) {}
@@ -9,11 +9,12 @@ export class VectorStoreAdapter implements IVectorStoreService {
   }
 
   async search(query: string, options?: SearchOptions): Promise<VectorSearchResult[]> {
-    const searchOptions = {
-      topK: options?.topK,
-      scoreThreshold: options?.scoreThreshold,
-      filter: options?.fileTypes || options?.metadataFilters ? 
-        this.createMetadataFilter(options.fileTypes, options.metadataFilters) : undefined,
+    const searchOptions: any = {
+      ...(options?.topK !== undefined && { topK: options.topK }),
+      ...(options?.scoreThreshold !== undefined && { scoreThreshold: options.scoreThreshold }),
+      ...(options?.fileTypes || options?.metadataFilters ? {
+        filter: this.createMetadataFilter(options.fileTypes, options.metadataFilters)
+      } : {})
     };
 
     return await this.faissVectorStore.search(query, searchOptions);
@@ -48,7 +49,8 @@ export class VectorStoreAdapter implements IVectorStoreService {
   private createMetadataFilter(fileTypes?: string[], metadataFilters?: Record<string, string>) {
     return (metadata: any) => {
       if (fileTypes && fileTypes.length > 0) {
-        if (!fileTypes.includes(metadata.fileType?.toLowerCase())) {
+        const fileType = metadata.fileType?.toLowerCase();
+        if (!fileType || !fileTypes.includes(fileType)) {
           return false;
         }
       }

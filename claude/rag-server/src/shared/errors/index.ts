@@ -83,7 +83,7 @@ export class StructuredError extends Error {
       context: this.context,
       isOperational: this.isOperational,
       timestamp: this.timestamp,
-      stack: this.stack
+      stack: this.stack || undefined
     };
   }
 }

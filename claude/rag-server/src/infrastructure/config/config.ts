@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { ServerConfig } from '../../shared/types/index.js';
+import { ServerConfig } from '@/shared/types/index';
 
 // Load environment variables
 config();

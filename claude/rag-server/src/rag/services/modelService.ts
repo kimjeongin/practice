@@ -1,5 +1,5 @@
-import { IModelManagementService } from '../../mcp/handlers/modelHandler.js';
-import { IEmbeddingService } from '../../shared/types/interfaces.js';
+import { IModelManagementService } from '@/mcp/handlers/modelHandler';
+import { IEmbeddingService } from '@/shared/types/interfaces';
 
 export class ModelManagementService implements IModelManagementService {
   constructor(

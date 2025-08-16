@@ -9,12 +9,12 @@ import {
   GetPromptRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { SearchHandler } from '../handlers/searchHandler.js';
-import { DocumentHandler } from '../handlers/documentHandler.js';
-import { SystemHandler } from '../handlers/systemHandler.js';
-import { ModelHandler } from '../handlers/modelHandler.js';
-import { IFileRepository } from '../../rag/repositories/documentRepository.js';
-import { ServerConfig } from '../../shared/types/index.js';
+import { SearchHandler } from '@/mcp/handlers/searchHandler';
+import { DocumentHandler } from '@/mcp/handlers/documentHandler';
+import { SystemHandler } from '@/mcp/handlers/systemHandler';
+import { ModelHandler } from '@/mcp/handlers/modelHandler';
+import { IFileRepository } from '@/rag/repositories/documentRepository';
+import { ServerConfig } from '@/shared/types/index';
 
 export class MCPServer {
   private server: Server;
@@ -170,19 +170,19 @@ export class MCPServer {
 
         switch (name) {
           case 'search_documents':
-            result = await this.searchHandler.handleSearchDocuments(args as any);
+            result = await this.searchHandler.handleSearchDocuments(this.validateAndCastArgs(args, 'search_documents'));
             break;
           case 'list_files':
-            result = await this.documentHandler.handleListFiles(args as any);
+            result = await this.documentHandler.handleListFiles(this.validateAndCastArgs(args, 'list_files'));
             break;
           case 'get_file_metadata':
-            result = await this.documentHandler.handleGetFileMetadata(args as any);
+            result = await this.documentHandler.handleGetFileMetadata(this.validateAndCastArgs(args, 'get_file_metadata'));
             break;
           case 'update_file_metadata':
-            result = await this.documentHandler.handleUpdateFileMetadata(args as any);
+            result = await this.documentHandler.handleUpdateFileMetadata(this.validateAndCastArgs(args, 'update_file_metadata'));
             break;
           case 'search_files_by_metadata':
-            result = await this.documentHandler.handleSearchFilesByMetadata(args as any);
+            result = await this.documentHandler.handleSearchFilesByMetadata(this.validateAndCastArgs(args, 'search_files_by_metadata'));
             break;
           case 'get_server_status':
             result = await this.systemHandler.handleGetServerStatus();
@@ -194,10 +194,10 @@ export class MCPServer {
             result = await this.modelHandler.handleGetCurrentModelInfo();
             break;
           case 'switch_embedding_model':
-            result = await this.modelHandler.handleSwitchEmbeddingModel(args as any);
+            result = await this.modelHandler.handleSwitchEmbeddingModel(this.validateAndCastArgs(args, 'switch_embedding_model'));
             break;
           case 'download_model':
-            result = await this.modelHandler.handleDownloadModel(args as any);
+            result = await this.modelHandler.handleDownloadModel(this.validateAndCastArgs(args, 'download_model'));
             break;
           case 'get_model_cache_info':
             result = await this.modelHandler.handleGetModelCacheInfo();
@@ -206,7 +206,7 @@ export class MCPServer {
             result = await this.modelHandler.handleGetDownloadProgress();
             break;
           case 'force_reindex':
-            result = await this.documentHandler.handleForceReindex(args as any);
+            result = await this.documentHandler.handleForceReindex(this.validateAndCastArgs(args, 'force_reindex'));
             break;
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -299,7 +299,7 @@ export class MCPServer {
 
       switch (name) {
         case 'rag_search': {
-          const query = args?.['query'] as string;
+          const query = typeof args?.['query'] === 'string' ? args['query'] : undefined;
           const contextLength = Number(args?.['context_length']) || 3;
 
           if (!query) {
@@ -357,5 +357,16 @@ export class MCPServer {
     console.log('🔄 Shutting down MCP Server...');
     // Add any cleanup logic here if needed
     console.log('✅ MCP Server shutdown completed');
+  }
+
+  private isValidArgs(args: Record<string, unknown> | undefined): args is Record<string, unknown> {
+    return args !== undefined && typeof args === 'object' && args !== null;
+  }
+
+  private validateAndCastArgs(args: Record<string, unknown> | undefined, operation: string): any {
+    if (!this.isValidArgs(args)) {
+      throw new Error(`Invalid arguments for ${operation}: args must be an object`);
+    }
+    return args;
   }
 }

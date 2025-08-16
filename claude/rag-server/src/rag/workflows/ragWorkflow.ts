@@ -1,7 +1,7 @@
-import { ISearchService, SearchOptions, SearchResult } from '../../shared/types/interfaces.js';
-import { IFileRepository } from '../repositories/documentRepository.js';
-import { IChunkRepository } from '../repositories/chunkRepository.js';
-import { ServerConfig } from '../../shared/types/index.js';
+import { ISearchService, SearchOptions, SearchResult } from '@/shared/types/interfaces';
+import { IFileRepository } from '@/rag/repositories/documentRepository';
+import { IChunkRepository } from '@/rag/repositories/chunkRepository';
+import { ServerConfig } from '@/shared/types/index';
 
 export interface RAGSearchOptions extends SearchOptions {
   useSemanticSearch?: boolean;

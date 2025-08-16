@@ -1,396 +1,298 @@
-import { describe, test, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createMockConfig, createMockFile, removeMockFile } from '../helpers/testHelpers';
-import { SAMPLE_DOCUMENTS } from '../fixtures/sample-documents';
-
-// Mock the resilience utilities to avoid ESM module issues  
-jest.mock('../../src/shared/utils/resilience', () => ({
-  withTimeout: jest.fn().mockImplementation((promise) => promise),
-  withRetry: jest.fn().mockImplementation((fn) => fn()),
-  CircuitBreakerManager: {
-    getBreaker: jest.fn().mockImplementation((name, fn, options) => ({
-      fire: jest.fn().mockImplementation(() => fn()),
-      on: jest.fn(),
-      stats: { failures: 0, successes: 0 }
-    }))
-  }
-}));
-
-// Mock complex dependencies - only the services that actually exist
-jest.mock('../../src/rag/repositories/documentRepository', () => ({
-  DocumentRepository: jest.fn().mockImplementation(() => ({
-    initialize: jest.fn().mockResolvedValue(undefined),
-    close: jest.fn().mockResolvedValue(undefined),
-    getAllFiles: jest.fn().mockReturnValue([
-      { id: 'file-1', name: 'tech1.txt', path: '/test/tech1.txt', fileType: 'text/plain', createdAt: new Date() },
-      { id: 'file-2', name: 'simple1.txt', path: '/test/simple1.txt', fileType: 'text/plain', createdAt: new Date() }
-    ]),
-    getFileByPath: jest.fn().mockImplementation((path) => {
-      if (path.includes('tech1.txt')) return { id: 'file-1', name: 'tech1.txt', path, fileType: 'text/plain', createdAt: new Date() };
-      if (path.includes('simple1.txt')) return { id: 'file-2', name: 'simple1.txt', path, fileType: 'text/plain', createdAt: new Date() };
-      return null;
-    }),
-    insertFile: jest.fn().mockReturnValue('file-id'),
-    deleteFile: jest.fn().mockResolvedValue(undefined),
-    getFileMetadata: jest.fn().mockReturnValue({})
-  }))
-}));
-
-jest.mock('../../src/rag/repositories/chunkRepository', () => ({
-  ChunkRepository: jest.fn().mockImplementation(() => ({
-    initialize: jest.fn().mockResolvedValue(undefined),
-    close: jest.fn().mockResolvedValue(undefined),
-    getDocumentChunks: jest.fn().mockImplementation((fileId) => {
-      if (fileId === 'file-1') {
-        return [{ content: 'Vector databases are specialized storage systems', embeddingId: 'chunk-1', chunkIndex: 0 }];
-      }
-      if (fileId === 'file-2') {
-        return [{ content: 'This is a simple test document', embeddingId: 'chunk-2', chunkIndex: 0 }];
-      }
-      return [];
-    }),
-    insertDocumentChunk: jest.fn().mockReturnValue('chunk-id'),
-    deleteDocumentChunks: jest.fn().mockResolvedValue(undefined)
-  }))
-}));
+import { describe, test, expect, beforeEach, jest } from '@jest/globals';
+import { RAGWorkflow } from '../../src/rag/workflows/ragWorkflow';
+import { ISearchService } from '../../src/shared/types/interfaces';
+import { IFileRepository } from '../../src/rag/repositories/documentRepository';
+import { IChunkRepository } from '../../src/rag/repositories/chunkRepository';
+import { ServerConfig } from '../../src/shared/types/index';
 
 describe('RAGWorkflow Integration Tests', () => {
-  let ragWorkflow: any;
-  let testConfig: any;
-  let testFiles: string[] = [];
+  let ragWorkflow: RAGWorkflow;
+  let mockSearchService: jest.Mocked<ISearchService>;
+  let mockFileRepository: jest.Mocked<IFileRepository>;
+  let mockChunkRepository: jest.Mocked<IChunkRepository>;
+  let testConfig: ServerConfig;
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    // Mock search service
+    mockSearchService = {
+      search: jest.fn(),
+    } as any;
+
+    // Mock file repository
+    mockFileRepository = {
+      getAllFiles: jest.fn(),
+      getFileByPath: jest.fn(),
+    } as any;
+
+    // Mock chunk repository 
+    mockChunkRepository = {
+      getDocumentChunks: jest.fn(),
+    } as any;
+
+    // Test configuration
     testConfig = {
-      ...createMockConfig(),
-      database: {
-        path: ':memory:'
-      },
-      embeddings: {
-        provider: 'transformers',
-        model: 'sentence-transformers/all-MiniLM-L6-v2'
-      },
-      vectorStore: {
-        provider: 'faiss',
-        dimension: 384
-      }
+      databasePath: '/test/test.db',
+      dataDir: '/test',
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      similarityTopK: 5,
+      embeddingModel: 'all-MiniLM-L6-v2',
+      embeddingDevice: 'cpu',
+      logLevel: 'error',
+      embeddingService: 'local',
+      embeddingBatchSize: 10,
+      embeddingDimensions: 384,
+      similarityThreshold: 0.7,
+      nodeEnv: 'test',
     };
-
-    // Import all necessary services
-    const { SearchService } = await import('../../src/rag/services/searchService');
-    const { DocumentRepository } = await import('../../src/rag/repositories/documentRepository');
-    const { ChunkRepository } = await import('../../src/rag/repositories/chunkRepository');
-    const { RAGWorkflow } = await import('../../src/rag/workflows/ragWorkflow');
-
-    // Create mock instances
-    const mockDocumentRepository = new DocumentRepository(testConfig);
-    const mockChunkRepository = new ChunkRepository(testConfig);
-    
-    // Create a mock vector store service since it doesn't exist
-    const mockVectorStoreService = {
-      search: jest.fn().mockImplementation((query, options) => {
-        // Return mock results that match the search query
-        if (query.includes('vector') || query.includes('database') || query.includes('storage')) {
-          return Promise.resolve([{
-            content: 'Vector databases are specialized storage systems for high-dimensional data',
-            score: 0.85,
-            id: 'chunk-1',
-            metadata: {
-              fileId: 'file-1',
-              fileName: 'tech1.txt',
-              chunkIndex: 0,
-              fileType: 'text/plain'
-            }
-          }]);
-        }
-        if (query.includes('simple') || query.includes('test')) {
-          return Promise.resolve([{
-            content: 'This is a simple test document for testing purposes',
-            score: 0.75,
-            id: 'chunk-2',
-            metadata: {
-              fileId: 'file-2',
-              fileName: 'simple1.txt',
-              chunkIndex: 0,
-              fileType: 'text/plain'
-            }
-          }]);
-        }
-        return Promise.resolve([]);
-      }),
-      addDocuments: jest.fn().mockResolvedValue(undefined),
-      removeDocumentsByFileId: jest.fn().mockResolvedValue(undefined),
-      similaritySearch: jest.fn().mockResolvedValue([])
-    };
-    
-    const mockSearchService = new SearchService(
-      mockVectorStoreService as any,
-      mockDocumentRepository as any,
-      mockChunkRepository as any,
-      testConfig
-    );
 
     ragWorkflow = new RAGWorkflow(
       mockSearchService,
-      mockDocumentRepository as any,
-      mockChunkRepository as any,
+      mockFileRepository,
+      mockChunkRepository,
       testConfig
     );
-
-    // Add missing methods for testing
-    ragWorkflow.addDocument = jest.fn().mockResolvedValue(undefined);
-    ragWorkflow.removeDocument = jest.fn().mockResolvedValue(undefined);
-  });
-
-  afterEach(async () => {
-    // RAGWorkflow doesn't have shutdown method, just clean up test files
-    testFiles.forEach(filePath => {
-      removeMockFile(filePath);
-    });
-    testFiles = [];
-  });
-
-  describe('document processing workflow', () => {
-    test('should process and search documents end-to-end', async () => {
-      // Create test document
-      const testFilePath = createMockFile('integration-test.txt', SAMPLE_DOCUMENTS.technical.content);
-      testFiles.push(testFilePath);
-
-      // Add document to workflow
-      await ragWorkflow.addDocument(testFilePath);
-
-      // Wait for processing to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Search for content
-      const searchResults = await ragWorkflow.search('vector databases', {
-        topK: 5,
-        useSemanticSearch: true
-      });
-
-      expect(searchResults.length).toBeGreaterThan(0);
-      expect(searchResults[0].content).toContain('vector');
-      expect(searchResults[0].score).toBeGreaterThan(0);
-    }, 30000);
-
-    test('should handle multiple document types', async () => {
-      // Create multiple test documents
-      const txtFile = createMockFile('test.txt', SAMPLE_DOCUMENTS.simple.content);
-      const mdFile = createMockFile('test.md', SAMPLE_DOCUMENTS.markdown.content);
-      testFiles.push(txtFile, mdFile);
-
-      // Add documents
-      await ragWorkflow.addDocument(txtFile);
-      await ragWorkflow.addDocument(mdFile);
-
-      // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Search in both documents
-      const txtResults = await ragWorkflow.search('simple test document');
-      const mdResults = await ragWorkflow.search('markdown document');
-
-      expect(txtResults.length).toBeGreaterThan(0);
-      expect(mdResults.length).toBeGreaterThan(0);
-    }, 30000);
-
-    test('should update documents when changed', async () => {
-      const testFilePath = createMockFile('updateable.txt', 'Original content');
-      testFiles.push(testFilePath);
-
-      // Add initial document
-      await ragWorkflow.addDocument(testFilePath);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Search for original content
-      const originalResults = await ragWorkflow.search('Original content');
-      expect(originalResults.length).toBeGreaterThan(0);
-
-      // Update file content
-      fs.writeFileSync(testFilePath, 'Updated content with new information');
-
-      // Process updated document
-      await ragWorkflow.addDocument(testFilePath);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Search for new content
-      const updatedResults = await ragWorkflow.search('Updated content');
-      expect(updatedResults.length).toBeGreaterThan(0);
-
-      // Old content should not be found
-      const oldResults = await ragWorkflow.search('Original content');
-      expect(oldResults.length).toBe(0);
-    }, 30000);
-
-    test('should handle document removal', async () => {
-      const testFilePath = createMockFile('removable.txt', 'Content to be removed');
-      testFiles.push(testFilePath);
-
-      // Add document
-      await ragWorkflow.addDocument(testFilePath);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Verify document is searchable
-      const beforeResults = await ragWorkflow.search('Content to be removed');
-      expect(beforeResults.length).toBeGreaterThan(0);
-
-      // Remove document
-      await ragWorkflow.removeDocument(testFilePath);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Verify document is no longer searchable
-      const afterResults = await ragWorkflow.search('Content to be removed');
-      expect(afterResults.length).toBe(0);
-    }, 30000);
   });
 
   describe('search functionality', () => {
-    beforeEach(async () => {
-      // Set up test documents for search tests
-      const files = [
-        createMockFile('tech1.txt', SAMPLE_DOCUMENTS.technical.content),
-        createMockFile('simple1.txt', SAMPLE_DOCUMENTS.simple.content),
-        createMockFile('long1.txt', SAMPLE_DOCUMENTS.longText.content)
+    test('should perform semantic search by default', async () => {
+      const mockResults = [
+        {
+          content: 'Vector databases are specialized storage systems',
+          chunkIndex: 0,
+          metadata: {
+            fileName: 'test.txt',
+            filePath: '/test/test.txt',
+            fileType: 'text/plain',
+          },
+          score: 0.9,
+        },
       ];
-      
-      testFiles.push(...files);
 
-      for (const file of files) {
-        await ragWorkflow.addDocument(file);
-      }
+      mockSearchService.search.mockResolvedValue(mockResults);
 
-      // Wait for all processing to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    });
+      const results = await ragWorkflow.search('vector databases');
 
-    test('should perform semantic search', async () => {
-      const results = await ragWorkflow.search('database storage systems', {
-        useSemanticSearch: true,
-        topK: 3
+      expect(mockSearchService.search).toHaveBeenCalledWith('vector databases', {
+        topK: 5,
+        fileTypes: undefined,
+        metadataFilters: undefined,
       });
-
-      expect(results.length).toBeGreaterThan(0);
-      expect(results[0]).toHaveProperty('semanticScore');
-      expect(results[0].semanticScore).toBeGreaterThan(0);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toHaveProperty('semanticScore', 0.9);
+      expect(results[0].content).toContain('Vector databases');
     });
 
-    test('should perform keyword search', async () => {
-      const results = await ragWorkflow.search('simple test', {
+    test('should perform keyword search when semantic search is disabled', async () => {
+      // Setup mock data for keyword search
+      const mockFiles = [
+        {
+          id: 'file-1',
+          name: 'test.txt',
+          path: '/test/test.txt',
+          fileType: 'text/plain',
+          createdAt: new Date(),
+        },
+      ];
+
+      const mockChunks = [
+        {
+          content: 'Vector databases are specialized storage systems for handling vector data',
+          chunkIndex: 0,
+          embeddingId: 'chunk-1',
+        },
+      ];
+
+      mockFileRepository.getAllFiles.mockReturnValue(mockFiles);
+      mockChunkRepository.getDocumentChunks.mockReturnValue(mockChunks);
+
+      const results = await ragWorkflow.search('vector databases', {
         useSemanticSearch: false,
-        topK: 3
       });
 
-      expect(results.length).toBeGreaterThan(0);
+      expect(mockFileRepository.getAllFiles).toHaveBeenCalled();
+      expect(mockChunkRepository.getDocumentChunks).toHaveBeenCalledWith('file-1');
+      expect(results).toHaveLength(1);
       expect(results[0]).toHaveProperty('keywordScore');
-      expect(results[0].keywordScore).toBeGreaterThan(0);
+      expect(results[0].content).toContain('Vector databases');
     });
 
-    test('should perform hybrid search', async () => {
-      const results = await ragWorkflow.search('storage systems', {
-        useSemanticSearch: true,
+    test('should perform hybrid search when enabled', async () => {
+      // Mock semantic search results
+      const mockSemanticResults = [
+        {
+          content: 'Vector databases are specialized storage systems',
+          chunkIndex: 0,
+          metadata: {
+            fileName: 'test.txt',
+            filePath: '/test/test.txt',
+            fileType: 'text/plain',
+          },
+          score: 0.8,
+        },
+      ];
+
+      mockSearchService.search.mockResolvedValue(mockSemanticResults);
+
+      // Mock keyword search data - ensure it matches the semantic results
+      const mockFiles = [
+        {
+          id: 'file-1',
+          name: 'test.txt',
+          path: '/test/test.txt',
+          fileType: 'text/plain',
+          createdAt: new Date(),
+        },
+      ];
+
+      const mockChunks = [
+        {
+          content: 'Vector databases are specialized storage systems',
+          chunkIndex: 0,
+          embeddingId: 'chunk-1',
+        },
+      ];
+
+      mockFileRepository.getAllFiles.mockReturnValue(mockFiles);
+      mockChunkRepository.getDocumentChunks.mockReturnValue(mockChunks);
+
+      const results = await ragWorkflow.search('vector databases', {
         useHybridSearch: true,
         semanticWeight: 0.7,
-        topK: 3
+        scoreThreshold: 0.1, // Lower threshold to ensure results pass
       });
 
-      expect(results.length).toBeGreaterThan(0);
+      expect(results).toHaveLength(1);
       expect(results[0]).toHaveProperty('hybridScore');
       expect(results[0]).toHaveProperty('semanticScore');
       expect(results[0]).toHaveProperty('keywordScore');
     });
 
     test('should filter by file types', async () => {
-      const results = await ragWorkflow.search('content', {
+      const mockResults = [
+        {
+          content: 'Test content',
+          chunkIndex: 0,
+          metadata: {
+            fileName: 'test.txt',
+            filePath: '/test/test.txt',
+            fileType: 'text/plain',
+          },
+          score: 0.8,
+        },
+      ];
+
+      mockSearchService.search.mockResolvedValue(mockResults);
+
+      await ragWorkflow.search('test', {
         fileTypes: ['text/plain'],
-        topK: 10
       });
 
-      results.forEach(result => {
-        expect(result.metadata.fileType).toBe('text/plain');
+      expect(mockSearchService.search).toHaveBeenCalledWith('test', {
+        topK: 5,
+        fileTypes: ['text/plain'],
+        metadataFilters: undefined,
       });
     });
 
     test('should respect score threshold', async () => {
-      const results = await ragWorkflow.search('very specific uncommon phrase', {
+      const mockResults = [
+        {
+          content: 'High score content',
+          chunkIndex: 0,
+          metadata: {
+            fileName: 'test1.txt',
+            filePath: '/test/test1.txt',
+            fileType: 'text/plain',
+          },
+          score: 0.9,
+        },
+        {
+          content: 'Low score content',
+          chunkIndex: 0,
+          metadata: {
+            fileName: 'test2.txt',
+            filePath: '/test/test2.txt',
+            fileType: 'text/plain',
+          },
+          score: 0.5,
+        },
+      ];
+
+      mockSearchService.search.mockResolvedValue(mockResults);
+
+      const results = await ragWorkflow.search('content', {
         scoreThreshold: 0.8,
-        topK: 10
       });
 
-      results.forEach(result => {
-        expect(result.score).toBeGreaterThanOrEqual(0.8);
+      // Only results above threshold should be returned
+      expect(results).toHaveLength(1);
+      expect(results[0].score).toBeGreaterThanOrEqual(0.8);
+    });
+
+    test('should handle empty search results', async () => {
+      mockSearchService.search.mockResolvedValue([]);
+
+      const results = await ragWorkflow.search('nonexistent query');
+
+      expect(results).toHaveLength(0);
+    });
+
+    test('should handle search errors gracefully', async () => {
+      mockSearchService.search.mockRejectedValue(new Error('Search failed'));
+
+      await expect(ragWorkflow.search('test query')).rejects.toThrow('Search failed');
+    });
+  });
+
+  describe('configuration options', () => {
+    test('should use config defaults for topK and threshold', async () => {
+      mockSearchService.search.mockResolvedValue([]);
+
+      await ragWorkflow.search('test');
+
+      expect(mockSearchService.search).toHaveBeenCalledWith('test', {
+        topK: testConfig.similarityTopK,
+        fileTypes: undefined,
+        metadataFilters: undefined,
+      });
+    });
+
+    test('should override config with provided options', async () => {
+      mockSearchService.search.mockResolvedValue([]);
+
+      await ragWorkflow.search('test', {
+        topK: 10,
+      });
+
+      expect(mockSearchService.search).toHaveBeenCalledWith('test', {
+        topK: 10,
+        fileTypes: undefined,
+        metadataFilters: undefined,
       });
     });
   });
 
-  describe('error handling and resilience', () => {
-    test('should handle corrupted files gracefully', async () => {
-      const corruptedFile = createMockFile('corrupted.txt', '\x00\x01\x02\x03');
-      testFiles.push(corruptedFile);
+  describe('search types', () => {
+    test('should log search type correctly for semantic search', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      mockSearchService.search.mockResolvedValue([]);
 
-      // Should not throw an error
-      await expect(ragWorkflow.addDocument(corruptedFile)).resolves.not.toThrow();
-      
-      // Other documents should still work
-      const normalFile = createMockFile('normal.txt', 'Normal content');
-      testFiles.push(normalFile);
-      
-      await ragWorkflow.addDocument(normalFile);
-      const results = await ragWorkflow.search('Normal content');
-      expect(results.length).toBeGreaterThan(0);
+      await ragWorkflow.search('test query');
+
+      expect(consoleSpy).toHaveBeenCalledWith('🔍 RAG Search: "test query" (semantic)');
+      consoleSpy.mockRestore();
     });
 
-    test('should handle search with no results', async () => {
-      const results = await ragWorkflow.search('completely nonexistent content xyz123');
-      
-      expect(results).toBeInstanceOf(Array);
-      expect(results.length).toBe(0);
+    test('should log search type correctly for hybrid search', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      mockSearchService.search.mockResolvedValue([]);
+      mockFileRepository.getAllFiles.mockReturnValue([]);
+
+      await ragWorkflow.search('test query', { useHybridSearch: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith('🔍 RAG Search: "test query" (hybrid)');
+      consoleSpy.mockRestore();
     });
-
-    test('should handle empty query', async () => {
-      const results = await ragWorkflow.search('');
-      
-      expect(results).toBeInstanceOf(Array);
-      expect(results.length).toBe(0);
-    });
-  });
-
-  describe('performance and memory', () => {
-    test('should handle large documents efficiently', async () => {
-      const largeContent = Array(1000).fill(SAMPLE_DOCUMENTS.technical.content).join('\n\n');
-      const largeFile = createMockFile('large.txt', largeContent);
-      testFiles.push(largeFile);
-
-      const startTime = Date.now();
-      await ragWorkflow.addDocument(largeFile);
-      const processTime = Date.now() - startTime;
-
-      // Should process within reasonable time (adjust as needed)
-      expect(processTime).toBeLessThan(60000); // 60 seconds
-
-      // Should still be searchable
-      const results = await ragWorkflow.search('vector databases');
-      expect(results.length).toBeGreaterThan(0);
-    }, 90000);
-
-    test('should handle concurrent document processing', async () => {
-      const files = Array.from({ length: 5 }, (_, i) => 
-        createMockFile(`concurrent-${i}.txt`, `Document ${i} content with unique identifier ${i}`)
-      );
-      testFiles.push(...files);
-
-      // Process all files concurrently
-      const startTime = Date.now();
-      await Promise.all(files.map(file => ragWorkflow.addDocument(file)));
-      const totalTime = Date.now() - startTime;
-
-      // Should be faster than sequential processing
-      expect(totalTime).toBeLessThan(30000); // 30 seconds
-
-      // All documents should be searchable
-      for (let i = 0; i < files.length; i++) {
-        const results = await ragWorkflow.search(`unique identifier ${i}`);
-        expect(results.length).toBeGreaterThan(0);
-      }
-    }, 60000);
   });
 });

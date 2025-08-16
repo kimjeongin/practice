@@ -1,21 +1,21 @@
 import { basename } from 'path';
 import { createHash } from 'crypto';
-import { IFileProcessingService, VectorDocument } from '../../shared/types/interfaces.js';
-import { IFileRepository } from '../repositories/documentRepository.js';
-import { IChunkRepository } from '../repositories/chunkRepository.js';
-import { IVectorStoreService } from '../../shared/types/interfaces.js';
-import { DocumentChunk, FileMetadata } from '../models/models.js';
+import { IFileProcessingService, VectorDocument } from '@/shared/types/interfaces';
+import { IFileRepository } from '@/rag/repositories/documentRepository';
+import { IChunkRepository } from '@/rag/repositories/chunkRepository';
+import { IVectorStoreService } from '@/shared/types/interfaces';
+import { DocumentChunk, FileMetadata } from '@/rag/models/models';
 import { Document } from '@langchain/core/documents';
-import { ServerConfig } from '../../shared/types/index.js';
-import { FileReader } from '../utils/fileReader.js';
-import { ChunkingService } from './chunkingService.js';
+import { ServerConfig } from '@/shared/types/index';
+import { FileReader } from '@/rag/utils/fileReader';
+import { ChunkingService } from '@/rag/services/chunkingService';
 import { 
   FileProcessingError, 
   VectorStoreError
-} from '../../shared/errors/index.js';
-import { logger, startTiming } from '../../shared/logger/index.js';
-import { withTimeout, withRetry, BatchProcessor } from '../../shared/utils/resilience.js';
-import { errorMonitor } from '../../shared/monitoring/errorMonitor.js';
+} from '@/shared/errors/index';
+import { logger, startTiming } from '@/shared/logger/index';
+import { withTimeout, withRetry, BatchProcessor } from '@/shared/utils/resilience';
+import { errorMonitor } from '@/shared/monitoring/errorMonitor';
 
 export class FileProcessingService implements IFileProcessingService {
   private processingQueue = new Set<string>();
@@ -203,9 +203,9 @@ export class FileProcessingService implements IFileProcessingService {
         // Prepare for vector store with enhanced metadata from LangChain
         const vectorDoc: VectorDocument = {
           id: chunkId,
-          content: chunk.pageContent,
+          content: chunk?.pageContent || '',
           metadata: {
-            ...chunk.metadata, // Include all LangChain metadata
+            ...(chunk?.metadata || {}), // Include all LangChain metadata
             fileId: fileMetadata.id,
             fileName: fileMetadata.name,
             filePath: fileMetadata.path,
@@ -221,7 +221,7 @@ export class FileProcessingService implements IFileProcessingService {
         const dbChunk: Omit<DocumentChunk, 'id'> = {
           fileId: fileMetadata.id,
           chunkIndex,
-          content: chunk.pageContent,
+          content: chunk?.pageContent || '',
           embeddingId: chunkId,
         };
         

@@ -1,7 +1,7 @@
 import { pipeline, env } from '@huggingface/transformers';
 import type { FeatureExtractionPipeline } from '@huggingface/transformers';
 import { Embeddings } from '@langchain/core/embeddings';
-import { ServerConfig } from '../../../shared/types/index.js';
+import { ServerConfig } from '@/shared/types/index';
 
 export interface EmbeddingModelConfig {
   modelId: string;
@@ -54,9 +54,9 @@ export class TransformersEmbeddings extends Embeddings {
     super({});
     
     // Enable lazy loading in production or when explicitly set
-    this.isLazyLoading = process.env.TRANSFORMERS_LAZY_LOADING !== 'false' && 
-                        (process.env.NODE_ENV === 'production' || 
-                         process.env.TRANSFORMERS_LAZY_LOADING === 'true');
+    this.isLazyLoading = process.env['TRANSFORMERS_LAZY_LOADING'] !== 'false' && 
+                        (process.env['NODE_ENV'] === 'production' || 
+                         process.env['TRANSFORMERS_LAZY_LOADING'] === 'true');
     
     // Configure transformers.js environment
     env.allowRemoteModels = true;
@@ -65,7 +65,11 @@ export class TransformersEmbeddings extends Embeddings {
     
     // Get model configuration
     const modelName = config.embeddingModel || 'all-MiniLM-L6-v2';
-    this.modelConfig = AVAILABLE_MODELS[modelName] || AVAILABLE_MODELS['all-MiniLM-L6-v2'];
+    const defaultModel = AVAILABLE_MODELS['all-MiniLM-L6-v2'];
+    if (!defaultModel) {
+      throw new Error('Default embedding model configuration not found');
+    }
+    this.modelConfig = AVAILABLE_MODELS[modelName] ?? defaultModel;
     
     console.log(`🤖 Initialized TransformersEmbeddings with model: ${this.modelConfig.modelId}`);
     console.log(`📐 Dimensions: ${this.modelConfig.dimensions}, Max tokens: ${this.modelConfig.maxTokens}`);
@@ -347,7 +351,10 @@ export class TransformersEmbeddings extends Embeddings {
     };
     
     const modelName = Object.keys(AVAILABLE_MODELS).find(
-      key => AVAILABLE_MODELS[key].modelId === this.modelConfig.modelId
+      key => {
+        const model = AVAILABLE_MODELS[key];
+        return model && model.modelId === this.modelConfig.modelId;
+      }
     );
     
     return modelSizes[modelName || 'all-MiniLM-L6-v2'] || '~25MB';
@@ -365,7 +372,10 @@ export class TransformersEmbeddings extends Embeddings {
     };
 
     const modelName = Object.keys(AVAILABLE_MODELS).find(
-      key => AVAILABLE_MODELS[key].modelId === this.modelConfig.modelId
+      key => {
+        const model = AVAILABLE_MODELS[key];
+        return model && model.modelId === this.modelConfig.modelId;
+      }
     );
     
     const size = modelSizes[modelName || 'all-MiniLM-L6-v2'] || 25_000_000;
@@ -422,10 +432,15 @@ export class TransformersEmbeddings extends Embeddings {
       throw new Error(`Unknown model: ${modelName}. Available models: ${Object.keys(AVAILABLE_MODELS).join(', ')}`);
     }
 
-    console.log(`🔄 Switching from ${this.modelConfig.modelId} to ${AVAILABLE_MODELS[modelName].modelId}...`);
+    const newModelConfig = AVAILABLE_MODELS[modelName];
+    if (!newModelConfig) {
+      throw new Error(`Model configuration not found for: ${modelName}`);
+    }
+    
+    console.log(`🔄 Switching from ${this.modelConfig.modelId} to ${newModelConfig.modelId}...`);
     
     // Update model configuration
-    this.modelConfig = AVAILABLE_MODELS[modelName];
+    this.modelConfig = newModelConfig;
     
     // Reset pipeline
     this.pipeline = null;
@@ -502,7 +517,7 @@ export class TransformersEmbeddings extends Embeddings {
     
     return {
       isCached,
-      cacheSize,
+      ...(cacheSize !== undefined && { cacheSize }),
       cachePath: cacheDir,
       modelCount,
       availableModels

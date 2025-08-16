@@ -1,5 +1,5 @@
-import { IFileRepository } from '../../rag/repositories/documentRepository.js';
-import { IFileProcessingService } from '../../shared/types/interfaces.js';
+import { IFileRepository } from '@/rag/repositories/documentRepository';
+import { IFileProcessingService } from '@/shared/types/interfaces';
 
 export interface ListFilesArgs {
   fileType?: string;
@@ -158,7 +158,11 @@ export class DocumentHandler {
   async handleForceReindex(args: ForceReindexArgs) {
     const { clearCache = false } = args;
     
-    await (this.fileProcessingService as any).forceReindex(clearCache);
+    if ('forceReindex' in this.fileProcessingService && typeof this.fileProcessingService.forceReindex === 'function') {
+      await this.fileProcessingService.forceReindex(clearCache);
+    } else {
+      throw new Error('forceReindex method not available on file processing service');
+    }
 
     return {
       success: true,

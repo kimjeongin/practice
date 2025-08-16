@@ -1,11 +1,11 @@
-import { ISearchService, SearchOptions, SearchResult, IVectorStoreService } from '../../shared/types/interfaces.js';
-import { IFileRepository } from '../repositories/documentRepository.js';
-import { IChunkRepository } from '../repositories/chunkRepository.js';
-import { ServerConfig } from '../../shared/types/index.js';
-import { SearchError, VectorStoreError, ErrorCode } from '../../shared/errors/index.js';
-import { logger, startTiming } from '../../shared/logger/index.js';
-import { withTimeout, withRetry, CircuitBreakerManager } from '../../shared/utils/resilience.js';
-import { errorMonitor } from '../../shared/monitoring/errorMonitor.js';
+import { ISearchService, SearchOptions, SearchResult, IVectorStoreService } from '@/shared/types/interfaces'
+import { IFileRepository } from '@/rag/repositories/documentRepository'
+import { IChunkRepository } from '@/rag/repositories/chunkRepository'
+import { ServerConfig } from '@/shared/types'
+import { SearchError, VectorStoreError, ErrorCode } from '@/shared/errors'
+import { logger, startTiming } from '@/shared/logger'
+import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience'
+import { errorMonitor } from '@/shared/monitoring/errorMonitor'
 
 export class SearchService implements ISearchService {
   constructor(
@@ -150,7 +150,8 @@ export class SearchService implements ISearchService {
   private createMetadataFilter(fileTypes?: string[], metadataFilters?: Record<string, string>) {
     return (metadata: any) => {
       if (fileTypes && fileTypes.length > 0) {
-        if (!fileTypes.includes(metadata.fileType?.toLowerCase())) {
+        const fileType = metadata.fileType?.toLowerCase();
+        if (!fileType || !fileTypes.includes(fileType)) {
           return false;
         }
       }
