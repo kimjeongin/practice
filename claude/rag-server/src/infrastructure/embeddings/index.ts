@@ -3,7 +3,7 @@ import { ServerConfig } from '../../shared/types/index.js';
 import { OllamaEmbeddings } from './providers/ollama.js';
 import { TransformersEmbeddings } from './providers/transformers.js';
 
-export type EmbeddingServiceType = 'transformers' | 'ollama' | 'openai';
+export type EmbeddingServiceType = 'transformers' | 'ollama';
 
 /**
  * Factory for creating embedding services
@@ -24,21 +24,6 @@ export class EmbeddingFactory {
         
       case 'ollama':
         return new OllamaEmbeddings(config);
-        
-      case 'openai':
-        // Import OpenAI embeddings dynamically if needed
-        try {
-          // Use dynamic import with eval to bypass TypeScript checking
-          const openaiModule = await eval('import("@langchain/openai")');
-          const OpenAIEmbeddings = openaiModule.OpenAIEmbeddings;
-          return new OpenAIEmbeddings({
-            apiKey: config.openaiApiKey,
-            modelName: config.embeddingModel || 'text-embedding-3-small',
-          });
-        } catch (error) {
-          console.warn('⚠️  @langchain/openai not installed, falling back to transformers');
-          return new TransformersEmbeddings(config);
-        }
         
       default:
         console.warn(`⚠️  Unknown embedding service: ${service}, falling back to transformers`);
@@ -143,17 +128,6 @@ export class EmbeddingFactory {
           'Model sharing across applications'
         ]
       },
-      openai: {
-        name: 'OpenAI (Cloud)',
-        description: 'Cloud-based high-quality embeddings',
-        requirements: ['OpenAI API key', 'Internet connection'],
-        advantages: [
-          'Highest quality embeddings',
-          'No local resource usage',
-          'Always up-to-date models',
-          'Consistent performance'
-        ]
-      }
     };
   }
 
@@ -183,14 +157,6 @@ export class EmbeddingFactory {
         }
         break;
         
-      case 'openai':
-        if (!config.openaiApiKey) {
-          errors.push('OPENAI_API_KEY is required for openai service');
-        }
-        if (!config.embeddingModel) {
-          warnings.push('EMBEDDING_MODEL not specified, will use default');
-        }
-        break;
         
       default:
         warnings.push(`Unknown embedding service: ${service}, will fall back to transformers`);

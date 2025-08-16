@@ -21,11 +21,7 @@ export function loadConfig(): ServerConfig {
     embeddingModel: process.env['EMBEDDING_MODEL'] || getDefaultEmbeddingModel(service),
     embeddingDevice: process.env['EMBEDDING_DEVICE'] || 'cpu',
     logLevel: process.env['LOG_LEVEL'] || 'info',
-    // Vector DB configuration
-    chromaServerUrl: process.env['CHROMA_SERVER_URL'] || 'http://localhost:8000',
-    chromaCollectionName: process.env['CHROMA_COLLECTION_NAME'] || 'rag_documents',
     // Embedding configuration
-    openaiApiKey: process.env['OPENAI_API_KEY'],
     embeddingService: service,
     embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '10', 10),
     embeddingDimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || getDefaultEmbeddingDimensions(service), 10),
@@ -39,8 +35,6 @@ export function loadConfig(): ServerConfig {
 
 function getDefaultEmbeddingModel(service: string): string {
   switch (service) {
-    case 'openai':
-      return 'text-embedding-3-small';
     case 'ollama':
       return 'nomic-embed-text';
     case 'transformers':
@@ -52,8 +46,6 @@ function getDefaultEmbeddingModel(service: string): string {
 
 function getDefaultEmbeddingDimensions(service: string): string {
   switch (service) {
-    case 'openai':
-      return '1536';
     case 'ollama':
       return '768'; // nomic-embed-text default dimensions
     case 'transformers':
@@ -83,12 +75,8 @@ export function validateConfig(config: ServerConfig): void {
   }
 
   // Validate embedding service specific configurations
-  if (!['openai', 'ollama', 'transformers'].includes(config.embeddingService)) {
-    errors.push('Embedding service must be "openai", "ollama", or "transformers"');
-  }
-
-  if (config.embeddingService === 'openai' && !config.openaiApiKey) {
-    errors.push('OpenAI API key is required when using OpenAI embedding service');
+  if (!['ollama', 'transformers'].includes(config.embeddingService)) {
+    errors.push('Embedding service must be "ollama" or "transformers"');
   }
 
   if (config.embeddingService === 'ollama' && config.ollamaBaseUrl) {

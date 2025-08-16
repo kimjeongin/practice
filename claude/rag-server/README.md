@@ -23,7 +23,6 @@ A battle-tested TypeScript-based Model Context Protocol (MCP) server that provid
 ### 🤖 **Flexible AI Integration**
 - **🚀 Transformers.js**: Built-in local models (23MB-109MB, zero-setup)
 - **🦙 Ollama Support**: High-quality local inference integration
-- **☁️ OpenAI Compatible**: Cloud-based embeddings for maximum quality
 - **🔄 Hot-swap Models**: Switch between models without server restart
 
 ### 🔌 **Complete MCP Integration**
@@ -79,16 +78,6 @@ cp .env.example .env
 pnpm install && pnpm build && pnpm start
 ```
 
-### Option 3: Cloud-Quality with OpenAI
-
-```bash
-# 1. Configure OpenAI
-cp .env.example .env
-# Edit .env: set EMBEDDING_SERVICE=openai and add OPENAI_API_KEY
-
-# 2. Install and start
-pnpm install && pnpm build && pnpm start
-```
 
 ## 📖 How to Use
 
@@ -169,7 +158,6 @@ SIMILARITY_TOP_K=5
 # Embedding Service (choose one)
 EMBEDDING_SERVICE=transformers  # Default: local, zero-setup
 # EMBEDDING_SERVICE=ollama       # Higher quality, requires Ollama
-# EMBEDDING_SERVICE=openai       # Highest quality, requires API key
 ```
 
 ### Embedding Models
@@ -188,11 +176,6 @@ OLLAMA_BASE_URL=http://localhost:11434
 EMBEDDING_MODEL=nomic-embed-text    # 768 dimensions
 ```
 
-**OpenAI (Cloud)**
-```env
-OPENAI_API_KEY=your_api_key_here
-EMBEDDING_MODEL=text-embedding-3-small  # 1536 dimensions
-```
 
 ## 🏗️ Architecture
 
