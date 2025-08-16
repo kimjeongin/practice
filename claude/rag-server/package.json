@@ -43,6 +43,7 @@
     "onnxruntime-common": "^1.22.0",
     "onnxruntime-node": "1.22.0-rev",
     "openai": "^4.0.0",
+    "unpdf": "^1.1.0",
     "uuid": "^11.0.3",
     "zod": "^3.24.1"
   },

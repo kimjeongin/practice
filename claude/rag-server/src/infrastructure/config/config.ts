@@ -29,7 +29,7 @@ export function loadConfig(): ServerConfig {
     embeddingService: service,
     embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '10', 10),
     embeddingDimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || getDefaultEmbeddingDimensions(service), 10),
-    similarityThreshold: parseFloat(process.env['SIMILARITY_THRESHOLD'] || '0.3'),
+    similarityThreshold: parseFloat(process.env['SIMILARITY_THRESHOLD'] || '0.1'),
     // Ollama configuration
     ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434',
     // Transformers.js configuration

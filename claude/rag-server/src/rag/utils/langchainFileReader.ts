@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { extname } from 'path';
 import { Document } from '@langchain/core/documents';
-// import pdfParse from 'pdf-parse'; // Temporarily disabled due to dependency issues
+import { extractText, getDocumentProxy } from 'unpdf';
 import mammoth from 'mammoth';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
@@ -17,8 +17,7 @@ export class LangChainFileReader {
       
       switch (fileType) {
         case 'pdf':
-          console.log(`⚠️ PDF support temporarily disabled for ${filePath}`);
-          return null; // Temporarily disabled
+          return await this.readPdf(filePath);
         case 'docx':
           return await this.readDocx(filePath);
         case 'csv':
@@ -44,27 +43,45 @@ export class LangChainFileReader {
     return extname(filePath).slice(1).toLowerCase() || 'txt';
   }
 
-  // PDF support temporarily disabled due to dependency issues
-  // private async readPdf(filePath: string): Promise<Document | null> {
-  //   try {
-  //     const buffer = readFileSync(filePath);
-  //     const data = await pdfParse(buffer);
-  //     
-  //     return new Document({
-  //       pageContent: data.text,
-  //       metadata: {
-  //         source: filePath,
-  //         fileType: 'pdf',
-  //         pages: data.numpages,
-  //         info: data.info,
-  //         version: data.version
-  //       }
-  //     });
-  //   } catch (error) {
-  //     console.error(`❌ Error parsing PDF ${filePath}:`, error);
-  //     return null;
-  //   }
-  // }
+  private async readPdf(filePath: string): Promise<Document | null> {
+    try {
+      const buffer = readFileSync(filePath);
+      
+      // Get PDF document proxy
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      
+      // Extract text with merged pages
+      const { totalPages, text } = await extractText(pdf, {
+        mergePages: true
+      });
+      
+      // Extract individual pages for more detailed analysis
+      const { text: pagesText } = await extractText(pdf, {
+        mergePages: false
+      });
+      
+      const pages = Array.isArray(pagesText) ? pagesText : [pagesText];
+      
+      return new Document({
+        pageContent: text.trim(),
+        metadata: {
+          source: filePath,
+          fileType: 'pdf',
+          pages: totalPages,
+          pageTexts: pages, // Store individual page texts
+          pdfInfo: {
+            numPages: totalPages,
+            // unpdf doesn't provide metadata extraction in the same way
+            // but it's focused on text extraction which is our main need
+            extractedWith: 'unpdf'
+          }
+        }
+      });
+    } catch (error) {
+      console.error(`❌ Error parsing PDF ${filePath} with unpdf:`, error);
+      return null;
+    }
+  }
 
   private async readDocx(filePath: string): Promise<Document | null> {
     try {
