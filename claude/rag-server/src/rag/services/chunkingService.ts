@@ -1,3 +1,5 @@
+import { Document } from '@langchain/core/documents';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { ServerConfig } from '../../shared/types/index.js';
 
 export interface ChunkingOptions {
@@ -7,85 +9,167 @@ export interface ChunkingOptions {
 }
 
 /**
- * 텍스트 청킹 서비스
- * 파일 타입에 따른 적응적 청킹 로직
+ * LangChain RecursiveCharacterTextSplitter 기반 고급 청킹 서비스
+ * 의미론적 경계를 고려한 스마트 청킹
  */
-export class TextChunkingService {
-  constructor(private config: ServerConfig) {}
+export class ChunkingService {
+  private splitters: Map<string, RecursiveCharacterTextSplitter>;
 
-  async chunkText(text: string, fileType: string): Promise<string[]> {
-    const chunkSize = this.config.chunkSize;
-    const overlap = this.config.chunkOverlap;
+  constructor(private config: ServerConfig) {
+    this.splitters = new Map();
+    this.initializeSplitters();
+  }
 
-    if (!text || text.length === 0) return [];
+  private initializeSplitters(): void {
+    // 기본 텍스트 스플리터
+    this.splitters.set('default', new RecursiveCharacterTextSplitter({
+      chunkSize: this.config.chunkSize,
+      chunkOverlap: this.config.chunkOverlap,
+      separators: ['\n\n', '\n', '. ', '? ', '! ', '; ', ', ', ' ', ''],
+    }));
 
+    // 마크다운 전용 스플리터
+    this.splitters.set('md', new RecursiveCharacterTextSplitter({
+      chunkSize: this.config.chunkSize,
+      chunkOverlap: this.config.chunkOverlap,
+      separators: [
+        '\n\n# ', '\n\n## ', '\n\n### ', '\n\n#### ', '\n\n##### ', '\n\n###### ',  // Headers
+        '\n\n---', '\n\n***', '\n\n___',  // Horizontal rules
+        '\n\n```', '\n\n',  // Code blocks and paragraphs
+        '\n', '. ', '? ', '! ', '; ', ', ', ' ', ''
+      ],
+    }));
+
+    // 코드 전용 스플리터 (JSON, XML 등)
+    this.splitters.set('code', new RecursiveCharacterTextSplitter({
+      chunkSize: this.config.chunkSize,
+      chunkOverlap: this.config.chunkOverlap,
+      separators: ['\n\n', '\n', '; ', ', ', ' ', ''],
+    }));
+
+    // CSV/표형식 데이터 스플리터
+    this.splitters.set('csv', new RecursiveCharacterTextSplitter({
+      chunkSize: this.config.chunkSize * 2, // CSV는 더 큰 청크 허용
+      chunkOverlap: this.config.chunkOverlap,
+      separators: ['\n\nRow ', '\n', ', ', ' ', ''],
+    }));
+
+    // PDF/DOCX 긴 문서 스플리터
+    this.splitters.set('document', new RecursiveCharacterTextSplitter({
+      chunkSize: this.config.chunkSize,
+      chunkOverlap: this.config.chunkOverlap,
+      separators: [
+        '\n\n\n', // 섹션 구분
+        '\n\n',   // 문단 구분
+        '\n',     // 줄바꿈
+        '. ',     // 문장 끝
+        '? ', '! ', '; ',  // 다른 문장 끝 마크
+        ', ',     // 절 구분
+        ' ',      // 단어 구분
+        ''        // 문자 구분
+      ],
+    }));
+  }
+
+  async chunkDocument(document: Document): Promise<Document[]> {
+    if (!document.pageContent || document.pageContent.length === 0) {
+      return [];
+    }
+
+    const fileType = document.metadata.fileType || 'txt';
+    const splitter = this.getSplitterForFileType(fileType);
+    
+    try {
+      console.log(`🔄 Chunking ${fileType} document with ${splitter.constructor.name}`);
+      
+      const chunks = await splitter.splitDocuments([document]);
+      
+      // 청크에 추가 메타데이터 추가
+      const enrichedChunks = chunks.map((chunk, index) => {
+        return new Document({
+          pageContent: chunk.pageContent,
+          metadata: {
+            ...chunk.metadata,
+            chunkIndex: index,
+            chunkSize: chunk.pageContent.length,
+            totalChunks: chunks.length,
+            splitterType: this.getSplitterTypeForFileType(fileType)
+          }
+        });
+      });
+
+      console.log(`📄 Split into ${enrichedChunks.length} chunks using ${this.getSplitterTypeForFileType(fileType)} strategy`);
+      
+      return enrichedChunks;
+    } catch (error) {
+      console.error(`❌ Error chunking document:`, error);
+      // Fallback to basic chunking
+      return this.fallbackChunking(document);
+    }
+  }
+
+  private getSplitterForFileType(fileType: string): RecursiveCharacterTextSplitter {
     switch (fileType.toLowerCase()) {
       case 'md':
-        return this.chunkMarkdown(text, chunkSize, overlap);
+        return this.splitters.get('md')!;
       case 'json':
-        return this.chunkJson(text, chunkSize, overlap);
+      case 'xml':
+      case 'html':
+        return this.splitters.get('code')!;
+      case 'csv':
+        return this.splitters.get('csv')!;
+      case 'pdf':
+      case 'docx':
+        return this.splitters.get('document')!;
       default:
-        return this.chunkPlainText(text, chunkSize, overlap);
+        return this.splitters.get('default')!;
     }
   }
 
-  private chunkMarkdown(text: string, chunkSize: number, overlap: number): string[] {
-    // Markdown 헤더 기반 청킹
-    const sections = text.split(/\n(?=#{1,6}\s)/);
-    const chunks: string[] = [];
-
-    for (const section of sections) {
-      if (section.length <= chunkSize) {
-        chunks.push(section.trim());
-      } else {
-        // 큰 섹션은 일반 청킹으로 처리
-        chunks.push(...this.chunkPlainText(section, chunkSize, overlap));
-      }
-    }
-
-    return chunks.filter(chunk => chunk.trim().length > 0);
-  }
-
-  private chunkJson(text: string, chunkSize: number, overlap: number): string[] {
-    try {
-      const jsonData = JSON.parse(text);
-      if (Array.isArray(jsonData)) {
-        // 배열인 경우 각 아이템을 청크로 처리
-        return jsonData.map((item, index) => 
-          `Item ${index}: ${JSON.stringify(item, null, 2)}`
-        ).filter(chunk => chunk.length <= chunkSize * 2); // JSON은 좀 더 여유롭게
-      } else {
-        // 객체인 경우 키별로 청킹
-        const chunks: string[] = [];
-        for (const [key, value] of Object.entries(jsonData)) {
-          const chunk = `${key}: ${JSON.stringify(value, null, 2)}`;
-          if (chunk.length <= chunkSize * 2) {
-            chunks.push(chunk);
-          }
-        }
-        return chunks;
-      }
-    } catch {
-      // JSON 파싱 실패 시 일반 텍스트로 처리
-      return this.chunkPlainText(text, chunkSize, overlap);
+  private getSplitterTypeForFileType(fileType: string): string {
+    switch (fileType.toLowerCase()) {
+      case 'md':
+        return 'markdown-aware';
+      case 'json':
+      case 'xml':
+      case 'html':
+        return 'structure-aware';
+      case 'csv':
+        return 'table-aware';
+      case 'pdf':
+      case 'docx':
+        return 'document-semantic';
+      default:
+        return 'general-recursive';
     }
   }
 
-  private chunkPlainText(text: string, chunkSize: number, overlap: number): string[] {
-    const chunks: string[] = [];
+  private fallbackChunking(document: Document): Document[] {
+    console.log('🔄 Using fallback basic chunking');
+    
+    const chunkSize = this.config.chunkSize;
+    const overlap = this.config.chunkOverlap;
+    const text = document.pageContent;
+    const chunks: Document[] = [];
     let start = 0;
+    let chunkIndex = 0;
     
     while (start < text.length) {
       const end = Math.min(start + chunkSize, text.length);
-      const chunk = text.substring(start, end);
+      const chunkText = text.substring(start, end).trim();
       
-      const cleanedChunk = chunk
-        .replace(/\s+/g, ' ')
-        .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
-        .trim();
-      
-      if (cleanedChunk.length > 0) {
-        chunks.push(cleanedChunk);
+      if (chunkText.length > 0) {
+        chunks.push(new Document({
+          pageContent: chunkText,
+          metadata: {
+            ...document.metadata,
+            chunkIndex,
+            chunkSize: chunkText.length,
+            totalChunks: 0, // Will be updated after all chunks are created
+            splitterType: 'fallback-basic'
+          }
+        }));
+        chunkIndex++;
       }
       
       start = end - overlap;
@@ -94,6 +178,26 @@ export class TextChunkingService {
       }
     }
     
+    // Update totalChunks for all chunks
+    chunks.forEach(chunk => chunk.metadata.totalChunks = chunks.length);
+    
     return chunks;
+  }
+
+  // 청킹 전략 정보 가져오기
+  getChunkingStrategy(fileType: string): {
+    splitterType: string;
+    chunkSize: number;
+    overlap: number;
+    separators: string[];
+  } {
+    const splitter = this.getSplitterForFileType(fileType);
+    
+    return {
+      splitterType: this.getSplitterTypeForFileType(fileType),
+      chunkSize: this.config.chunkSize,
+      overlap: this.config.chunkOverlap,
+      separators: (splitter as any).separators || ['default']
+    };
   }
 }

@@ -7,13 +7,11 @@ import { IVectorStoreService } from '../../shared/types/interfaces.js';
 import { DocumentChunk, FileMetadata } from '../models/models.js';
 import { Document } from '@langchain/core/documents';
 import { ServerConfig } from '../../shared/types/index.js';
-import { LangChainFileReader } from '../utils/langchainFileReader.js';
-import { LangChainChunkingService } from './langchainChunkingService.js';
+import { FileReader } from '../utils/fileReader.js';
+import { ChunkingService } from './chunkingService.js';
 import { 
   FileProcessingError, 
-  VectorStoreError, 
-  ErrorCode,
-  TimeoutError
+  VectorStoreError
 } from '../../shared/errors/index.js';
 import { logger, startTiming } from '../../shared/logger/index.js';
 import { withTimeout, withRetry, BatchProcessor } from '../../shared/utils/resilience.js';
@@ -21,8 +19,8 @@ import { errorMonitor } from '../../shared/monitoring/errorMonitor.js';
 
 export class FileProcessingService implements IFileProcessingService {
   private processingQueue = new Set<string>();
-  private fileReader: LangChainFileReader;
-  private textChunker: LangChainChunkingService;
+  private fileReader: FileReader;
+  private textChunker: ChunkingService;
 
   constructor(
     private fileRepository: IFileRepository,
@@ -30,8 +28,8 @@ export class FileProcessingService implements IFileProcessingService {
     private vectorStoreService: IVectorStoreService,
     private config: ServerConfig
   ) {
-    this.fileReader = new LangChainFileReader();
-    this.textChunker = new LangChainChunkingService(config);
+    this.fileReader = new FileReader();
+    this.textChunker = new ChunkingService(config);
   }
 
   async processFile(filePath: string): Promise<void> {

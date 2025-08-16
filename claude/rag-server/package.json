@@ -10,7 +10,14 @@
     "dev": "tsx watch src/app/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
-    "test": "jest"
+    "test": "jest",
+    "test:unit": "jest test/unit",
+    "test:integration": "jest test/integration",
+    "test:e2e": "jest test/e2e",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:verbose": "jest --verbose",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
   },
   "packageManager": "pnpm@9.0.0",
   "keywords": [
@@ -53,14 +60,20 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@jest/globals": "^30.0.5",
     "@types/better-sqlite3": "^7.6.11",
+    "@types/jest": "^30.0.0",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^22.10.2",
     "@types/opossum": "^8.1.9",
+    "@types/supertest": "^6.0.3",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",
     "eslint": "^9.16.0",
+    "jest": "^30.0.5",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
