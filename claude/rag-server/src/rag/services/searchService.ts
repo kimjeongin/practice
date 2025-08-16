@@ -119,23 +119,28 @@ export class SearchService implements ISearchService {
         searchType
       });
       
-      // Fallback to keyword search
-      try {
-        logger.info('Falling back to keyword search');
-        const fallbackResults = await this.keywordSearch(query, { topK, fileTypes, metadataFilters });
-        logger.info('Fallback search successful', { resultCount: fallbackResults.length });
-        return fallbackResults;
-      } catch (fallbackError) {
-        const fallbackSearchError = new SearchError(
-          `Both primary and fallback search failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`,
-          query,
-          'keyword',
-          fallbackError instanceof Error ? fallbackError : undefined
-        );
-        
-        errorMonitor.recordError(fallbackSearchError);
-        logger.error('Fallback search also failed', fallbackSearchError);
-        throw fallbackSearchError;
+      // Only fallback to keyword search if we were doing semantic search
+      if (useSemanticSearch) {
+        try {
+          logger.info('Falling back to keyword search');
+          const fallbackResults = await this.keywordSearch(query, { topK, fileTypes, metadataFilters });
+          logger.info('Fallback search successful', { resultCount: fallbackResults.length });
+          return fallbackResults;
+        } catch (fallbackError) {
+          const fallbackSearchError = new SearchError(
+            `Both primary and fallback search failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`,
+            query,
+            'keyword',
+            fallbackError instanceof Error ? fallbackError : undefined
+          );
+          
+          errorMonitor.recordError(fallbackSearchError);
+          logger.error('Fallback search also failed', fallbackSearchError);
+          throw fallbackSearchError;
+        }
+      } else {
+        // If keyword search itself failed, throw the error
+        throw searchError;
       }
     } finally {
       endTiming();
@@ -312,6 +317,7 @@ export class SearchService implements ISearchService {
         combined.set(key, {
           ...result,
           score: (result.keywordScore || 0) * keywordWeight,
+          semanticScore: 0, // No semantic score for keyword-only results
           hybridScore: (result.keywordScore || 0) * keywordWeight,
         });
       }

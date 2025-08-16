@@ -10,7 +10,7 @@ import { Readable } from 'stream';
  * LangChain 기반 향상된 파일 리더 서비스
  * PDF, DOCX, CSV 등 다양한 파일 형식을 지원
  */
-export class LangChainFileReader {
+export class FileReader {
   async readFileContent(filePath: string): Promise<Document | null> {
     try {
       const fileType = this.getFileType(filePath);
