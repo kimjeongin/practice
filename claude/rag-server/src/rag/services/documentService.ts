@@ -5,14 +5,15 @@ import { IFileRepository } from '../repositories/documentRepository.js';
 import { IChunkRepository } from '../repositories/chunkRepository.js';
 import { IVectorStoreService } from '../../shared/types/interfaces.js';
 import { DocumentChunk, FileMetadata } from '../models/models.js';
+import { Document } from '@langchain/core/documents';
 import { ServerConfig } from '../../shared/types/index.js';
-import { FileReaderService } from '../utils/fileUtils.js';
-import { TextChunkingService } from './chunkingService.js';
+import { LangChainFileReader } from '../utils/langchainFileReader.js';
+import { LangChainChunkingService } from './langchainChunkingService.js';
 
 export class FileProcessingService implements IFileProcessingService {
   private processingQueue = new Set<string>();
-  private fileReader: FileReaderService;
-  private textChunker: TextChunkingService;
+  private fileReader: LangChainFileReader;
+  private textChunker: LangChainChunkingService;
 
   constructor(
     private fileRepository: IFileRepository,
@@ -20,8 +21,8 @@ export class FileProcessingService implements IFileProcessingService {
     private vectorStoreService: IVectorStoreService,
     private config: ServerConfig
   ) {
-    this.fileReader = new FileReaderService();
-    this.textChunker = new TextChunkingService(config);
+    this.fileReader = new LangChainFileReader();
+    this.textChunker = new LangChainChunkingService(config);
   }
 
   async processFile(filePath: string): Promise<void> {
@@ -41,14 +42,24 @@ export class FileProcessingService implements IFileProcessingService {
         return;
       }
 
-      const content = this.fileReader.readFileContent(filePath);
-      if (!content) {
+      const document = await this.fileReader.readFileContent(filePath);
+      if (!document) {
         console.log(`❌ Could not read content from ${filePath}`);
         return;
       }
 
-      const textChunks = await this.textChunker.chunkText(content, fileMetadata.fileType);
-      console.log(`📄 Split ${basename(filePath)} into ${textChunks.length} chunks`);
+      // Add file metadata to document metadata
+      document.metadata = {
+        ...document.metadata,
+        fileId: fileMetadata.id,
+        fileName: fileMetadata.name,
+        filePath: fileMetadata.path,
+        fileType: fileMetadata.fileType,
+        createdAt: fileMetadata.createdAt.toISOString(),
+      };
+
+      const documentChunks = await this.textChunker.chunkDocument(document);
+      console.log(`📄 Split ${basename(filePath)} into ${documentChunks.length} chunks`);
 
       // Clear existing chunks for this file
       this.chunkRepository.deleteDocumentChunks(fileMetadata.id);
@@ -57,12 +68,12 @@ export class FileProcessingService implements IFileProcessingService {
       // Process chunks in batches
       const batchSize = this.config.embeddingBatchSize || 10;
       
-      for (let i = 0; i < textChunks.length; i += batchSize) {
-        const batch = textChunks.slice(i, i + batchSize);
+      for (let i = 0; i < documentChunks.length; i += batchSize) {
+        const batch = documentChunks.slice(i, i + batchSize);
         await this.processBatch(fileMetadata, batch, i);
       }
 
-      console.log(`✅ Successfully processed ${textChunks.length} chunks for ${basename(filePath)}`);
+      console.log(`✅ Successfully processed ${documentChunks.length} chunks for ${basename(filePath)}`);
     } catch (error) {
       console.error(`❌ Error processing file ${filePath}:`, error);
     } finally {
@@ -82,21 +93,23 @@ export class FileProcessingService implements IFileProcessingService {
     }
   }
 
-  private async processBatch(fileMetadata: FileMetadata, chunks: string[], startIndex: number): Promise<void> {
+  private async processBatch(fileMetadata: FileMetadata, chunks: Document[], startIndex: number): Promise<void> {
     try {
       console.log(`⚙️  Processing batch of ${chunks.length} chunks (starting at index ${startIndex})`);
       
       const vectorDocuments: VectorDocument[] = [];
 
       for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
         const chunkIndex = startIndex + i;
         const chunkId = this.generateChunkId(fileMetadata.id, chunkIndex);
         
-        // Prepare for vector store first to ensure consistent chunking
+        // Prepare for vector store with enhanced metadata from LangChain
         const vectorDoc: VectorDocument = {
           id: chunkId,
-          content: chunks[i],
+          content: chunk.pageContent,
           metadata: {
+            ...chunk.metadata, // Include all LangChain metadata
             fileId: fileMetadata.id,
             fileName: fileMetadata.name,
             filePath: fileMetadata.path,
@@ -112,7 +125,7 @@ export class FileProcessingService implements IFileProcessingService {
         const dbChunk: Omit<DocumentChunk, 'id'> = {
           fileId: fileMetadata.id,
           chunkIndex,
-          content: chunks[i],
+          content: chunk.pageContent,
           embeddingId: chunkId,
         };
         
