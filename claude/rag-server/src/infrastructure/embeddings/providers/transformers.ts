@@ -228,7 +228,10 @@ export class TransformersEmbeddings extends Embeddings {
         // Generate embeddings for batch
         const batchEmbeddings = await Promise.all(
           truncatedBatch.map(async (doc) => {
-            const output = await this.pipeline!(doc, {
+            if (!this.pipeline) {
+              throw new Error('Pipeline not initialized for batch embedding');
+            }
+            const output = await this.pipeline(doc, {
               pooling: 'mean',
               normalize: true
             });
@@ -480,7 +483,6 @@ export class TransformersEmbeddings extends Embeddings {
     availableModels: string[];
   }> {
     const fs = await import('fs');
-    const path = await import('path');
     
     const cacheDir = env.cacheDir || './data/.transformers-cache';
     const isCached = await this.isModelCached();
