@@ -279,6 +279,17 @@ CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_id ON document_chunks(e
     stmt.run(fileId);
   }
 
+  deleteAllDocumentChunks(): void {
+    const stmt = this.db.prepare('DELETE FROM document_chunks');
+    stmt.run();
+  }
+
+  getTotalChunkCount(): number {
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM document_chunks');
+    const row = stmt.get() as { count: number };
+    return row.count;
+  }
+
   close(): void {
     this.db.close();
   }

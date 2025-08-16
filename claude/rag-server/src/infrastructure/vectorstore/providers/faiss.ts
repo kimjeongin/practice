@@ -480,4 +480,66 @@ export class FaissVectorStoreManager {
     
     console.log('FAISS index rebuilt successfully');
   }
+
+  /**
+   * 모든 문서 ID 조회 (동기화용)
+   */
+  getAllDocumentIds(): string[] {
+    return Array.from(this.documentIdMap.keys());
+  }
+
+  /**
+   * 전체 문서 수 조회
+   */
+  getDocumentCount(): number {
+    return this.store?.index?.ntotal() || 0;
+  }
+
+  /**
+   * 모든 문서 제거
+   */
+  async removeAllDocuments(): Promise<void> {
+    console.log('Removing all documents from FAISS index...');
+    
+    // 인덱스를 완전히 재구성
+    await this.rebuildIndex();
+    
+    console.log('All documents removed successfully');
+  }
+
+  /**
+   * 특정 파일 ID의 모든 문서가 존재하는지 확인
+   */
+  hasDocumentsForFileId(fileId: string): boolean {
+    for (const docId of this.documentIdMap.keys()) {
+      if (docId.includes(fileId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 문서 ID로 메타데이터 조회
+   */
+  async getDocumentMetadata(docId: string): Promise<any | null> {
+    if (!this.store || !this.documentIdMap.has(docId)) {
+      return null;
+    }
+
+    const vectorIndex = this.documentIdMap.get(docId);
+    if (vectorIndex === undefined) {
+      return null;
+    }
+
+    try {
+      // FAISS 스토어에서 문서 조회
+      const docs = await this.store.similaritySearch('', 1);
+      const targetDoc = docs.find(doc => doc.metadata.id === docId);
+      return targetDoc?.metadata || null;
+    } catch (error) {
+      console.error(`Failed to get metadata for document ${docId}:`, error);
+      return null;
+    }
+  }
 }

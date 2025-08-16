@@ -158,6 +158,8 @@ export class MCPServer {
               required: [],
             },
           },
+          // Add sync tools
+          ...this.systemHandler.getSyncTools(),
         ],
       };
     });
@@ -207,6 +209,19 @@ export class MCPServer {
             break;
           case 'force_reindex':
             result = await this.documentHandler.handleForceReindex(this.validateAndCastArgs(args, 'force_reindex'));
+            break;
+          // Sync tools
+          case 'sync_check':
+            result = await this.systemHandler.handleSyncCheck(args);
+            break;
+          case 'cleanup_orphaned':
+            result = await this.systemHandler.handleCleanupOrphaned(args);
+            break;
+          case 'force_sync':
+            result = await this.systemHandler.handleForceSync(args);
+            break;
+          case 'integrity_report':
+            result = await this.systemHandler.handleIntegrityReport(args);
             break;
           default:
             throw new Error(`Unknown tool: ${name}`);

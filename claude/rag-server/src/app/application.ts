@@ -30,12 +30,17 @@ import { logger, startTiming } from '@/shared/logger';
 import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience';
 import { errorMonitor, setupGlobalErrorHandling } from '@/shared/monitoring/errorMonitor';
 import { monitoringDashboard } from '@/infrastructure/dashboard/webDashboard';
+import { SynchronizationManager } from '@/shared/services/synchronizationManager';
+import { SyncScheduler } from '@/shared/services/syncScheduler';
+import { SyncTrigger } from '@/shared/services/syncTrigger';
 
 export class RAGApplication {
   private db: DatabaseManager;
   private mcpController!: MCPServer;
   private fileWatcher!: FileWatcher;
   private ragWorkflowService!: RAGWorkflow;
+  private syncScheduler!: SyncScheduler;
+  private syncTrigger!: SyncTrigger;
   private isInitialized = false;
   private monitoringEnabled: boolean;
 
@@ -84,6 +89,53 @@ export class RAGApplication {
       );
       const vectorStoreAdapter = new VectorStoreAdapter(faissVectorStore);
 
+      // Initialize synchronization manager (without file processing service initially)
+      const syncManager = new SynchronizationManager(
+        fileRepository,
+        chunkRepository,
+        vectorStoreAdapter,
+        this.config
+      );
+
+      // Perform startup synchronization check
+      logger.info('Performing startup synchronization check');
+      const syncReport = await withTimeout(
+        syncManager.performStartupSync({
+          autoFix: true,
+          deepScan: true,
+          includeNewFiles: true,
+          maxConcurrency: 3
+        }),
+        {
+          timeoutMs: 120000, // 2분
+          operation: 'startup_synchronization'
+        }
+      );
+
+      if (syncReport.summary.totalIssues > 0) {
+        logger.warn('Synchronization issues detected and fixed on startup', {
+          summary: syncReport.summary,
+          fixedCount: syncReport.fixedIssues.length
+        });
+      } else {
+        logger.info('All data is synchronized and consistent');
+      }
+
+      // Initialize sync scheduler for periodic checks
+      this.syncScheduler = new SyncScheduler(syncManager, {
+        interval: 30 * 60 * 1000, // 30분마다 기본 동기화 체크
+        deepScanInterval: 2 * 60 * 60 * 1000, // 2시간마다 깊은 스캔
+        enabled: process.env['SYNC_SCHEDULER_ENABLED'] !== 'false',
+        autoFix: true
+      });
+
+      // Initialize sync trigger for error-based sync
+      this.syncTrigger = new SyncTrigger(syncManager, {
+        errorThreshold: 5, // 5개 에러 발생 시
+        errorWindow: 5 * 60 * 1000, // 5분 윈도우
+        minAutoSyncInterval: 10 * 60 * 1000 // 최소 10분 간격
+      });
+
       // Initialize services
       const searchService = new SearchService(
         vectorStoreAdapter,
@@ -114,7 +166,14 @@ export class RAGApplication {
       // Initialize handlers
       const searchHandler = new SearchHandler(this.ragWorkflowService);
       const fileHandler = new DocumentHandler(fileRepository, fileProcessingService);
-      const systemHandler = new SystemHandler(searchService, fileRepository, chunkRepository, this.config);
+      const systemHandler = new SystemHandler(
+        searchService, 
+        fileRepository, 
+        chunkRepository, 
+        this.config,
+        vectorStoreAdapter,
+        fileProcessingService
+      );
       const modelHandler = new ModelHandler(modelManagementService);
       logger.debug('Handlers initialized');
 
@@ -147,6 +206,10 @@ export class RAGApplication {
                   operation: 'file_change_processing'
                 }
               );
+              // Trigger sync check for added/changed files
+              if (this.syncTrigger && event.path) {
+                await this.syncTrigger.onFileChange(event.path, event.type);
+              }
               break;
             case 'removed':
               await withTimeout(
@@ -156,6 +219,10 @@ export class RAGApplication {
                   operation: 'file_removal'
                 }
               );
+              // Trigger sync check for removed files
+              if (this.syncTrigger && event.path) {
+                await this.syncTrigger.onFileChange(event.path, event.type);
+              }
               break;
           }
         } catch (error) {
@@ -175,6 +242,18 @@ export class RAGApplication {
             eventType: event.type,
             filePath: event.path
           });
+          
+          // On error, also trigger sync check to ensure consistency
+          if (this.syncTrigger && event && event.path && event.type) {
+            try {
+              await this.syncTrigger.onFileChange(event.path, event.type);
+            } catch (syncError) {
+              logger.error('Failed to trigger sync check after file error', syncError instanceof Error ? syncError : new Error(String(syncError)), {
+                eventPath: event.path,
+                eventType: event.type
+              });
+            }
+          }
         }
       });
 
@@ -187,6 +266,24 @@ export class RAGApplication {
           operation: 'directory_sync'
         }
       );
+
+      // Start sync scheduler for periodic background synchronization
+      if (this.syncScheduler) {
+        try {
+          this.syncScheduler.start();
+          logger.info('Sync scheduler started', {
+            interval: '30 minutes',
+            deepScan: '2 hours',
+            autoFix: true
+          });
+        } catch (error) {
+          logger.error('Failed to start sync scheduler', error instanceof Error ? error : new Error(String(error)));
+        }
+      } else {
+        logger.warn('Sync scheduler not available - background synchronization disabled');
+      }
+
+      // Sync trigger is now integrated with file watcher above
 
       // Process any unprocessed documents
       await this.processUnvectorizedDocuments(fileProcessingService, fileRepository);
@@ -247,6 +344,12 @@ export class RAGApplication {
     
     try {
       // Graceful shutdown with timeout for each component
+      if (this.syncScheduler) {
+        shutdownPromises.push(
+          Promise.resolve(this.syncScheduler.stop())
+        );
+      }
+
       if (this.fileWatcher) {
         shutdownPromises.push(
           withTimeout(

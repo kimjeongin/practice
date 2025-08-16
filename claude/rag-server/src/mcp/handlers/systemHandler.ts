@@ -1,15 +1,30 @@
-import { ISearchService } from '@/shared/types/interfaces';
+import { ISearchService, IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces';
 import { IFileRepository } from '@/rag/repositories/documentRepository';
 import { IChunkRepository } from '@/rag/repositories/chunkRepository';
 import { ServerConfig } from '@/shared/types/index';
+import { SyncHandler } from './syncHandler';
 
 export class SystemHandler {
+  private syncHandler?: SyncHandler;
+
   constructor(
     private searchService: ISearchService,
     private fileRepository: IFileRepository,
     private chunkRepository: IChunkRepository,
-    private config: ServerConfig
-  ) {}
+    private config: ServerConfig,
+    vectorStoreService?: IVectorStoreService,
+    fileProcessingService?: IFileProcessingService
+  ) {
+    if (vectorStoreService) {
+      this.syncHandler = new SyncHandler(
+        fileRepository,
+        chunkRepository,
+        vectorStoreService,
+        config,
+        fileProcessingService
+      );
+    }
+  }
 
   async handleGetServerStatus() {
     const files = this.fileRepository.getAllFiles();
@@ -31,6 +46,16 @@ export class SystemHandler {
       console.warn('Could not get vector store info:', error);
     }
 
+    // Get integrity status if sync handler is available
+    let integrityStatus = null;
+    if (this.syncHandler) {
+      try {
+        integrityStatus = await this.syncHandler.getIntegrityStatus();
+      } catch (error) {
+        console.warn('Could not get integrity status:', error);
+      }
+    }
+
     const isReady = 'isReady' in this.searchService ? 
       (this.searchService as any).isReady() : true;
 
@@ -42,6 +67,7 @@ export class SystemHandler {
         chunksCount: totalChunks,
         serviceType: 'rag',
         vectorStore: vectorStoreInfo,
+        integrity: integrityStatus,
       },
       stats: {
         totalFiles: indexedFiles,
@@ -58,5 +84,38 @@ export class SystemHandler {
       },
       supportedFormats: ['.txt', '.md', '.json', '.xml', '.html', '.csv'],
     };
+  }
+
+  // Sync-related methods
+  async handleSyncCheck(args: any) {
+    if (!this.syncHandler) {
+      throw new Error('Sync functionality not available - vector store service not initialized');
+    }
+    return await this.syncHandler.handleToolCall('sync_check', args);
+  }
+
+  async handleCleanupOrphaned(args: any) {
+    if (!this.syncHandler) {
+      throw new Error('Sync functionality not available - vector store service not initialized');
+    }
+    return await this.syncHandler.handleToolCall('cleanup_orphaned', args);
+  }
+
+  async handleForceSync(args: any) {
+    if (!this.syncHandler) {
+      throw new Error('Sync functionality not available - vector store service not initialized');
+    }
+    return await this.syncHandler.handleToolCall('force_sync', args);
+  }
+
+  async handleIntegrityReport(args: any) {
+    if (!this.syncHandler) {
+      throw new Error('Sync functionality not available - vector store service not initialized');
+    }
+    return await this.syncHandler.handleToolCall('integrity_report', args);
+  }
+
+  getSyncTools() {
+    return this.syncHandler ? this.syncHandler.getTools() : [];
   }
 }
