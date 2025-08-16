@@ -2,9 +2,9 @@ import chokidar from 'chokidar';
 import { basename, extname } from 'path';
 import { stat } from 'fs/promises';
 import { EventEmitter } from 'events';
-import { DatabaseManager } from '../database/connection.js';
-import { FileMetadata } from '../../shared/types/index.js';
-import { calculateFileHash } from '../../shared/utils/crypto.js';
+import { DatabaseManager } from '../../database/connection.js';
+import { FileMetadata } from '../../../shared/types/index.js';
+import { calculateFileHash } from '../../../shared/utils/crypto.js';
 
 export interface FileChangeEvent {
   type: 'added' | 'changed' | 'removed';
@@ -149,7 +149,7 @@ export class FileWatcher extends EventEmitter {
 
     // Get all files currently in database
     const dbFiles = this.db.getAllFiles();
-    const dbFilePaths = new Set(dbFiles.map(f => f.path));
+    const dbFilePaths = new Set(dbFiles.map((f: FileMetadata) => f.path));
 
     // Use chokidar to get all current files
     const currentFiles = new Set<string>();
