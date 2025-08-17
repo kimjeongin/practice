@@ -22,11 +22,23 @@ describe('RAGWorkflow Integration Tests', () => {
     mockFileRepository = {
       getAllFiles: jest.fn(),
       getFileByPath: jest.fn(),
+      getFileById: jest.fn(),
+      insertFile: jest.fn(),
+      updateFile: jest.fn(),
+      deleteFile: jest.fn(),
+      setFileMetadata: jest.fn(),
+      getFileMetadata: jest.fn(),
+      searchFilesByMetadata: jest.fn(),
     } as any;
 
     // Mock chunk repository 
     mockChunkRepository = {
       getDocumentChunks: jest.fn(),
+      getChunksByFileId: jest.fn(),
+      insertDocumentChunk: jest.fn(),
+      deleteDocumentChunks: jest.fn(),
+      deleteAllDocumentChunks: jest.fn(),
+      getTotalChunkCount: jest.fn(),
     } as any;
 
     // Test configuration
@@ -63,7 +75,7 @@ describe('RAGWorkflow Integration Tests', () => {
           metadata: {
             fileName: 'test.txt',
             filePath: '/test/test.txt',
-            fileType: 'text/plain',
+            fileType: 'txt',
           },
           score: 0.9,
         },
@@ -90,16 +102,21 @@ describe('RAGWorkflow Integration Tests', () => {
           id: 'file-1',
           name: 'test.txt',
           path: '/test/test.txt',
-          fileType: 'text/plain',
+          fileType: 'txt',
+          size: 1000,
+          modifiedAt: new Date(),
           createdAt: new Date(),
+          hash: 'test-hash',
         },
       ];
 
       const mockChunks = [
         {
+          id: 'chunk-1',
+          fileId: 'file-1',
           content: 'Vector databases are specialized storage systems for handling vector data',
           chunkIndex: 0,
-          embeddingId: 'chunk-1',
+          embeddingId: 'embedding-1',
         },
       ];
 
@@ -126,7 +143,7 @@ describe('RAGWorkflow Integration Tests', () => {
           metadata: {
             fileName: 'test.txt',
             filePath: '/test/test.txt',
-            fileType: 'text/plain',
+            fileType: 'txt',
           },
           score: 0.8,
         },
@@ -140,16 +157,21 @@ describe('RAGWorkflow Integration Tests', () => {
           id: 'file-1',
           name: 'test.txt',
           path: '/test/test.txt',
-          fileType: 'text/plain',
+          fileType: 'txt',
+          size: 1000,
+          modifiedAt: new Date(),
           createdAt: new Date(),
+          hash: 'test-hash',
         },
       ];
 
       const mockChunks = [
         {
+          id: 'chunk-1',
+          fileId: 'file-1',
           content: 'Vector databases are specialized storage systems',
           chunkIndex: 0,
-          embeddingId: 'chunk-1',
+          embeddingId: 'embedding-1',
         },
       ];
 
@@ -176,7 +198,7 @@ describe('RAGWorkflow Integration Tests', () => {
           metadata: {
             fileName: 'test.txt',
             filePath: '/test/test.txt',
-            fileType: 'text/plain',
+            fileType: 'txt',
           },
           score: 0.8,
         },
@@ -185,12 +207,12 @@ describe('RAGWorkflow Integration Tests', () => {
       mockSearchService.search.mockResolvedValue(mockResults);
 
       await ragWorkflow.search('test', {
-        fileTypes: ['text/plain'],
+        fileTypes: ['txt'],
       });
 
       expect(mockSearchService.search).toHaveBeenCalledWith('test', {
         topK: 5,
-        fileTypes: ['text/plain'],
+        fileTypes: ['txt'],
         metadataFilters: undefined,
       });
     });

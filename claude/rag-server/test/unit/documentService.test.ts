@@ -1,10 +1,10 @@
 // Mock the resilience utilities to avoid ESM module issues
 jest.mock('../../src/shared/utils/resilience.js', () => ({
-  withTimeout: jest.fn().mockImplementation((promise) => promise),
-  withRetry: jest.fn().mockImplementation((fn) => fn()),
+  withTimeout: jest.fn().mockImplementation((promise: any) => promise),
+  withRetry: jest.fn().mockImplementation((...args: any[]) => args[0]()),
   BatchProcessor: {
-    processBatch: jest.fn().mockImplementation((items, processor) => 
-      Promise.all(items.map(processor))
+    processBatch: jest.fn().mockImplementation((...args: any[]) => 
+      Promise.all(args[0].map(args[1]))
     )
   }
 }));

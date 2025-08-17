@@ -1,13 +1,13 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { SynchronizationManager, SyncReport, SyncOptions } from '@/shared/services/synchronizationManager';
+import { VectorDbSyncManager, VectorDbSyncReport, VectorDbSyncOptions } from '@/rag/services/dataIntegrity/vectorDbSyncManager';
 import { IFileRepository } from '@/rag/repositories/documentRepository';
 import { IChunkRepository } from '@/rag/repositories/chunkRepository';
 import { IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces';
 import { ServerConfig } from '@/shared/types/index';
 import { logger } from '@/shared/logger/index';
 
-export class SyncHandler {
-  private syncManager: SynchronizationManager;
+export class VectorDbSyncHandler {
+  private syncManager: VectorDbSyncManager;
 
   constructor(
     fileRepository: IFileRepository,
@@ -16,7 +16,7 @@ export class SyncHandler {
     config: ServerConfig,
     fileProcessingService?: IFileProcessingService
   ) {
-    this.syncManager = new SynchronizationManager(
+    this.syncManager = new VectorDbSyncManager(
       fileRepository,
       chunkRepository,
       vectorStoreService,
@@ -28,7 +28,7 @@ export class SyncHandler {
   getTools(): Tool[] {
     return [
       {
-        name: 'sync_check',
+        name: 'vector_db_sync_check',
         description: 'Check synchronization status between database and vector store',
         inputSchema: {
           type: 'object',
@@ -52,7 +52,7 @@ export class SyncHandler {
         }
       },
       {
-        name: 'cleanup_orphaned',
+        name: 'vector_db_cleanup_orphaned',
         description: 'Clean up orphaned data in vector store and database',
         inputSchema: {
           type: 'object',
@@ -66,8 +66,8 @@ export class SyncHandler {
         }
       },
       {
-        name: 'force_sync',
-        description: 'Force complete resynchronization of all data',
+        name: 'vector_db_force_sync',
+        description: 'Force complete resynchronization of vector database with file system',
         inputSchema: {
           type: 'object',
           properties: {
@@ -80,8 +80,8 @@ export class SyncHandler {
         }
       },
       {
-        name: 'integrity_report',
-        description: 'Generate comprehensive data integrity report',
+        name: 'vector_db_integrity_report',
+        description: 'Generate comprehensive vector database integrity report',
         inputSchema: {
           type: 'object',
           properties: {
@@ -100,34 +100,34 @@ export class SyncHandler {
   async handleToolCall(name: string, args: any): Promise<any> {
     try {
       switch (name) {
-        case 'sync_check':
+        case 'vector_db_sync_check':
           return await this.handleSyncCheck(args);
-        case 'cleanup_orphaned':
+        case 'vector_db_cleanup_orphaned':
           return await this.handleCleanupOrphaned(args);
-        case 'force_sync':
+        case 'vector_db_force_sync':
           return await this.handleForceSync(args);
-        case 'integrity_report':
+        case 'vector_db_integrity_report':
           return await this.handleIntegrityReport(args);
         default:
-          throw new Error(`Unknown tool: ${name}`);
+          throw new Error(`Unknown vector DB sync tool: ${name}`);
       }
     } catch (error) {
-      logger.error(`Sync handler error for tool ${name}`, error instanceof Error ? error : new Error(String(error)));
+      logger.error(`Vector DB sync handler error for tool ${name}`, error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   }
 
   private async handleSyncCheck(args: any): Promise<any> {
-    const options: Partial<SyncOptions> = {
+    const options: Partial<VectorDbSyncOptions> = {
       deepScan: args.deepScan || false,
       includeNewFiles: args.includeNewFiles !== false,
       autoFix: args.autoFix || false,
       maxConcurrency: 3
     };
 
-    logger.info('Starting sync check', options);
+    logger.info('Starting vector DB sync check', options);
 
-    const report = await this.syncManager.generateSyncReport(options as SyncOptions);
+    const report = await this.syncManager.generateSyncReport(options as VectorDbSyncOptions);
 
     const result = {
       timestamp: report.timestamp,
@@ -158,7 +158,7 @@ export class SyncHandler {
   private async handleCleanupOrphaned(args: any): Promise<any> {
     const dryRun = args.dryRun !== false;
 
-    logger.info('Starting orphaned data cleanup', { dryRun });
+    logger.info('Starting vector DB orphaned data cleanup', { dryRun });
 
     // 먼저 체크하여 고아 데이터 찾기
     const report = await this.syncManager.generateSyncReport({
@@ -213,13 +213,13 @@ export class SyncHandler {
         content: [
           {
             type: 'text',
-            text: '⚠️ Force sync is a destructive operation that will rebuild all vector data.\nTo proceed, call again with confirm: true'
+            text: '⚠️ Force vector DB sync is a destructive operation that will rebuild all vector data.\nTo proceed, call again with confirm: true'
           }
         ]
       };
     }
 
-    logger.warn('Starting force synchronization - destructive operation');
+    logger.warn('Starting force vector DB synchronization - destructive operation');
 
     const report = await this.syncManager.forceSync();
 
@@ -227,7 +227,7 @@ export class SyncHandler {
       content: [
         {
           type: 'text',
-          text: `🔄 Force synchronization completed\n\n` +
+          text: `🔄 Force vector DB synchronization completed\n\n` +
                 `📊 Post-sync status:\n` +
                 `- Total files: ${report.totalFiles}\n` +
                 `- Total vectors: ${report.totalVectors}\n` +
@@ -273,13 +273,13 @@ export class SyncHandler {
 
   private formatSyncReport(result: any): string {
     if (!result) {
-      return '❌ No sync report data available';
+      return '❌ No vector DB sync report data available';
     }
 
     const { summary, issues, autoFixApplied, fixedIssues } = result;
 
-    let report = `🔍 Synchronization Check Results\n`;
-    report += `=====================================\n\n`;
+    let report = `🔍 Vector Database Synchronization Check Results\n`;
+    report += `===============================================\n\n`;
     
     report += `📊 Summary:\n`;
     report += `- Total files: ${result.totalFiles || 0}\n`;
@@ -301,7 +301,7 @@ export class SyncHandler {
         report += `💡 Run with autoFix: true to automatically resolve issues\n`;
       }
     } else {
-      report += `✅ All data is synchronized and consistent!\n`;
+      report += `✅ All vector database data is synchronized and consistent!\n`;
     }
 
     return report;
@@ -309,11 +309,11 @@ export class SyncHandler {
 
   private formatCleanupReport(result: any): string {
     if (!result) {
-      return '❌ No cleanup report data available';
+      return '❌ No vector DB cleanup report data available';
     }
 
-    let report = `🧹 Orphaned Data Cleanup\n`;
-    report += `=========================\n\n`;
+    let report = `🧹 Vector Database Orphaned Data Cleanup\n`;
+    report += `=======================================\n\n`;
 
     if (result.dryRun) {
       report += `📋 Dry Run Results:\n`;
@@ -331,7 +331,7 @@ export class SyncHandler {
         }
         report += `\n💡 Run with dryRun: false to apply cleanup\n`;
       } else {
-        report += `✅ No orphaned data found!\n`;
+        report += `✅ No orphaned vector data found!\n`;
       }
     } else {
       report += `🗑️ Cleanup Results:\n`;
@@ -339,7 +339,7 @@ export class SyncHandler {
       report += `- Orphaned data items cleaned: ${result.orphanedDataCleaned || 0}\n\n`;
       
       if ((result.orphanedDataCleaned || 0) > 0) {
-        report += `✅ Cleanup completed successfully!\n`;
+        report += `✅ Vector DB cleanup completed successfully!\n`;
       } else {
         report += `ℹ️ No cleanup was necessary\n`;
       }
@@ -348,13 +348,13 @@ export class SyncHandler {
     return report;
   }
 
-  private formatSummaryReport(report: SyncReport): string {
+  private formatSummaryReport(report: VectorDbSyncReport): string {
     if (!report) {
-      return '❌ No integrity report data available';
+      return '❌ No vector DB integrity report data available';
     }
 
-    let summary = `📋 Data Integrity Report\n`;
-    summary += `========================\n\n`;
+    let summary = `📋 Vector Database Integrity Report\n`;
+    summary += `==================================\n\n`;
     summary += `📊 Overview:\n`;
     
     try {
@@ -375,13 +375,13 @@ export class SyncHandler {
       summary += `- Hash mismatches: ${report.summary.hashMismatches || 0}\n`;
       summary += `- New files: ${report.summary.newFiles || 0}\n`;
     } else {
-      summary += `✅ System is healthy - no issues detected!\n`;
+      summary += `✅ Vector database is healthy - no issues detected!\n`;
     }
 
     return summary;
   }
 
-  private formatDetailedReport(report: SyncReport): string {
+  private formatDetailedReport(report: VectorDbSyncReport): string {
     let detailed = this.formatSummaryReport(report);
 
     if (!report) {
@@ -419,7 +419,7 @@ export class SyncHandler {
   async getIntegrityStatus() {
     try {
       if (!this.syncManager) {
-        throw new Error('SyncManager not available for integrity status check');
+        throw new Error('VectorDbSyncManager not available for integrity status check');
       }
 
       const report = await this.syncManager.generateSyncReport({
@@ -430,7 +430,7 @@ export class SyncHandler {
       });
 
       if (!report) {
-        logger.warn('Integrity status check returned no report');
+        logger.warn('Vector DB integrity status check returned no report');
         return {
           isHealthy: false,
           lastCheck: new Date(),
@@ -460,7 +460,7 @@ export class SyncHandler {
         summary: report.summary || {}
       };
     } catch (error) {
-      logger.error('Failed to get integrity status', error instanceof Error ? error : new Error(String(error)));
+      logger.error('Failed to get vector DB integrity status', error instanceof Error ? error : new Error(String(error)));
       return {
         isHealthy: false,
         lastCheck: new Date(),

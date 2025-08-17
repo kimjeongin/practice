@@ -1,7 +1,7 @@
-import { SynchronizationManager, SyncReport } from './synchronizationManager';
+import { VectorDbSyncManager, VectorDbSyncReport } from './vectorDbSyncManager';
 import { logger } from '@/shared/logger/index';
 
-export interface SyncSchedulerConfig {
+export interface VectorDbSyncSchedulerConfig {
   interval: number; // 동기화 간격 (밀리초)
   enabled: boolean;
   deepScanInterval?: number; // 깊은 스캔 간격 (밀리초)
@@ -9,10 +9,10 @@ export interface SyncSchedulerConfig {
 }
 
 /**
- * 주기적 동기화 스케줄러
+ * 주기적 벡터 데이터베이스 동기화 스케줄러
  * 백그라운드에서 정기적으로 동기화 상태를 확인하고 문제를 해결
  */
-export class SyncScheduler {
+export class VectorDbSyncScheduler {
   private intervalId?: NodeJS.Timeout;
   private deepScanIntervalId?: NodeJS.Timeout;
   private isRunning = false;
@@ -20,8 +20,8 @@ export class SyncScheduler {
   private syncCount = 0;
 
   constructor(
-    private syncManager: SynchronizationManager,
-    private config: SyncSchedulerConfig
+    private syncManager: VectorDbSyncManager,
+    private config: VectorDbSyncSchedulerConfig
   ) {}
 
   /**
@@ -33,7 +33,7 @@ export class SyncScheduler {
     }
 
     this.isRunning = true;
-    logger.info('Starting sync scheduler', {
+    logger.info('Starting vector DB sync scheduler', {
       interval: this.config.interval,
       deepScanInterval: this.config.deepScanInterval,
       autoFix: this.config.autoFix
@@ -72,7 +72,7 @@ export class SyncScheduler {
       this.deepScanIntervalId = undefined;
     }
 
-    logger.info('Sync scheduler stopped');
+    logger.info('Vector DB sync scheduler stopped');
   }
 
   /**
@@ -80,10 +80,10 @@ export class SyncScheduler {
    */
   private async performScheduledSync(): Promise<void> {
     try {
-      logger.debug('Performing scheduled sync check');
+      logger.debug('Performing scheduled vector DB sync check');
 
       if (!this.syncManager) {
-        logger.error('SyncManager not available for scheduled sync');
+        logger.error('VectorDbSyncManager not available for scheduled sync');
         return;
       }
 
@@ -111,13 +111,13 @@ export class SyncScheduler {
       const hasIntegrityIssues = this.checkBackgroundIntegrity(report);
 
       if (report.summary && report.summary.totalIssues > 0) {
-        logger.warn('Scheduled sync detected issues', {
+        logger.warn('Scheduled vector DB sync detected issues', {
           totalIssues: report.summary.totalIssues,
           autoFixed: this.config.autoFix ? (report.fixedIssues ? report.fixedIssues.length : 0) : 0,
           integrityIssues: hasIntegrityIssues
         });
       } else {
-        logger.debug('Scheduled sync: all data synchronized');
+        logger.debug('Scheduled vector DB sync: all data synchronized');
       }
 
       // Log background integrity status
@@ -126,7 +126,7 @@ export class SyncScheduler {
       }
 
     } catch (error) {
-      logger.error('Scheduled sync failed', error instanceof Error ? error : new Error(String(error)));
+      logger.error('Scheduled vector DB sync failed', error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -135,10 +135,10 @@ export class SyncScheduler {
    */
   private async performDeepSync(): Promise<void> {
     try {
-      logger.info('Performing scheduled deep sync');
+      logger.info('Performing scheduled deep vector DB sync');
 
       if (!this.syncManager) {
-        logger.error('SyncManager not available for deep sync');
+        logger.error('VectorDbSyncManager not available for deep sync');
         return;
       }
 
@@ -160,16 +160,16 @@ export class SyncScheduler {
       }
 
       if (report.summary && report.summary.totalIssues > 0) {
-        logger.warn('Deep sync detected issues', {
+        logger.warn('Deep vector DB sync detected issues', {
           summary: report.summary,
           autoFixed: this.config.autoFix ? (report.fixedIssues ? report.fixedIssues.length : 0) : 0
         });
       } else {
-        logger.info('Deep sync: all data fully synchronized');
+        logger.info('Deep vector DB sync: all data fully synchronized');
       }
 
     } catch (error) {
-      logger.error('Deep sync failed', error instanceof Error ? error : new Error(String(error)));
+      logger.error('Deep vector DB sync failed', error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -179,7 +179,7 @@ export class SyncScheduler {
   async triggerSync(deepScan: boolean = false): Promise<void> {
     try {
       if (!this.syncManager) {
-        throw new Error('SyncManager not available for manual sync trigger');
+        throw new Error('VectorDbSyncManager not available for manual sync trigger');
       }
 
       if (deepScan) {
@@ -188,7 +188,7 @@ export class SyncScheduler {
         await this.performScheduledSync();
       }
     } catch (error) {
-      logger.error('Manual sync trigger failed', error instanceof Error ? error : new Error(String(error)), { deepScan });
+      logger.error('Manual vector DB sync trigger failed', error instanceof Error ? error : new Error(String(error)), { deepScan });
       throw error;
     }
   }
@@ -209,7 +209,7 @@ export class SyncScheduler {
   /**
    * 백그라운드 무결성 검사
    */
-  private checkBackgroundIntegrity(report: SyncReport): boolean {
+  private checkBackgroundIntegrity(report: VectorDbSyncReport): boolean {
     try {
       if (!report) {
         logger.warn('No report provided for background integrity check');
@@ -255,7 +255,7 @@ export class SyncScheduler {
   /**
    * 설정 업데이트 (재시작 필요)
    */
-  updateConfig(newConfig: Partial<SyncSchedulerConfig>): void {
+  updateConfig(newConfig: Partial<VectorDbSyncSchedulerConfig>): void {
     const wasRunning = this.isRunning;
     
     if (wasRunning) {
@@ -268,7 +268,7 @@ export class SyncScheduler {
       this.start();
     }
 
-    logger.info('Sync scheduler config updated', this.config);
+    logger.info('Vector DB sync scheduler config updated', this.config);
   }
 
   /**
@@ -277,7 +277,7 @@ export class SyncScheduler {
   async getIntegrityStatus() {
     try {
       if (!this.syncManager) {
-        throw new Error('SyncManager not available for integrity status check');
+        throw new Error('VectorDbSyncManager not available for integrity status check');
       }
 
       const report = await this.syncManager.generateSyncReport({

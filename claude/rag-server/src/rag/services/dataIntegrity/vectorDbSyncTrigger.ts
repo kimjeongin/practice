@@ -1,18 +1,18 @@
-import { SynchronizationManager } from './synchronizationManager';
+import { VectorDbSyncManager } from './vectorDbSyncManager';
 import { errorMonitor } from '@/shared/monitoring/errorMonitor';
 import { logger } from '@/shared/logger/index';
 
 /**
- * 특정 조건에서 자동으로 동기화를 트리거하는 서비스
+ * 특정 조건에서 자동으로 벡터 데이터베이스 동기화를 트리거하는 서비스
  */
-export class SyncTrigger {
+export class VectorDbSyncTrigger {
   private errorThreshold: number;
   private errorWindow: number; // 에러 윈도우 시간 (밀리초)
   private lastAutoSync?: Date;
   private minAutoSyncInterval: number; // 최소 자동 동기화 간격
 
   constructor(
-    private syncManager: SynchronizationManager,
+    private syncManager: VectorDbSyncManager,
     options: {
       errorThreshold?: number;
       errorWindow?: number;
@@ -54,12 +54,12 @@ export class SyncTrigger {
 
       // 최근 에러 패턴 분석
       if (this.shouldTriggerSyncBasedOnErrors()) {
-        logger.warn('High error rate detected, triggering automatic sync');
+        logger.warn('High error rate detected, triggering automatic vector DB sync');
         await this.triggerAutoSync('error_threshold');
       }
 
     } catch (error) {
-      logger.error('Error in sync trigger check', error instanceof Error ? error : new Error(String(error)));
+      logger.error('Error in vector DB sync trigger check', error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -111,7 +111,7 @@ export class SyncTrigger {
       });
 
       if (syncRelatedErrors.length >= this.errorThreshold) {
-        logger.info('Sync trigger threshold reached', {
+        logger.info('Vector DB sync trigger threshold reached', {
           syncRelatedErrors: syncRelatedErrors.length,
           threshold: this.errorThreshold,
           window: this.errorWindow
@@ -130,7 +130,7 @@ export class SyncTrigger {
    * 수동 동기화 트리거 (특정 상황에서)
    */
   async triggerSyncOnCondition(condition: 'startup' | 'error_threshold' | 'manual' | 'scheduled'): Promise<void> {
-    logger.info('Triggering sync due to condition', { condition });
+    logger.info('Triggering vector DB sync due to condition', { condition });
 
     try {
       let options;
@@ -150,14 +150,14 @@ export class SyncTrigger {
 
       const report = await this.syncManager.performStartupSync(options);
       
-      logger.info('Condition-based sync completed', {
+      logger.info('Condition-based vector DB sync completed', {
         condition,
         issuesFound: report.summary.totalIssues,
         issuesFixed: report.fixedIssues.length
       });
 
     } catch (error) {
-      logger.error('Condition-based sync failed', error instanceof Error ? error : new Error(String(error)));
+      logger.error('Condition-based vector DB sync failed', error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -169,7 +169,7 @@ export class SyncTrigger {
       this.lastAutoSync = new Date();
       
       if (!this.syncManager) {
-        throw new Error('SyncManager is not available for auto sync');
+        throw new Error('VectorDbSyncManager is not available for auto sync');
       }
       
       const report = await this.syncManager.generateSyncReport({
@@ -180,17 +180,17 @@ export class SyncTrigger {
       });
 
       if (!report) {
-        logger.warn('Auto-sync returned no report', { reason });
+        logger.warn('Auto vector DB sync returned no report', { reason });
         return;
       }
 
       if (!report.summary) {
-        logger.warn('Auto-sync report missing summary', { reason, report });
+        logger.warn('Auto vector DB sync report missing summary', { reason, report });
         return;
       }
 
       if (report.summary.totalIssues > 0) {
-        logger.warn('Auto-sync detected and fixed issues', {
+        logger.warn('Auto vector DB sync detected and fixed issues', {
           reason,
           summary: report.summary,
           fixedIssues: report.fixedIssues ? report.fixedIssues.length : 0
@@ -217,14 +217,14 @@ export class SyncTrigger {
       }
 
       if (!this.syncManager) {
-        logger.error('SyncManager not available for file change sync check');
+        logger.error('VectorDbSyncManager not available for file change sync check');
         logger.debug('File change sync check context', { filePath, changeType });
         return;
       }
 
       // 중요한 파일이 변경된 경우에만 동기화 체크
       if (changeType === 'removed') {
-        logger.info('File removed, checking sync status', { filePath });
+        logger.info('File removed, checking vector DB sync status', { filePath });
         
         // 빠른 동기화 체크 (해당 파일만)
         const report = await this.syncManager.generateSyncReport({
@@ -235,12 +235,12 @@ export class SyncTrigger {
         });
 
         if (!report) {
-          logger.warn('File change sync check returned no report', { filePath, changeType });
+          logger.warn('File change vector DB sync check returned no report', { filePath, changeType });
           return;
         }
 
         if (!report.issues || !Array.isArray(report.issues)) {
-          logger.warn('File change sync check report has invalid issues', { filePath, changeType, report });
+          logger.warn('File change vector DB sync check report has invalid issues', { filePath, changeType, report });
           return;
         }
 
@@ -258,14 +258,14 @@ export class SyncTrigger {
             includeNewFiles: false,
             maxConcurrency: 1
           });
-          logger.info('Fixed sync issues for removed file', { 
+          logger.info('Fixed vector DB sync issues for removed file', { 
             filePath, 
             issuesFixed: relatedIssues.length 
           });
         }
       }
     } catch (error) {
-      logger.error('Error in file change sync check', error instanceof Error ? error : new Error(String(error)));
+      logger.error('Error in file change vector DB sync check', error instanceof Error ? error : new Error(String(error)));
       logger.debug('File change sync check context', {
         filePath,
         changeType
@@ -294,7 +294,7 @@ export class SyncTrigger {
         recentErrors: recentErrors
       };
     } catch (error) {
-      logger.error('Error getting sync trigger status', error instanceof Error ? error : new Error(String(error)));
+      logger.error('Error getting vector DB sync trigger status', error instanceof Error ? error : new Error(String(error)));
       return {
         errorThreshold: this.errorThreshold,
         errorWindow: this.errorWindow,

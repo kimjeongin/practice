@@ -210,17 +210,17 @@ export class MCPServer {
           case 'force_reindex':
             result = await this.documentHandler.handleForceReindex(this.validateAndCastArgs(args, 'force_reindex'));
             break;
-          // Sync tools
-          case 'sync_check':
+          // Vector DB sync tools
+          case 'vector_db_sync_check':
             result = await this.systemHandler.handleSyncCheck(args);
             break;
-          case 'cleanup_orphaned':
+          case 'vector_db_cleanup_orphaned':
             result = await this.systemHandler.handleCleanupOrphaned(args);
             break;
-          case 'force_sync':
+          case 'vector_db_force_sync':
             result = await this.systemHandler.handleForceSync(args);
             break;
-          case 'integrity_report':
+          case 'vector_db_integrity_report':
             result = await this.systemHandler.handleIntegrityReport(args);
             break;
           default:

@@ -9,7 +9,7 @@ import { ServerConfig } from '@/shared/types/index';
 import { logger, startTiming } from '@/shared/logger/index';
 import { withTimeout, withRetry } from '@/shared/utils/resilience';
 
-export interface SyncIssue {
+export interface VectorDbSyncIssue {
   type: 'missing_file' | 'orphaned_vector' | 'hash_mismatch' | 'missing_chunks' | 'new_file';
   filePath: string;
   fileId?: string;
@@ -17,13 +17,13 @@ export interface SyncIssue {
   severity: 'low' | 'medium' | 'high';
 }
 
-export interface SyncReport {
+export interface VectorDbSyncReport {
   timestamp: Date;
   totalFiles: number;
   totalVectors: number;
   totalChunks: number;
-  issues: SyncIssue[];
-  fixedIssues: SyncIssue[];
+  issues: VectorDbSyncIssue[];
+  fixedIssues: VectorDbSyncIssue[];
   summary: {
     missingFiles: number;
     orphanedVectors: number;
@@ -33,7 +33,7 @@ export interface SyncReport {
   };
 }
 
-export interface SyncOptions {
+export interface VectorDbSyncOptions {
   autoFix: boolean;
   deepScan: boolean;
   includeNewFiles: boolean;
@@ -44,7 +44,7 @@ export interface SyncOptions {
  * 벡터 데이터베이스와 SQLite 간 동기화 관리자
  * 프로그램 시작 시 일관성 검사 및 자동 복구 기능 제공
  */
-export class SynchronizationManager {
+export class VectorDbSyncManager {
   private dataDirectory: string;
 
   constructor(
@@ -60,10 +60,10 @@ export class SynchronizationManager {
   /**
    * 프로그램 시작 시 전체 동기화 검사 및 복구
    */
-  async performStartupSync(options: Partial<SyncOptions> = {}): Promise<SyncReport> {
-    const endTiming = startTiming('startup_sync', { component: 'SynchronizationManager' });
+  async performStartupSync(options: Partial<VectorDbSyncOptions> = {}): Promise<VectorDbSyncReport> {
+    const endTiming = startTiming('startup_sync', { component: 'VectorDbSyncManager' });
     
-    const opts: SyncOptions = {
+    const opts: VectorDbSyncOptions = {
       autoFix: true,
       deepScan: true,
       includeNewFiles: true,
@@ -99,9 +99,9 @@ export class SynchronizationManager {
   /**
    * 동기화 상태 보고서 생성
    */
-  async generateSyncReport(options: SyncOptions): Promise<SyncReport> {
-    const issues: SyncIssue[] = [];
-    const fixedIssues: SyncIssue[] = [];
+  async generateSyncReport(options: VectorDbSyncOptions): Promise<VectorDbSyncReport> {
+    const issues: VectorDbSyncIssue[] = [];
+    const fixedIssues: VectorDbSyncIssue[] = [];
 
     // 1. 데이터베이스의 파일들이 실제로 존재하는지 확인
     await this.checkMissingFiles(issues);
@@ -146,7 +146,7 @@ export class SynchronizationManager {
   /**
    * 누락된 파일 확인 (DB에는 있지만 실제 파일이 없음)
    */
-  private async checkMissingFiles(issues: SyncIssue[]): Promise<void> {
+  private async checkMissingFiles(issues: VectorDbSyncIssue[]): Promise<void> {
     const allFiles = this.fileRepository.getAllFiles();
     
     for (const file of allFiles) {
@@ -165,7 +165,7 @@ export class SynchronizationManager {
   /**
    * 파일 해시 변경사항 확인
    */
-  private async checkHashMismatches(issues: SyncIssue[]): Promise<void> {
+  private async checkHashMismatches(issues: VectorDbSyncIssue[]): Promise<void> {
     const allFiles = this.fileRepository.getAllFiles();
     
     for (const file of allFiles) {
@@ -191,7 +191,7 @@ export class SynchronizationManager {
   /**
    * 새로운 파일 발견 (파일 시스템에는 있지만 DB에 없음)
    */
-  private async checkNewFiles(issues: SyncIssue[]): Promise<void> {
+  private async checkNewFiles(issues: VectorDbSyncIssue[]): Promise<void> {
     const supportedExtensions = ['.txt', '.md', '.pdf', '.csv', '.json'];
     
     try {
@@ -207,7 +207,7 @@ export class SynchronizationManager {
   private async scanDirectoryForNewFiles(
     directory: string, 
     supportedExtensions: string[], 
-    issues: SyncIssue[]
+    issues: VectorDbSyncIssue[]
   ): Promise<void> {
     if (!existsSync(directory)) {
       return;
@@ -248,7 +248,7 @@ export class SynchronizationManager {
   /**
    * 고아 데이터 확인
    */
-  private async checkOrphanedData(issues: SyncIssue[]): Promise<void> {
+  private async checkOrphanedData(issues: VectorDbSyncIssue[]): Promise<void> {
     // 벡터 스토어에는 있지만 데이터베이스에 없는 문서들 확인
     if ('getAllDocumentIds' in this.vectorStoreService) {
       const vectorDocIds = await (this.vectorStoreService as any).getAllDocumentIds();
@@ -273,7 +273,7 @@ export class SynchronizationManager {
   /**
    * 벡터 스토어와 데이터베이스 간 일관성 확인
    */
-  private async checkVectorConsistency(issues: SyncIssue[]): Promise<void> {
+  private async checkVectorConsistency(issues: VectorDbSyncIssue[]): Promise<void> {
     const allFiles = this.fileRepository.getAllFiles();
     
     for (const file of allFiles) {
@@ -294,8 +294,8 @@ export class SynchronizationManager {
   /**
    * 동기화 문제 자동 수정
    */
-  async fixSyncIssues(issues: SyncIssue[], options: SyncOptions): Promise<SyncIssue[]> {
-    const fixedIssues: SyncIssue[] = [];
+  async fixSyncIssues(issues: VectorDbSyncIssue[], options: VectorDbSyncOptions): Promise<VectorDbSyncIssue[]> {
+    const fixedIssues: VectorDbSyncIssue[] = [];
 
     for (const issue of issues) {
       try {
@@ -336,7 +336,7 @@ export class SynchronizationManager {
   /**
    * 누락된 파일 문제 해결 (DB와 벡터에서 제거)
    */
-  private async fixMissingFile(issue: SyncIssue): Promise<void> {
+  private async fixMissingFile(issue: VectorDbSyncIssue): Promise<void> {
     if (!issue.fileId) return;
 
     logger.info('Fixing missing file issue', { filePath: issue.filePath, fileId: issue.fileId });
@@ -357,7 +357,7 @@ export class SynchronizationManager {
   /**
    * 고아 벡터 문제 해결
    */
-  private async fixOrphanedVector(issue: SyncIssue): Promise<void> {
+  private async fixOrphanedVector(issue: VectorDbSyncIssue): Promise<void> {
     if (!issue.fileId) return;
 
     logger.info('Fixing orphaned vector issue', { fileId: issue.fileId });
@@ -371,7 +371,7 @@ export class SynchronizationManager {
   /**
    * 해시 불일치 문제 해결 (파일 재인덱싱)
    */
-  private async fixHashMismatch(issue: SyncIssue): Promise<void> {
+  private async fixHashMismatch(issue: VectorDbSyncIssue): Promise<void> {
     logger.info('Fixing hash mismatch issue', { filePath: issue.filePath });
     
     if (this.fileProcessingService) {
@@ -387,7 +387,7 @@ export class SynchronizationManager {
   /**
    * 새 파일 문제 해결 (인덱싱 추가)
    */
-  private async fixNewFile(issue: SyncIssue): Promise<void> {
+  private async fixNewFile(issue: VectorDbSyncIssue): Promise<void> {
     logger.info('Fixing new file issue', { filePath: issue.filePath });
     
     // 먼저 파일을 데이터베이스에 등록해야 함
@@ -413,7 +413,7 @@ export class SynchronizationManager {
   /**
    * 누락된 청크 문제 해결
    */
-  private async fixMissingChunks(issue: SyncIssue): Promise<void> {
+  private async fixMissingChunks(issue: VectorDbSyncIssue): Promise<void> {
     logger.info('Fixing missing chunks issue', { filePath: issue.filePath });
     
     if (this.fileProcessingService) {
@@ -457,7 +457,7 @@ export class SynchronizationManager {
   /**
    * 강제 동기화 (전체 재구성)
    */
-  async forceSync(): Promise<SyncReport> {
+  async forceSync(): Promise<VectorDbSyncReport> {
     logger.info('Starting force synchronization');
 
     // 1. 모든 벡터 및 청크 삭제

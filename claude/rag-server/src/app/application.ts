@@ -30,17 +30,17 @@ import { logger, startTiming } from '@/shared/logger';
 import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience';
 import { errorMonitor, setupGlobalErrorHandling } from '@/shared/monitoring/errorMonitor';
 import { monitoringDashboard } from '@/infrastructure/dashboard/webDashboard';
-import { SynchronizationManager } from '@/shared/services/synchronizationManager';
-import { SyncScheduler } from '@/shared/services/syncScheduler';
-import { SyncTrigger } from '@/shared/services/syncTrigger';
+import { VectorDbSyncManager } from '@/rag/services/dataIntegrity/vectorDbSyncManager';
+import { VectorDbSyncScheduler } from '@/rag/services/dataIntegrity/vectorDbSyncScheduler';
+import { VectorDbSyncTrigger } from '@/rag/services/dataIntegrity/vectorDbSyncTrigger';
 
 export class RAGApplication {
   private db: DatabaseManager;
   private mcpController!: MCPServer;
   private fileWatcher!: FileWatcher;
   private ragWorkflowService!: RAGWorkflow;
-  private syncScheduler!: SyncScheduler;
-  private syncTrigger!: SyncTrigger;
+  private syncScheduler!: VectorDbSyncScheduler;
+  private syncTrigger!: VectorDbSyncTrigger;
   private isInitialized = false;
   private monitoringEnabled: boolean;
 
@@ -90,7 +90,7 @@ export class RAGApplication {
       const vectorStoreAdapter = new VectorStoreAdapter(faissVectorStore);
 
       // Initialize synchronization manager (without file processing service initially)
-      const syncManager = new SynchronizationManager(
+      const syncManager = new VectorDbSyncManager(
         fileRepository,
         chunkRepository,
         vectorStoreAdapter,
@@ -122,7 +122,7 @@ export class RAGApplication {
       }
 
       // Initialize sync scheduler for periodic checks
-      this.syncScheduler = new SyncScheduler(syncManager, {
+      this.syncScheduler = new VectorDbSyncScheduler(syncManager, {
         interval: 30 * 60 * 1000, // 30분마다 기본 동기화 체크
         deepScanInterval: 2 * 60 * 60 * 1000, // 2시간마다 깊은 스캔
         enabled: process.env['SYNC_SCHEDULER_ENABLED'] !== 'false',
@@ -130,7 +130,7 @@ export class RAGApplication {
       });
 
       // Initialize sync trigger for error-based sync
-      this.syncTrigger = new SyncTrigger(syncManager, {
+      this.syncTrigger = new VectorDbSyncTrigger(syncManager, {
         errorThreshold: 5, // 5개 에러 발생 시
         errorWindow: 5 * 60 * 1000, // 5분 윈도우
         minAutoSyncInterval: 10 * 60 * 1000 // 최소 10분 간격

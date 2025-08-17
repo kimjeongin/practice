@@ -2,10 +2,10 @@ import { ISearchService, IVectorStoreService, IFileProcessingService } from '@/s
 import { IFileRepository } from '@/rag/repositories/documentRepository';
 import { IChunkRepository } from '@/rag/repositories/chunkRepository';
 import { ServerConfig } from '@/shared/types/index';
-import { SyncHandler } from './syncHandler';
+import { VectorDbSyncHandler } from './vectorDbSyncHandler';
 
 export class SystemHandler {
-  private syncHandler?: SyncHandler;
+  private syncHandler?: VectorDbSyncHandler;
 
   constructor(
     private searchService: ISearchService,
@@ -16,7 +16,7 @@ export class SystemHandler {
     fileProcessingService?: IFileProcessingService
   ) {
     if (vectorStoreService) {
-      this.syncHandler = new SyncHandler(
+      this.syncHandler = new VectorDbSyncHandler(
         fileRepository,
         chunkRepository,
         vectorStoreService,
@@ -91,28 +91,28 @@ export class SystemHandler {
     if (!this.syncHandler) {
       throw new Error('Sync functionality not available - vector store service not initialized');
     }
-    return await this.syncHandler.handleToolCall('sync_check', args);
+    return await this.syncHandler.handleToolCall('vector_db_sync_check', args);
   }
 
   async handleCleanupOrphaned(args: any) {
     if (!this.syncHandler) {
       throw new Error('Sync functionality not available - vector store service not initialized');
     }
-    return await this.syncHandler.handleToolCall('cleanup_orphaned', args);
+    return await this.syncHandler.handleToolCall('vector_db_cleanup_orphaned', args);
   }
 
   async handleForceSync(args: any) {
     if (!this.syncHandler) {
       throw new Error('Sync functionality not available - vector store service not initialized');
     }
-    return await this.syncHandler.handleToolCall('force_sync', args);
+    return await this.syncHandler.handleToolCall('vector_db_force_sync', args);
   }
 
   async handleIntegrityReport(args: any) {
     if (!this.syncHandler) {
       throw new Error('Sync functionality not available - vector store service not initialized');
     }
-    return await this.syncHandler.handleToolCall('integrity_report', args);
+    return await this.syncHandler.handleToolCall('vector_db_integrity_report', args);
   }
 
   getSyncTools() {
