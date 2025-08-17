@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "outDir": "./dist",
+    "paths": {
+      "@/*": ["*"],
+      "@/shared/*": ["shared/*"],
+      "@/infrastructure/*": ["infrastructure/*"],
+      "@/rag/*": ["rag/*"],
+      "@/mcp/*": ["mcp/*"],
+      "@/app/*": ["app/*"]
+    }
+  }
+}

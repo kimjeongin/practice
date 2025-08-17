@@ -188,7 +188,7 @@ export class RAGApplication {
       );
 
       // Initialize file watcher with enhanced error handling
-      this.fileWatcher = new FileWatcher(this.db, this.config.dataDir);
+      this.fileWatcher = new FileWatcher(this.db, this.config.documentsDir);
       this.fileWatcher.on('change', async (event) => {
         logger.info('File change detected', { 
           type: event.type, 
@@ -333,7 +333,8 @@ export class RAGApplication {
     await this.mcpController.start();
     
     console.log('🎯 RAG Application started successfully');
-    console.log(`📁 Data directory: ${this.config.dataDir}`);
+    console.log(`📁 Documents directory: ${this.config.documentsDir}`);
+    console.log(`💾 Storage directory: ${this.config.storageDir}`);
   }
 
   async shutdown(): Promise<void> {

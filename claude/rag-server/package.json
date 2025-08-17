@@ -5,7 +5,9 @@
   "main": "dist/app/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "build": "npm run clean && tsc && tsc-alias -p tsconfig-alias.json",
+    "build:fast": "tsc && tsc-alias -p tsconfig-alias.json",
     "start": "node dist/app/index.js",
     "dev": "tsx watch src/app/index.ts",
     "typecheck": "tsc --noEmit",

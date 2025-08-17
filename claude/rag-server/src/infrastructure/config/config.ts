@@ -11,10 +11,17 @@ export const appConfig = loadConfig();
 export function loadConfig(): ServerConfig {
   const service = process.env['EMBEDDING_SERVICE'] || 'transformers';
   
+  // Default paths with proper separation
+  const storageDir = resolve(process.env['STORAGE_DIR'] || './storage');
+  const documentsDir = resolve(process.env['DOCUMENTS_DIR'] || './documents');
+  const dataDir = resolve(process.env['DATA_DIR'] || './data'); // 하위 호환성
+  
   return {
     nodeEnv: process.env['NODE_ENV'] || 'development',
-    databasePath: resolve(process.env['DATABASE_PATH'] || './data/rag.db'),
-    dataDir: resolve(process.env['DATA_DIR'] || './data'),
+    databasePath: resolve(process.env['DATABASE_PATH'] || `${storageDir}/database/rag.db`),
+    dataDir,
+    documentsDir,
+    storageDir,
     chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1024', 10),
     chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '20', 10),
     similarityTopK: parseInt(process.env['SIMILARITY_TOP_K'] || '5', 10),
@@ -29,7 +36,7 @@ export function loadConfig(): ServerConfig {
     // Ollama configuration
     ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434',
     // Transformers.js configuration
-    transformersCacheDir: process.env['TRANSFORMERS_CACHE_DIR'] || './data/.transformers-cache',
+    transformersCacheDir: process.env['TRANSFORMERS_CACHE_DIR'] || `${storageDir}/cache/.transformers-cache`,
   };
 }
 

@@ -77,7 +77,7 @@ export class SystemHandler {
         vectorDocuments: vectorStoreInfo?.count || 0,
       },
       config: {
-        dataDirectory: this.config.dataDir,
+        dataDirectory: this.config.documentsDir,
         embeddingService: this.config.embeddingService,
         chunkSize: this.config.chunkSize,
         similarityTopK: this.config.similarityTopK,

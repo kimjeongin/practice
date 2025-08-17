@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
+import { readFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
@@ -12,6 +12,12 @@ export class DatabaseConnection {
   private db: Database.Database;
 
   constructor(databasePath: string) {
+    // Ensure the database directory exists
+    const dbDir = dirname(databasePath);
+    if (!existsSync(dbDir)) {
+      mkdirSync(dbDir, { recursive: true });
+    }
+    
     this.db = new Database(databasePath);
     this.initializeSchema();
   }

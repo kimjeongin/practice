@@ -38,9 +38,19 @@ export class FileWatcher extends EventEmitter {
       ignored: [
         /(^|[\/\\])\../, // ignore dotfiles and directories
         '**/node_modules/**', // ignore node_modules
-        '**/faiss_index/**', // ignore faiss index files to prevent loops
+        '**/vectors/**', // ignore vector store files to prevent loops
         '**/.transformers-cache/**', // ignore model cache
         '**/logs/**', // ignore log files
+        '**/dist/**', // ignore build output
+        (path: string) => {
+          // Additional filtering for vector store and system files
+          return path.includes('vectors') || 
+                 path.includes('storage') ||
+                 path.includes('docstore.json') || 
+                 path.includes('.faiss') ||
+                 path.includes('.pkl') ||
+                 path.includes('database');
+        }
       ],
       persistent: true,
       ignoreInitial: false,
@@ -164,6 +174,18 @@ export class FileWatcher extends EventEmitter {
 
   private isSupportedFile(path: string): boolean {
     const ext = extname(path).toLowerCase();
+    
+    // Explicitly ignore vector store and system files
+    if (path.includes('vectors') || 
+        path.includes('storage') ||
+        path.includes('docstore.json') || 
+        path.includes('.faiss') || 
+        path.includes('.pkl') ||
+        path.includes('database') ||
+        path.includes('.transformers-cache')) {
+      return false;
+    }
+    
     return this.supportedExtensions.has(ext);
   }
 
