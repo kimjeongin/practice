@@ -1,19 +1,26 @@
-import { ISearchService, SearchOptions, SearchResult } from '@/shared/types/interfaces';
+import { ISearchService } from '@/shared/types/interfaces';
 import { IFileRepository } from '@/rag/repositories/documentRepository';
 import { IChunkRepository } from '@/rag/repositories/chunkRepository';
 import { ServerConfig } from '@/shared/types/index';
 
-export interface RAGSearchOptions extends SearchOptions {
+export interface RAGSearchOptions {
+  topK?: number;
+  fileTypes?: string[];
+  metadataFilters?: Record<string, string>;
   useSemanticSearch?: boolean;
   useHybridSearch?: boolean;
   semanticWeight?: number; // 0-1, weight for semantic search vs keyword search
   scoreThreshold?: number;
 }
 
-export interface RAGSearchResult extends SearchResult {
+export interface RAGSearchResult {
+  content: string;
+  score: number;
   semanticScore?: number;
   keywordScore?: number;
   hybridScore?: number;
+  metadata: Record<string, any>;
+  chunkIndex: number;
 }
 
 /**

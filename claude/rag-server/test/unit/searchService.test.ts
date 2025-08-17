@@ -1,12 +1,12 @@
 // Mock the resilience utilities to avoid ESM module issues
 jest.mock('../../src/shared/utils/resilience.js', () => ({
-  withTimeout: jest.fn().mockImplementation((promise) => promise),
-  withRetry: jest.fn().mockImplementation((fn) => fn()),
+  withTimeout: jest.fn().mockImplementation((promise: any) => promise),
+  withRetry: jest.fn().mockImplementation((...args: any[]) => args[0]()),
   CircuitBreakerManager: {
-    getBreaker: jest.fn().mockImplementation((name, fn, options) => ({
+    getBreaker: jest.fn().mockImplementation((...args: any[]) => ({
       fire: jest.fn().mockImplementation(() => {
         // Circuit breaker should execute the function passed to getBreaker
-        return fn();
+        return args[1]();
       }),
       on: jest.fn(),
       stats: { failures: 0, successes: 0 }
@@ -17,31 +17,30 @@ jest.mock('../../src/shared/utils/resilience.js', () => ({
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
 import { SearchService } from '../../src/rag/services/searchService';
 import { createMockConfig } from '../helpers/testHelpers';
-import { SAMPLE_DOCUMENTS } from '../fixtures/sample-documents';
 
 const mockVectorStoreService = {
-  search: jest.fn(),
-  addDocuments: jest.fn(),
-  removeDocumentsByFileId: jest.fn(),
-  similaritySearch: jest.fn()
+  search: jest.fn() as jest.MockedFunction<any>,
+  addDocuments: jest.fn() as jest.MockedFunction<any>,
+  removeDocumentsByFileId: jest.fn() as jest.MockedFunction<any>,
+  similaritySearch: jest.fn() as jest.MockedFunction<any>
 };
 
 const mockFileRepository = {
-  getAllFiles: jest.fn(),
-  getFileByPath: jest.fn(),
-  getFileById: jest.fn(),
-  getFileMetadata: jest.fn(),
-  insertFile: jest.fn(),
-  deleteFile: jest.fn(),
-  updateFile: jest.fn()
+  getAllFiles: jest.fn() as jest.MockedFunction<any>,
+  getFileByPath: jest.fn() as jest.MockedFunction<any>,
+  getFileById: jest.fn() as jest.MockedFunction<any>,
+  getFileMetadata: jest.fn() as jest.MockedFunction<any>,
+  insertFile: jest.fn() as jest.MockedFunction<any>,
+  deleteFile: jest.fn() as jest.MockedFunction<any>,
+  updateFile: jest.fn() as jest.MockedFunction<any>
 };
 
 const mockChunkRepository = {
-  getDocumentChunks: jest.fn(),
-  getChunksByFileId: jest.fn(),
-  insertDocumentChunk: jest.fn(),
-  deleteDocumentChunks: jest.fn(),
-  deleteChunk: jest.fn()
+  getDocumentChunks: jest.fn() as jest.MockedFunction<any>,
+  getChunksByFileId: jest.fn() as jest.MockedFunction<any>,
+  insertDocumentChunk: jest.fn() as jest.MockedFunction<any>,
+  deleteDocumentChunks: jest.fn() as jest.MockedFunction<any>,
+  deleteChunk: jest.fn() as jest.MockedFunction<any>
 };
 
 describe('SearchService', () => {

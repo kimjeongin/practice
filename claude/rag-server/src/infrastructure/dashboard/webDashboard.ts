@@ -40,6 +40,8 @@ export class MonitoringDashboard {
         this.serveCircuitBreakerData(res);
       } else if (url === '/api/logs') {
         this.serveLogData(res);
+      } else if (url === '/api/sync-status') {
+        this.serveSyncStatus(res);
       } else {
         res.writeHead(404);
         res.end('Not Found');
@@ -403,6 +405,37 @@ export class MonitoringDashboard {
     } catch (error) {
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'Failed to get log data' }));
+    }
+  }
+
+  private serveSyncStatus(res: ServerResponse): void {
+    try {
+      // 동기화 상태 정보를 수집
+      // 실제로는 SynchronizationManager에서 최근 동기화 결과를 가져와야 함
+      const syncStatus = {
+        lastSync: new Date().toISOString(),
+        status: 'healthy', // 'healthy', 'warning', 'error'
+        issues: {
+          missingFiles: 0,
+          orphanedVectors: 0,
+          hashMismatches: 0,
+          newFiles: 0,
+          total: 0
+        },
+        metrics: {
+          totalFiles: 0,
+          totalVectors: 0,
+          totalChunks: 0,
+          syncDuration: 0
+        }
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      res.writeHead(200);
+      res.end(JSON.stringify(syncStatus));
+    } catch (error) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Failed to get sync status' }));
     }
   }
 }

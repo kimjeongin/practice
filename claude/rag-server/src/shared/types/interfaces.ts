@@ -71,6 +71,11 @@ export interface IVectorStoreService {
   addDocuments(documents: VectorDocument[]): Promise<void>;
   search(query: string, options?: SearchOptions): Promise<VectorSearchResult[]>;
   removeDocumentsByFileId(fileId: string): Promise<void>;
+  removeAllDocuments(): Promise<void>;
   getIndexInfo(): IndexInfo;
   isHealthy(): boolean;
+  getAllDocumentIds?(): string[];
+  getDocumentCount?(): number;
+  hasDocumentsForFileId?(fileId: string): boolean;
+  getDocumentMetadata?(docId: string): Promise<any | null>;
 }

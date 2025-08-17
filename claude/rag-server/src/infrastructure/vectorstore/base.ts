@@ -46,6 +46,40 @@ export class VectorStoreAdapter implements IVectorStoreService {
     }
   }
 
+  getAllDocumentIds(): string[] {
+    if ('getAllDocumentIds' in this.faissVectorStore) {
+      return (this.faissVectorStore as any).getAllDocumentIds();
+    }
+    return [];
+  }
+
+  getDocumentCount(): number {
+    if ('getDocumentCount' in this.faissVectorStore) {
+      return (this.faissVectorStore as any).getDocumentCount();
+    }
+    return 0;
+  }
+
+  async removeAllDocuments(): Promise<void> {
+    if ('removeAllDocuments' in this.faissVectorStore) {
+      await (this.faissVectorStore as any).removeAllDocuments();
+    }
+  }
+
+  hasDocumentsForFileId(fileId: string): boolean {
+    if ('hasDocumentsForFileId' in this.faissVectorStore) {
+      return (this.faissVectorStore as any).hasDocumentsForFileId(fileId);
+    }
+    return false;
+  }
+
+  async getDocumentMetadata(docId: string): Promise<any | null> {
+    if ('getDocumentMetadata' in this.faissVectorStore) {
+      return await (this.faissVectorStore as any).getDocumentMetadata(docId);
+    }
+    return null;
+  }
+
   private createMetadataFilter(fileTypes?: string[], metadataFilters?: Record<string, string>) {
     return (metadata: any) => {
       if (fileTypes && fileTypes.length > 0) {
