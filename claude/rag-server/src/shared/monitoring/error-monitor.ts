@@ -51,7 +51,7 @@ export class ErrorMonitor extends EventEmitter {
   private alertThresholds: AlertThreshold[] = [];
   private startTime: Date = new Date();
   private maxErrorHistory = 1000;
-  private cleanupInterval!: NodeJS.Timeout;
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
   private constructor() {
     super();
@@ -379,6 +379,11 @@ export class ErrorMonitor extends EventEmitter {
       return;
     }
 
+    // 기존 인터벌이 있다면 정리
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+
     this.cleanupInterval = setInterval(() => {
       const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
       const originalLength = this.errors.length;
@@ -392,6 +397,10 @@ export class ErrorMonitor extends EventEmitter {
         });
       }
     }, 24 * 60 * 60 * 1000); // 매일 정리
+
+    if (!this.cleanupInterval) {
+      logger.warn('Failed to start error monitor cleanup interval');
+    }
   }
 
   /**
@@ -400,6 +409,7 @@ export class ErrorMonitor extends EventEmitter {
   destroy() {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
     }
     this.removeAllListeners();
   }

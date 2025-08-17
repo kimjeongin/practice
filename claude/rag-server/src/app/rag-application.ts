@@ -36,11 +36,11 @@ import { VectorDbSyncTrigger } from '@/rag/services/data-integrity/vector-db-syn
 
 export class RAGApplication {
   private db: DatabaseConnection;
-  private mcpServer!: MCPServer;
-  private fileWatcher!: FileWatcher;
-  private ragWorkflow!: RAGWorkflow;
-  private syncScheduler!: VectorDbSyncScheduler;
-  private syncTrigger!: VectorDbSyncTrigger;
+  private mcpServer: MCPServer | null = null;
+  private fileWatcher: FileWatcher | null = null;
+  private ragWorkflow: RAGWorkflow | null = null;
+  private syncScheduler: VectorDbSyncScheduler | null = null;
+  private syncTrigger: VectorDbSyncTrigger | null = null;
   private isInitialized = false;
   private monitoringEnabled: boolean;
 
@@ -136,6 +136,10 @@ export class RAGApplication {
         minAutoSyncInterval: 10 * 60 * 1000 // 최소 10분 간격
       });
 
+      if (!this.syncTrigger) {
+        throw new ConfigurationError('Failed to initialize sync trigger', 'sync_trigger_init');
+      }
+
       // Initialize services
       const searchService = new SearchService(
         vectorStoreAdapter,
@@ -163,6 +167,10 @@ export class RAGApplication {
         this.config
       );
 
+      if (!this.ragWorkflow) {
+        throw new ConfigurationError('Failed to initialize RAG workflow', 'rag_workflow_init');
+      }
+
       // Initialize handlers
       const searchHandler = new SearchHandler(this.ragWorkflow);
       const fileHandler = new DocumentHandler(fileRepository, fileProcessingService);
@@ -187,8 +195,16 @@ export class RAGApplication {
         this.config
       );
 
+      if (!this.mcpServer) {
+        throw new ConfigurationError('Failed to initialize MCP server', 'mcp_server_init');
+      }
+
       // Initialize file watcher with enhanced error handling
       this.fileWatcher = new FileWatcher(this.db, this.config.documentsDir);
+      
+      if (!this.fileWatcher) {
+        throw new ConfigurationError('Failed to initialize file watcher', 'file_watcher_init');
+      }
       this.fileWatcher.on('change', async (event) => {
         logger.info('File change detected', { 
           type: event.type, 
@@ -208,7 +224,15 @@ export class RAGApplication {
               );
               // Trigger sync check for added/changed files
               if (this.syncTrigger && event.path) {
-                await this.syncTrigger.onFileChange(event.path, event.type);
+                try {
+                  await this.syncTrigger.onFileChange(event.path, event.type);
+                } catch (syncError) {
+                  logger.warn('Failed to trigger sync check for file change', {
+                    error: syncError instanceof Error ? syncError.message : 'Unknown sync error',
+                    filePath: event.path,
+                    eventType: event.type
+                  });
+                }
               }
               break;
             case 'removed':
@@ -221,7 +245,15 @@ export class RAGApplication {
               );
               // Trigger sync check for removed files
               if (this.syncTrigger && event.path) {
-                await this.syncTrigger.onFileChange(event.path, event.type);
+                try {
+                  await this.syncTrigger.onFileChange(event.path, event.type);
+                } catch (syncError) {
+                  logger.warn('Failed to trigger sync check for file removal', {
+                    error: syncError instanceof Error ? syncError.message : 'Unknown sync error',
+                    filePath: event.path,
+                    eventType: event.type
+                  });
+                }
               }
               break;
           }
@@ -258,6 +290,10 @@ export class RAGApplication {
       });
 
       // Start file watcher and sync directory
+      if (!this.fileWatcher) {
+        throw new ConfigurationError('File watcher not initialized', 'file_watcher_missing');
+      }
+      
       this.fileWatcher.start();
       await withTimeout(
         this.fileWatcher.syncDirectory(),
@@ -329,6 +365,10 @@ export class RAGApplication {
       await this.initialize();
     }
 
+    if (!this.mcpServer) {
+      throw new ConfigurationError('MCP server not initialized', 'mcp_server_missing');
+    }
+    
     console.log('🎯 Starting RAG MCP Server...');
     await this.mcpServer.start();
     
@@ -371,7 +411,9 @@ export class RAGApplication {
               timeoutMs: 10000,
               operation: 'mcp_controller_shutdown'
             }
-          )
+          ).catch(error => {
+            logger.error('MCP server shutdown failed', error instanceof Error ? error : new Error(String(error)));
+          })
         );
       }
       
