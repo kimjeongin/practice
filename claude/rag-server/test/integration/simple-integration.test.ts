@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
-import { createMockConfig } from '../helpers/testHelpers';
+import { createMockConfig } from '../helpers/test-helpers';
 
 describe('Simple Integration Tests', () => {
   test('should create mock configuration for integration tests', () => {

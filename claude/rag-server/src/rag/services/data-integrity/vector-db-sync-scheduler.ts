@@ -1,5 +1,5 @@
-import { VectorDbSyncManager, VectorDbSyncReport } from './vectorDbSyncManager';
-import { logger } from '@/shared/logger/index';
+import { VectorDbSyncManager, VectorDbSyncReport } from './vector-db-sync-manager.js';
+import { logger } from '@/shared/logger/index.js';
 
 export interface VectorDbSyncSchedulerConfig {
   interval: number; // 동기화 간격 (밀리초)

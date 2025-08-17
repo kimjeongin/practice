@@ -9,12 +9,12 @@ import {
   GetPromptRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { SearchHandler } from '@/mcp/handlers/searchHandler';
-import { DocumentHandler } from '@/mcp/handlers/documentHandler';
-import { SystemHandler } from '@/mcp/handlers/systemHandler';
-import { ModelHandler } from '@/mcp/handlers/modelHandler';
-import { IFileRepository } from '@/rag/repositories/documentRepository';
-import { ServerConfig } from '@/shared/types/index';
+import { SearchHandler } from '@/mcp/handlers/search-handler.js';
+import { DocumentHandler } from '@/mcp/handlers/document-handler.js';
+import { SystemHandler } from '@/mcp/handlers/system-handler.js';
+import { ModelHandler } from '@/mcp/handlers/model-handler.js';
+import { IFileRepository } from '@/rag/repositories/document-repository.js';
+import { ServerConfig } from '@/shared/types/index.js';
 
 export class MCPServer {
   private server: Server;

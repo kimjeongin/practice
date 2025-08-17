@@ -15,8 +15,8 @@ jest.mock('../../src/shared/utils/resilience.js', () => ({
 }));
 
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
-import { SearchService } from '../../src/rag/services/searchService';
-import { createMockConfig } from '../helpers/testHelpers';
+import { SearchService } from '../../src/rag/services/search-service';
+import { createMockConfig } from '../helpers/test-helpers';
 
 const mockVectorStoreService = {
   search: jest.fn() as jest.MockedFunction<any>,

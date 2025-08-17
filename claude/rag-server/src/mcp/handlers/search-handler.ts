@@ -1,4 +1,4 @@
-import { RAGWorkflow, RAGSearchOptions } from '@/rag/workflows/ragWorkflow';
+import { RAGWorkflow, RAGSearchOptions } from '@/rag/workflows/rag-workflow.js';
 
 export interface SearchDocumentsArgs {
   query: string;

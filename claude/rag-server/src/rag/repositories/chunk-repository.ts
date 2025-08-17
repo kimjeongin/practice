@@ -1,5 +1,5 @@
-import { DatabaseManager } from '@/infrastructure/database/connection';
-import { DocumentChunk } from '@/rag/models/models';
+import { DatabaseConnection } from '@/infrastructure/database/database-connection.js';
+import { DocumentChunk } from '@/rag/models/models.js';
 
 export interface IChunkRepository {
   insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): string;
@@ -11,7 +11,7 @@ export interface IChunkRepository {
 }
 
 export class ChunkRepository implements IChunkRepository {
-  constructor(private db: DatabaseManager) {}
+  constructor(private db: DatabaseConnection) {}
 
   insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): string {
     return this.db.insertDocumentChunk(chunk);

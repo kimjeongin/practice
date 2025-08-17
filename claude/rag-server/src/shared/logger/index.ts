@@ -4,7 +4,7 @@
  */
 
 import pino, { Logger as PinoLogger } from 'pino';
-import { ErrorCode, StructuredError, ErrorUtils } from '@/shared/errors/index';
+import { ErrorCode, StructuredError, ErrorUtils } from '@/shared/errors/index.js';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 

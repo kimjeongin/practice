@@ -1,6 +1,6 @@
-import { VectorDbSyncManager } from './vectorDbSyncManager';
-import { errorMonitor } from '@/shared/monitoring/errorMonitor';
-import { logger } from '@/shared/logger/index';
+import { VectorDbSyncManager } from './vector-db-sync-manager.js';
+import { errorMonitor } from '@/shared/monitoring/error-monitor.js';
+import { logger } from '@/shared/logger/index.js';
 
 /**
  * 특정 조건에서 자동으로 벡터 데이터베이스 동기화를 트리거하는 서비스

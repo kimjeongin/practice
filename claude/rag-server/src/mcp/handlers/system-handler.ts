@@ -1,8 +1,8 @@
-import { ISearchService, IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces';
-import { IFileRepository } from '@/rag/repositories/documentRepository';
-import { IChunkRepository } from '@/rag/repositories/chunkRepository';
-import { ServerConfig } from '@/shared/types/index';
-import { VectorDbSyncHandler } from './vectorDbSyncHandler';
+import { ISearchService, IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces.js';
+import { IFileRepository } from '@/rag/repositories/document-repository.js';
+import { IChunkRepository } from '@/rag/repositories/chunk-repository.js';
+import { ServerConfig } from '@/shared/types/index.js';
+import { VectorDbSyncHandler } from './vector-db-sync-handler.js';
 
 export class SystemHandler {
   private syncHandler?: VectorDbSyncHandler;

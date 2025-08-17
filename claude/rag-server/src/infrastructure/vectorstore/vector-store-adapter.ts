@@ -1,5 +1,5 @@
-import { IVectorStoreService, VectorDocument, VectorSearchResult, SearchOptions } from '@/shared/types/interfaces'
-import { FaissVectorStoreManager } from '@/infrastructure/vectorstore/providers/faiss'
+import { IVectorStoreService, VectorDocument, VectorSearchResult, SearchOptions } from '@/shared/types/interfaces.js'
+import { FaissVectorStoreManager } from '@/infrastructure/vectorstore/providers/faiss-vector-store.js'
 
 export class VectorStoreAdapter implements IVectorStoreService {
   constructor(private faissVectorStore: FaissVectorStoreManager) {}
@@ -99,5 +99,34 @@ export class VectorStoreAdapter implements IVectorStoreService {
 
       return true;
     };
+  }
+
+  /**
+   * 인덱스 통계 조회
+   */
+  getIndexStats(): { total: number; occupied: number; sparsity: number; needsCompaction: boolean } | null {
+    if ('getIndexStats' in this.faissVectorStore) {
+      return (this.faissVectorStore as any).getIndexStats();
+    }
+    return null;
+  }
+
+  /**
+   * 인덱스 압축
+   */
+  async compactIndex(): Promise<void> {
+    if ('compactIndex' in this.faissVectorStore) {
+      await (this.faissVectorStore as any).compactIndex();
+    }
+  }
+
+  /**
+   * 자동 압축 (필요시에만)
+   */
+  async autoCompactIfNeeded(): Promise<boolean> {
+    if ('autoCompactIfNeeded' in this.faissVectorStore) {
+      return await (this.faissVectorStore as any).autoCompactIfNeeded();
+    }
+    return false;
   }
 }

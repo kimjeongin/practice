@@ -1,21 +1,21 @@
 import { basename } from 'path';
 import { createHash } from 'crypto';
-import { IFileProcessingService, VectorDocument } from '@/shared/types/interfaces';
-import { IFileRepository } from '@/rag/repositories/documentRepository';
-import { IChunkRepository } from '@/rag/repositories/chunkRepository';
-import { IVectorStoreService } from '@/shared/types/interfaces';
-import { DocumentChunk, FileMetadata } from '@/rag/models/models';
+import { IFileProcessingService, VectorDocument } from '@/shared/types/interfaces.js';
+import { IFileRepository } from '@/rag/repositories/document-repository.js';
+import { IChunkRepository } from '@/rag/repositories/chunk-repository.js';
+import { IVectorStoreService } from '@/shared/types/interfaces.js';
+import { DocumentChunk, FileMetadata } from '@/rag/models/models.js';
 import { Document } from '@langchain/core/documents';
-import { ServerConfig } from '@/shared/types/index';
-import { FileReader } from '@/rag/utils/fileReader';
-import { ChunkingService } from '@/rag/services/chunkingService';
+import { ServerConfig } from '@/shared/types/index.js';
+import { FileReader } from '@/rag/utils/file-reader.js';
+import { ChunkingService } from '@/rag/services/chunking-service.js';
 import { 
   FileProcessingError, 
   VectorStoreError
-} from '@/shared/errors/index';
-import { logger, startTiming } from '@/shared/logger/index';
-import { withTimeout, withRetry, BatchProcessor } from '@/shared/utils/resilience';
-import { errorMonitor } from '@/shared/monitoring/errorMonitor';
+} from '@/shared/errors/index.js';
+import { logger, startTiming } from '@/shared/logger/index.js';
+import { withTimeout, withRetry, BatchProcessor } from '@/shared/utils/resilience.js';
+import { errorMonitor } from '@/shared/monitoring/error-monitor.js';
 
 export class FileProcessingService implements IFileProcessingService {
   private processingQueue = new Set<string>();

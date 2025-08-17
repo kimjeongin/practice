@@ -4,8 +4,8 @@
  */
 
 import { EventEmitter } from 'events';
-import { StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index';
-import { logger } from '@/shared/logger/index';
+import { StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index.js';
+import { logger } from '@/shared/logger/index.js';
 
 export interface ErrorMetric {
   code: ErrorCode;

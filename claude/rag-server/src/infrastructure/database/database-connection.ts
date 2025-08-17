@@ -3,12 +3,12 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
-import { FileMetadata, CustomMetadata, DocumentChunk } from '@/shared/types/index';
+import { FileMetadata, CustomMetadata, DocumentChunk } from '@/shared/types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export class DatabaseManager {
+export class DatabaseConnection {
   private db: Database.Database;
 
   constructor(databasePath: string) {

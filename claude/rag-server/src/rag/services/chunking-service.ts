@@ -1,6 +1,6 @@
 import { Document } from '@langchain/core/documents';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import { ServerConfig } from '@/shared/types/index';
+import { ServerConfig } from '@/shared/types/index.js';
 
 export interface ChunkingOptions {
   chunkSize: number;

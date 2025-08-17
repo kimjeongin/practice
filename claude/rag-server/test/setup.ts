@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ErrorMonitor } from '../src/shared/monitoring/errorMonitor';
+import { ErrorMonitor } from '../src/shared/monitoring/error-monitor';
 
 const TEST_DATA_DIR = path.join(process.cwd(), 'test-data');
 const TEST_DB_PATH = path.join(process.cwd(), 'data', 'test-rag.db');

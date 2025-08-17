@@ -2,12 +2,10 @@ import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach, jes
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
-import { createMockFile, removeMockFile, waitFor } from '../helpers/testHelpers.js';
-import { SAMPLE_DOCUMENTS } from '../fixtures/sample-documents.js';
+import { createMockFile, removeMockFile, waitFor } from '../helpers/test-helpers';
+import { SAMPLE_DOCUMENTS } from '../fixtures/sample-documents';
 
-const currentFilename = fileURLToPath(import.meta.url);
-const currentDirname = path.dirname(currentFilename);
+const currentDirname = __dirname;
 
 describe('Full Application E2E Tests', () => {
   let serverProcess: ChildProcess;
@@ -64,7 +62,7 @@ describe('Full Application E2E Tests', () => {
       
       const handleData = (data: Buffer) => {
         output += data.toString();
-        if (output.includes('MCP server started') || output.includes('Server listening')) {
+        if (output.includes('MCP Server started') || output.includes('RAG Application started successfully')) {
           clearTimeout(timeout);
           resolve();
         }

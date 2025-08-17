@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
-import { RAGWorkflow } from '../../src/rag/workflows/ragWorkflow';
+import { RAGWorkflow } from '../../src/rag/workflows/rag-workflow';
 import { ISearchService } from '../../src/shared/types/interfaces';
-import { IFileRepository } from '../../src/rag/repositories/documentRepository';
-import { IChunkRepository } from '../../src/rag/repositories/chunkRepository';
+import { IFileRepository } from '../../src/rag/repositories/document-repository';
+import { IChunkRepository } from '../../src/rag/repositories/chunk-repository';
 import { ServerConfig } from '../../src/shared/types/index';
 
 describe('RAGWorkflow Integration Tests', () => {

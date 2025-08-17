@@ -1,41 +1,41 @@
-import { DatabaseManager } from '@/infrastructure/database/connection';
-import { SearchService } from '@/rag/services/searchService';
-import { RAGWorkflow } from '@/rag/workflows/ragWorkflow';
-import { FileProcessingService } from '@/rag/services/documentService';
-import { ModelManagementService } from '@/rag/services/modelService';
+import { DatabaseConnection } from '@/infrastructure/database/database-connection.js';
+import { SearchService } from '@/rag/services/search-service.js';
+import { RAGWorkflow } from '@/rag/workflows/rag-workflow.js';
+import { FileProcessingService } from '@/rag/services/file-processing-service.js';
+import { ModelManagementService } from '@/rag/services/model-management-service.js';
 
-import { FileRepository } from '@/rag/repositories/documentRepository';
-import { ChunkRepository } from '@/rag/repositories/chunkRepository';
+import { FileRepository } from '@/rag/repositories/document-repository.js';
+import { ChunkRepository } from '@/rag/repositories/chunk-repository.js';
 
-import { SearchHandler } from '@/mcp/handlers/searchHandler';
-import { DocumentHandler } from '@/mcp/handlers/documentHandler';
-import { SystemHandler } from '@/mcp/handlers/systemHandler';
-import { ModelHandler } from '@/mcp/handlers/modelHandler';
+import { SearchHandler } from '@/mcp/handlers/search-handler.js';
+import { DocumentHandler } from '@/mcp/handlers/document-handler.js';
+import { SystemHandler } from '@/mcp/handlers/system-handler.js';
+import { ModelHandler } from '@/mcp/handlers/model-handler.js';
 
-import { MCPServer } from '@/mcp/server/mcpServer';
-import { VectorStoreAdapter } from '@/infrastructure/vectorstore/base';
-import { EmbeddingAdapter } from '@/infrastructure/embeddings/base';
+import { MCPServer } from '@/mcp/server/mcp-server.js';
+import { VectorStoreAdapter } from '@/infrastructure/vectorstore/vector-store-adapter.js';
+import { EmbeddingAdapter } from '@/infrastructure/embeddings/embedding-adapter.js';
 
-import { FileWatcher } from '@/infrastructure/filesystem/watcher/fileWatcher';
-import { EmbeddingFactory } from '@/infrastructure/embeddings';
-import { FaissVectorStoreManager } from '@/infrastructure/vectorstore/providers/faiss';
-import { ServerConfig } from '@/shared/types';
+import { FileWatcher } from '@/infrastructure/filesystem/watcher/file-watcher.js';
+import { EmbeddingFactory } from '@/infrastructure/embeddings/index.js';
+import { FaissVectorStoreManager } from '@/infrastructure/vectorstore/providers/faiss-vector-store.js';
+import { ServerConfig } from '@/shared/types/index.js';
 import { 
   StructuredError, 
   DatabaseError, 
   ConfigurationError, 
   ErrorCode 
-} from '@/shared/errors';
-import { logger, startTiming } from '@/shared/logger';
-import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience';
-import { errorMonitor, setupGlobalErrorHandling } from '@/shared/monitoring/errorMonitor';
-import { monitoringDashboard } from '@/infrastructure/dashboard/webDashboard';
-import { VectorDbSyncManager } from '@/rag/services/dataIntegrity/vectorDbSyncManager';
-import { VectorDbSyncScheduler } from '@/rag/services/dataIntegrity/vectorDbSyncScheduler';
-import { VectorDbSyncTrigger } from '@/rag/services/dataIntegrity/vectorDbSyncTrigger';
+} from '@/shared/errors/index.js';
+import { logger, startTiming } from '@/shared/logger/index.js';
+import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience.js';
+import { errorMonitor, setupGlobalErrorHandling } from '@/shared/monitoring/error-monitor.js';
+import { monitoringDashboard } from '@/infrastructure/dashboard/monitoring-dashboard.js';
+import { VectorDbSyncManager } from '@/rag/services/data-integrity/vector-db-sync-manager.js';
+import { VectorDbSyncScheduler } from '@/rag/services/data-integrity/vector-db-sync-scheduler.js';
+import { VectorDbSyncTrigger } from '@/rag/services/data-integrity/vector-db-sync-trigger.js';
 
 export class RAGApplication {
-  private db: DatabaseManager;
+  private db: DatabaseConnection;
   private mcpController!: MCPServer;
   private fileWatcher!: FileWatcher;
   private ragWorkflowService!: RAGWorkflow;
@@ -45,7 +45,7 @@ export class RAGApplication {
   private monitoringEnabled: boolean;
 
   constructor(private config: ServerConfig) {
-    this.db = new DatabaseManager(config.databasePath);
+    this.db = new DatabaseConnection(config.databasePath);
     this.monitoringEnabled = process.env['ENABLE_MONITORING'] !== 'false'; // 기본값: true
   }
 

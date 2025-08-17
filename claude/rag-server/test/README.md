@@ -62,8 +62,8 @@ npm run test:all
   - 개별 기능의 정확성 검증
 
 **포함된 테스트**:
-- `documentService.test.ts`: 문서 처리 서비스 테스트
-- `searchService.test.ts`: 검색 서비스 테스트
+- `file-processing-service.test.ts`: 파일 처리 서비스 테스트
+- `search-service.test.ts`: 검색 서비스 테스트
 
 ### 2. 통합 테스트 (Integration Tests)
 - **위치**: `test/integration/`
@@ -74,8 +74,8 @@ npm run test:all
   - 컴포넌트 간 데이터 흐름 검증
 
 **포함된 테스트**:
-- `ragWorkflow.test.ts`: RAG 워크플로우 전체 테스트
-- `mcpServer.test.ts`: MCP 서버 통합 테스트
+- `rag-workflow.test.ts`: RAG 워크플로우 전체 테스트
+- `mcp-server.test.ts`: MCP 서버 통합 테스트
 
 ### 3. E2E 테스트 (End-to-End Tests)
 - **위치**: `test/e2e/`
@@ -86,7 +86,7 @@ npm run test:all
   - 외부 의존성과의 실제 상호작용
 
 **포함된 테스트**:
-- `fullApplication.test.ts`: 전체 애플리케이션 라이프사이클 테스트
+- `full-application.test.ts`: 전체 애플리케이션 라이프사이클 테스트
 
 ## 테스트 환경 설정
 
@@ -104,7 +104,7 @@ npm run test:all
 - 기술 문서
 
 ### 모킹
-`test/helpers/testHelpers.ts`에는 다양한 모킹 유틸리티가 포함되어 있습니다:
+`test/helpers/test-helpers.ts`에는 다양한 모킹 유틸리티가 포함되어 있습니다:
 - 설정 모킹
 - 로거 모킹
 - 임베딩 프로바이더 모킹

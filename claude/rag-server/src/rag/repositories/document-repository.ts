@@ -1,5 +1,5 @@
-import { DatabaseManager } from '@/infrastructure/database/connection';
-import { FileMetadata, DocumentChunk } from '@/rag/models/models';
+import { DatabaseConnection } from '@/infrastructure/database/database-connection.js';
+import { FileMetadata, DocumentChunk } from '@/rag/models/models.js';
 
 export interface IFileRepository {
   insertFile(file: Omit<FileMetadata, 'id'>): string;
@@ -15,7 +15,7 @@ export interface IFileRepository {
 }
 
 export class FileRepository implements IFileRepository {
-  constructor(private db: DatabaseManager) {}
+  constructor(private db: DatabaseConnection) {}
 
   insertFile(file: Omit<FileMetadata, 'id'>): string {
     return this.db.insertFile(file);

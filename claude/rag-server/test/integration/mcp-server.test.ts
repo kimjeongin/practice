@@ -1,9 +1,9 @@
-import { MCPServer } from '../../src/mcp/server/mcpServer';
-import { SearchHandler } from '../../src/mcp/handlers/searchHandler';
-import { DocumentHandler } from '../../src/mcp/handlers/documentHandler';
-import { SystemHandler } from '../../src/mcp/handlers/systemHandler';
-import { ModelHandler } from '../../src/mcp/handlers/modelHandler';
-import { IFileRepository } from '../../src/rag/repositories/documentRepository';
+import { MCPServer } from '../../src/mcp/server/mcp-server';
+import { SearchHandler } from '../../src/mcp/handlers/search-handler';
+import { DocumentHandler } from '../../src/mcp/handlers/document-handler';
+import { SystemHandler } from '../../src/mcp/handlers/system-handler';
+import { ModelHandler } from '../../src/mcp/handlers/model-handler';
+import { IFileRepository } from '../../src/rag/repositories/document-repository';
 import { ServerConfig } from '../../src/shared/types/index';
 import { beforeEach, afterEach, describe, test, expect, jest } from '@jest/globals';
 

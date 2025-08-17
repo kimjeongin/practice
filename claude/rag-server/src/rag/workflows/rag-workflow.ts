@@ -1,7 +1,7 @@
-import { ISearchService } from '@/shared/types/interfaces';
-import { IFileRepository } from '@/rag/repositories/documentRepository';
-import { IChunkRepository } from '@/rag/repositories/chunkRepository';
-import { ServerConfig } from '@/shared/types/index';
+import { ISearchService } from '@/shared/types/interfaces.js';
+import { IFileRepository } from '@/rag/repositories/document-repository.js';
+import { IChunkRepository } from '@/rag/repositories/chunk-repository.js';
+import { ServerConfig } from '@/shared/types/index.js';
 
 export interface RAGSearchOptions {
   topK?: number;

@@ -1,10 +1,10 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { VectorDbSyncManager, VectorDbSyncReport, VectorDbSyncOptions } from '@/rag/services/dataIntegrity/vectorDbSyncManager';
-import { IFileRepository } from '@/rag/repositories/documentRepository';
-import { IChunkRepository } from '@/rag/repositories/chunkRepository';
-import { IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces';
-import { ServerConfig } from '@/shared/types/index';
-import { logger } from '@/shared/logger/index';
+import { VectorDbSyncManager, VectorDbSyncReport, VectorDbSyncOptions } from '@/rag/services/data-integrity/vector-db-sync-manager.js';
+import { IFileRepository } from '@/rag/repositories/document-repository.js';
+import { IChunkRepository } from '@/rag/repositories/chunk-repository.js';
+import { IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces.js';
+import { ServerConfig } from '@/shared/types/index.js';
+import { logger } from '@/shared/logger/index.js';
 
 export class VectorDbSyncHandler {
   private syncManager: VectorDbSyncManager;

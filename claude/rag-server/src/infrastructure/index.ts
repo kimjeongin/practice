@@ -1,5 +1,5 @@
 // Infrastructure Exports
-export * from '@/infrastructure/embeddings/index';
-export * from '@/infrastructure/vectorstore/base';
-export * from '@/infrastructure/database/connection';
-export * from '@/infrastructure/config/config';
+export * from '@/infrastructure/embeddings/index.js';
+export * from '@/infrastructure/vectorstore/vector-store-adapter.js';
+export * from '@/infrastructure/database/database-connection.js';
+export * from '@/infrastructure/config/config.js';

@@ -3,7 +3,7 @@ import { Document } from '@langchain/core/documents';
 import { Embeddings } from '@langchain/core/embeddings';
 import { existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
-import { ServerConfig } from '@/shared/types';
+import { ServerConfig } from '@/shared/types/index.js';
 
 export interface VectorDocument {
   id: string;
@@ -164,8 +164,8 @@ export class FaissVectorStoreManager {
           this.nextIndex = Math.max(this.nextIndex, i + 1);
         }
       } catch (error) {
-        // Document not found at this index, skip
-        console.warn(`Document not found at index ${i}, skipping`);
+        // Document not found at this index, skip silently
+        // This is normal for sparse FAISS indices
       }
     }
 
@@ -306,9 +306,7 @@ export class FaissVectorStoreManager {
           documentsToRemove.push(docId);
         }
       } catch (error) {
-        // Document not found at this index, skip
-        console.warn(`Document not found at index ${faissIndex} for docId ${docId}, skipping`);
-        // Remove the invalid mapping
+        // Document not found at this index, remove invalid mapping
         this.documentIdMap.delete(docId);
         this.indexDocumentMap.delete(faissIndex);
       }
@@ -340,8 +338,7 @@ export class FaissVectorStoreManager {
             keepDocuments.push(doc);
           }
         } catch (error) {
-          // Document not found at this index, skip
-          console.warn(`Document not found at index ${faissIndex} for docId ${docId}, skipping`);
+          // Document not found at this index, skip silently
         }
       }
     }
@@ -541,5 +538,94 @@ export class FaissVectorStoreManager {
       console.error(`Failed to get metadata for document ${docId}:`, error);
       return null;
     }
+  }
+
+  /**
+   * 인덱스 압축률 확인
+   */
+  getIndexStats(): { total: number; occupied: number; sparsity: number; needsCompaction: boolean } {
+    const total = this.store?.index?.ntotal() || 0;
+    const occupied = this.documentIdMap.size;
+    const sparsity = total > 0 ? (total - occupied) / total : 0;
+    const needsCompaction = sparsity > 0.5 && total > 100; // 50% 이상 sparse이고 100개 이상일 때
+
+    return {
+      total,
+      occupied,
+      sparsity,
+      needsCompaction
+    };
+  }
+
+  /**
+   * 인덱스 압축 (sparse 인덱스 재구성)
+   */
+  async compactIndex(): Promise<void> {
+    if (!this.store) {
+      console.log('No index to compact');
+      return;
+    }
+
+    const stats = this.getIndexStats();
+    console.log(`🗜️  Starting index compaction. Sparsity: ${(stats.sparsity * 100).toFixed(1)}%`);
+    
+    if (!stats.needsCompaction) {
+      console.log('Index compaction not needed');
+      return;
+    }
+
+    try {
+      // 모든 유효한 문서 수집
+      const validDocuments: Document[] = [];
+      
+      for (const [docId, vectorIndex] of this.documentIdMap.entries()) {
+        try {
+          const doc = this.store.docstore.search(vectorIndex.toString());
+          if (doc && doc.metadata.id === docId) {
+            validDocuments.push(doc);
+          }
+        } catch (error) {
+          // 유효하지 않은 문서는 무시
+        }
+      }
+
+      if (validDocuments.length === 0) {
+        console.log('No valid documents found for compaction');
+        return;
+      }
+
+      console.log(`📦 Compacting ${validDocuments.length} valid documents (was ${stats.total})`);
+      
+      // 새 인덱스 생성
+      this.store = await FaissStore.fromDocuments(validDocuments, this.embeddings);
+      
+      // 매핑 재구성
+      await this.rebuildDocumentMappings();
+      
+      // 인덱스 저장
+      await this.saveIndex();
+      
+      const newStats = this.getIndexStats();
+      console.log(`✅ Index compaction completed. New size: ${newStats.total} (reduced by ${stats.total - newStats.total})`);
+      
+    } catch (error) {
+      console.error('❌ Failed to compact index:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 자동 압축 조건 확인 및 실행
+   */
+  async autoCompactIfNeeded(): Promise<boolean> {
+    const stats = this.getIndexStats();
+    
+    if (stats.needsCompaction) {
+      console.log(`🔄 Auto-compacting sparse index (${(stats.sparsity * 100).toFixed(1)}% sparse)`);
+      await this.compactIndex();
+      return true;
+    }
+    
+    return false;
   }
 }

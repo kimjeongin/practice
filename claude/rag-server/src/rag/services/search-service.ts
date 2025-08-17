@@ -1,11 +1,11 @@
-import { ISearchService, SearchOptions, SearchResult, IVectorStoreService } from '@/shared/types/interfaces'
-import { IFileRepository } from '@/rag/repositories/documentRepository'
-import { IChunkRepository } from '@/rag/repositories/chunkRepository'
-import { ServerConfig } from '@/shared/types'
-import { SearchError, VectorStoreError, ErrorCode } from '@/shared/errors'
-import { logger, startTiming } from '@/shared/logger'
-import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience'
-import { errorMonitor } from '@/shared/monitoring/errorMonitor'
+import { ISearchService, SearchOptions, SearchResult, IVectorStoreService } from '@/shared/types/interfaces.js'
+import { IFileRepository } from '@/rag/repositories/document-repository.js'
+import { IChunkRepository } from '@/rag/repositories/chunk-repository.js'
+import { ServerConfig } from '@/shared/types/index.js'
+import { SearchError, VectorStoreError, ErrorCode } from '@/shared/errors/index.js'
+import { logger, startTiming } from '@/shared/logger/index.js'
+import { withTimeout, withRetry, CircuitBreakerManager } from '@/shared/utils/resilience.js'
+import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
 
 export class SearchService implements ISearchService {
   constructor(

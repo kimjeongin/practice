@@ -10,7 +10,7 @@ jest.mock('../../src/shared/utils/resilience.js', () => ({
 }));
 
 // Mock FileReader
-jest.mock('../../src/rag/utils/fileReader.js', () => ({
+jest.mock('../../src/rag/utils/file-reader.js', () => ({
   FileReader: jest.fn().mockImplementation(() => ({
     readFileContent: jest.fn().mockResolvedValue({
       pageContent: 'mock file content',
@@ -20,7 +20,7 @@ jest.mock('../../src/rag/utils/fileReader.js', () => ({
 }));
 
 // Mock ChunkingService
-jest.mock('../../src/rag/services/chunkingService.js', () => ({
+jest.mock('../../src/rag/services/chunking-service.js', () => ({
   ChunkingService: jest.fn().mockImplementation(() => ({
     chunkDocument: jest.fn().mockReturnValue([
       { pageContent: 'chunk 1', metadata: {} },
@@ -30,8 +30,8 @@ jest.mock('../../src/rag/services/chunkingService.js', () => ({
 }));
 
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
-import { FileProcessingService } from '../../src/rag/services/documentService';
-import { createMockConfig, createMockLogger } from '../helpers/testHelpers';
+import { FileProcessingService } from '../../src/rag/services/file-processing-service';
+import { createMockConfig, createMockLogger } from '../helpers/test-helpers';
 import { SAMPLE_DOCUMENTS } from '../fixtures/sample-documents';
 
 const mockFileRepository = {

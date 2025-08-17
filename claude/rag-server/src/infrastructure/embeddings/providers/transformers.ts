@@ -1,7 +1,7 @@
 import { pipeline, env } from '@huggingface/transformers';
 import type { FeatureExtractionPipeline } from '@huggingface/transformers';
 import { Embeddings } from '@langchain/core/embeddings';
-import { ServerConfig } from '@/shared/types/index';
+import { ServerConfig } from '@/shared/types/index.js';
 
 export interface EmbeddingModelConfig {
   modelId: string;

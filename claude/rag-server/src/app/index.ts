@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { RAGApplication } from '@/app/application'
-import { loadConfig, validateConfig } from '@/infrastructure/config/config'
+import { RAGApplication } from '@/app/rag-application.js'
+import { loadConfig, validateConfig } from '@/infrastructure/config/config.js'
 
 async function main() {
   try {

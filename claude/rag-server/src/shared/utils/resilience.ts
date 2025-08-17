@@ -6,8 +6,8 @@
 import pTimeout from 'p-timeout';
 import pRetry, { AbortError, FailedAttemptError } from 'p-retry';
 import CircuitBreaker from 'opossum';
-import { TimeoutError, StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index';
-import { logger } from '@/shared/logger/index';
+import { TimeoutError, StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index.js';
+import { logger } from '@/shared/logger/index.js';
 
 export interface RetryOptions {
   retries?: number;

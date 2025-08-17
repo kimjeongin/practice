@@ -4,9 +4,9 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { errorMonitor } from '@/shared/monitoring/errorMonitor';
-import { logger } from '@/shared/logger/index';
-import { CircuitBreakerManager } from '@/shared/utils/resilience';
+import { errorMonitor } from '@/shared/monitoring/error-monitor.js';
+import { logger } from '@/shared/logger/index.js';
+import { CircuitBreakerManager } from '@/shared/utils/resilience.js';
 
 export class MonitoringDashboard {
   private server: any;

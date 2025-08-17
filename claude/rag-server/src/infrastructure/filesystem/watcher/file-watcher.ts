@@ -2,9 +2,9 @@ import chokidar from 'chokidar';
 import { basename, extname } from 'path';
 import { stat } from 'fs/promises';
 import { EventEmitter } from 'events';
-import { DatabaseManager } from '@/infrastructure/database/connection';
-import { FileMetadata } from '@/shared/types/index';
-import { calculateFileHash } from '@/shared/utils/crypto';
+import { DatabaseConnection } from '@/infrastructure/database/database-connection.js';
+import { FileMetadata } from '@/shared/types/index.js';
+import { calculateFileHash } from '@/shared/utils/crypto.js';
 
 export interface FileChangeEvent {
   type: 'added' | 'changed' | 'removed';
@@ -14,11 +14,13 @@ export interface FileChangeEvent {
 
 export class FileWatcher extends EventEmitter {
   private watcher: any | null = null;
-  private db: DatabaseManager;
+  private db: DatabaseConnection;
   private dataDir: string;
   private supportedExtensions: Set<string>;
+  private processingFiles: Map<string, NodeJS.Timeout> = new Map();
+  private readonly DEBOUNCE_DELAY = 300; // 300ms debounce
 
-  constructor(db: DatabaseManager, dataDir: string) {
+  constructor(db: DatabaseConnection, dataDir: string) {
     super();
     this.db = db;
     this.dataDir = dataDir;
@@ -33,14 +35,25 @@ export class FileWatcher extends EventEmitter {
     }
 
     this.watcher = chokidar.watch(this.dataDir, {
-      ignored: /(^|[\/\\])\./, // ignore dotfiles
+      ignored: [
+        /(^|[\/\\])\../, // ignore dotfiles and directories
+        '**/node_modules/**', // ignore node_modules
+        '**/faiss_index/**', // ignore faiss index files to prevent loops
+        '**/.transformers-cache/**', // ignore model cache
+        '**/logs/**', // ignore log files
+      ],
       persistent: true,
       ignoreInitial: false,
+      awaitWriteFinish: {
+        stabilityThreshold: 200,
+        pollInterval: 100
+      },
+      depth: 10, // limit recursion depth
     });
 
     this.watcher
-      .on('add', (path: string) => this.handleFileAdded(path))
-      .on('change', (path: string) => this.handleFileChanged(path))
+      .on('add', (path: string) => this.debounceFileEvent(path, 'add'))
+      .on('change', (path: string) => this.debounceFileEvent(path, 'change'))
       .on('unlink', (path: string) => this.handleFileRemoved(path))
       .on('error', (error: any) => this.emit('error', error));
 
@@ -53,6 +66,36 @@ export class FileWatcher extends EventEmitter {
       this.watcher = null;
       console.log('FileWatcher stopped');
     }
+    
+    // Clear all pending timeouts
+    for (const timeout of this.processingFiles.values()) {
+      clearTimeout(timeout);
+    }
+    this.processingFiles.clear();
+  }
+
+  /**
+   * Debounce file events to prevent duplicate processing
+   */
+  private debounceFileEvent(path: string, eventType: 'add' | 'change'): void {
+    // Clear existing timeout for this file
+    const existingTimeout = this.processingFiles.get(path);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Set new debounced timeout
+    const timeout = setTimeout(() => {
+      this.processingFiles.delete(path);
+      
+      if (eventType === 'add') {
+        this.handleFileAdded(path);
+      } else {
+        this.handleFileChanged(path);
+      }
+    }, this.DEBOUNCE_DELAY);
+
+    this.processingFiles.set(path, timeout);
   }
 
   private async handleFileAdded(path: string): Promise<void> {

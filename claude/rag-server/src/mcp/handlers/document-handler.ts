@@ -1,5 +1,5 @@
-import { IFileRepository } from '@/rag/repositories/documentRepository';
-import { IFileProcessingService } from '@/shared/types/interfaces';
+import { IFileRepository } from '@/rag/repositories/document-repository.js';
+import { IFileProcessingService } from '@/shared/types/interfaces.js';
 
 export interface ListFilesArgs {
   fileType?: string;

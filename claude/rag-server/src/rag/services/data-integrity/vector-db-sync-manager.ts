@@ -1,13 +1,13 @@
 import { existsSync, statSync, readdirSync } from 'fs';
 import { join, dirname, extname } from 'path';
 import { createHash } from 'crypto';
-import { IFileRepository } from '@/rag/repositories/documentRepository';
-import { IChunkRepository } from '@/rag/repositories/chunkRepository';
-import { IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces';
-import { FileMetadata } from '@/rag/models/models';
-import { ServerConfig } from '@/shared/types/index';
-import { logger, startTiming } from '@/shared/logger/index';
-import { withTimeout, withRetry } from '@/shared/utils/resilience';
+import { IFileRepository } from '@/rag/repositories/document-repository.js';
+import { IChunkRepository } from '@/rag/repositories/chunk-repository.js';
+import { IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces.js';
+import { FileMetadata } from '@/rag/models/models.js';
+import { ServerConfig } from '@/shared/types/index.js';
+import { logger, startTiming } from '@/shared/logger/index.js';
+import { withTimeout, withRetry } from '@/shared/utils/resilience.js';
 
 export interface VectorDbSyncIssue {
   type: 'missing_file' | 'orphaned_vector' | 'hash_mismatch' | 'missing_chunks' | 'new_file';
@@ -79,6 +79,18 @@ export class VectorDbSyncManager {
       if (opts.autoFix && report.issues.length > 0) {
         logger.info('Auto-fixing sync issues', { issueCount: report.issues.length });
         await this.fixSyncIssues(report.issues, opts);
+      }
+
+      // Auto-compact sparse index after sync if needed
+      if (opts.autoFix && 'autoCompactIfNeeded' in this.vectorStoreService) {
+        try {
+          const compacted = await (this.vectorStoreService as any).autoCompactIfNeeded();
+          if (compacted) {
+            logger.info('Auto-compacted sparse vector index after sync');
+          }
+        } catch (error) {
+          logger.warn('Failed to auto-compact index after sync', error instanceof Error ? error : new Error(String(error)));
+        }
       }
 
       logger.info('Startup sync completed', {
