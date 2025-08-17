@@ -1,0 +1,17 @@
+{
+  "name": "rag-web-client-example",
+  "version": "1.0.0",
+  "description": "Web-based client interface for RAG MCP Server",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8080",
+    "serve": "python3 -m http.server 8080",
+    "dev": "live-server --port=8080 --open=index.html"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  },
+  "keywords": ["mcp", "rag", "client", "web", "browser", "example"],
+  "author": "",
+  "license": "MIT"
+}

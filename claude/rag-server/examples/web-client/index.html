@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG MCP Server - Web Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .status-bar {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+        }
+
+        .section h2 {
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .results {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .result-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .result-title {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .result-score {
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .result-content {
+            color: #6c757d;
+            line-height: 1.5;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 4px;
+        }
+
+        .search-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                padding: 20px;
+            }
+
+            .search-options {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 RAG MCP Server</h1>
+            <p>Web Client Interface for Document Search and Management</p>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+            <div>
+                <button class="btn btn-secondary" id="connectBtn" onclick="connect()">Connect</button>
+                <button class="btn btn-success" id="statusBtn" onclick="getStatus()" disabled>Get Status</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Upload Section -->
+            <div class="section">
+                <h2>📤 Upload Document</h2>
+                <div class="form-group">
+                    <label for="fileName">File Name:</label>
+                    <input type="text" id="fileName" placeholder="example.md" value="example.md">
+                </div>
+                <div class="form-group">
+                    <label for="fileContent">Content:</label>
+                    <textarea id="fileContent" placeholder="Enter document content...">
+# Sample Document
+
+This is a sample document about artificial intelligence and machine learning.
+
+## Key Topics
+- Neural Networks and Deep Learning
+- Natural Language Processing
+- Computer Vision and Image Recognition
+- Reinforcement Learning
+
+## Applications
+AI is revolutionizing various industries including healthcare, finance, autonomous vehicles, and robotics.
+                    </textarea>
+                </div>
+                <button class="btn" id="uploadBtn" onclick="uploadFile()" disabled>
+                    <span class="loading" id="uploadLoading" style="display: none;"></span>
+                    Upload Document
+                </button>
+                <div id="uploadMessage"></div>
+            </div>
+
+            <!-- Search Section -->
+            <div class="section">
+                <h2>🔍 Search Documents</h2>
+                <div class="form-group">
+                    <label for="searchQuery">Search Query:</label>
+                    <input type="text" id="searchQuery" placeholder="neural networks" value="neural networks">
+                </div>
+                <div class="search-options">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="semanticSearch" checked>
+                        <label for="semanticSearch">Semantic Search</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="hybridSearch">
+                        <label for="hybridSearch">Hybrid Search</label>
+                    </div>
+                    <div class="form-group">
+                        <label for="topK">Results:</label>
+                        <select id="topK">
+                            <option value="3">3</option>
+                            <option value="5" selected>5</option>
+                            <option value="10">10</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="semanticWeight">Semantic Weight:</label>
+                        <input type="range" id="semanticWeight" min="0" max="1" step="0.1" value="0.7">
+                        <span id="weightValue">0.7</span>
+                    </div>
+                </div>
+                <button class="btn" id="searchBtn" onclick="searchDocuments()" disabled>
+                    <span class="loading" id="searchLoading" style="display: none;"></span>
+                    Search
+                </button>
+                <div id="searchResults" class="results"></div>
+            </div>
+
+            <!-- Files Section -->
+            <div class="section">
+                <h2>📁 Document Library</h2>
+                <button class="btn btn-secondary" id="listBtn" onclick="listFiles()" disabled>
+                    <span class="loading" id="listLoading" style="display: none;"></span>
+                    Refresh List
+                </button>
+                <div id="filesList" class="file-list"></div>
+            </div>
+
+            <!-- Models Section -->
+            <div class="section">
+                <h2>🤖 Model Management</h2>
+                <button class="btn btn-secondary" id="modelInfoBtn" onclick="getModelInfo()" disabled>Current Model</button>
+                <button class="btn btn-secondary" id="modelsBtn" onclick="listModels()" disabled>Available Models</button>
+                <div id="modelInfo"></div>
+            </div>
+
+            <!-- Server Status Section -->
+            <div class="section full-width">
+                <h2>📊 Server Status & Monitoring</h2>
+                <div id="serverStatus"></div>
+                <button class="btn btn-secondary" onclick="getStatus()" disabled id="refreshStatusBtn">
+                    <span class="loading" id="statusLoading" style="display: none;"></span>
+                    Refresh Status
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="web-client.js"></script>
+</body>
+</html>

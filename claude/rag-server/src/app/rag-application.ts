@@ -36,9 +36,9 @@ import { VectorDbSyncTrigger } from '@/rag/services/data-integrity/vector-db-syn
 
 export class RAGApplication {
   private db: DatabaseConnection;
-  private mcpController!: MCPServer;
+  private mcpServer!: MCPServer;
   private fileWatcher!: FileWatcher;
-  private ragWorkflowService!: RAGWorkflow;
+  private ragWorkflow!: RAGWorkflow;
   private syncScheduler!: VectorDbSyncScheduler;
   private syncTrigger!: VectorDbSyncTrigger;
   private isInitialized = false;
@@ -156,7 +156,7 @@ export class RAGApplication {
       );
 
       // Initialize RAG workflow service
-      this.ragWorkflowService = new RAGWorkflow(
+      this.ragWorkflow = new RAGWorkflow(
         searchService,
         fileRepository,
         chunkRepository,
@@ -164,7 +164,7 @@ export class RAGApplication {
       );
 
       // Initialize handlers
-      const searchHandler = new SearchHandler(this.ragWorkflowService);
+      const searchHandler = new SearchHandler(this.ragWorkflow);
       const fileHandler = new DocumentHandler(fileRepository, fileProcessingService);
       const systemHandler = new SystemHandler(
         searchService, 
@@ -178,7 +178,7 @@ export class RAGApplication {
       logger.debug('Handlers initialized');
 
       // Initialize MCP controller
-      this.mcpController = new MCPServer(
+      this.mcpServer = new MCPServer(
         searchHandler,
         fileHandler,
         systemHandler,
@@ -330,7 +330,7 @@ export class RAGApplication {
     }
 
     console.log('🎯 Starting RAG MCP Server...');
-    await this.mcpController.start();
+    await this.mcpServer.start();
     
     console.log('🎯 RAG Application started successfully');
     console.log(`📁 Documents directory: ${this.config.documentsDir}`);
@@ -363,10 +363,10 @@ export class RAGApplication {
         );
       }
       
-      if (this.mcpController) {
+      if (this.mcpServer) {
         shutdownPromises.push(
           withTimeout(
-            this.mcpController.shutdown(),
+            this.mcpServer.shutdown(),
             {
               timeoutMs: 10000,
               operation: 'mcp_controller_shutdown'
