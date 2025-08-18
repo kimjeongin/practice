@@ -35,7 +35,17 @@ A battle-tested TypeScript-based Model Context Protocol (MCP) server that provid
 
 ## 🚀 Quick Start
 
-### Option 1: Zero-Setup Installation (Recommended)
+### Option 1: Download Executable (Recommended) 
+
+Download the latest executable for your platform from [GitHub Releases](https://github.com/example/rag-server/releases):
+
+- **Linux**: `rag-server-linux-x64` or install via `.deb` package
+- **macOS**: `rag-server-macos-x64` or install via `.pkg` installer  
+- **Windows**: `rag-server-windows-x64.exe` or use `.msi` installer
+
+No Node.js installation required!
+
+### Option 2: Build from Source
 
 ```bash
 # 1. Install dependencies
@@ -46,6 +56,34 @@ pnpm build
 
 # 3. Start the server (uses built-in Transformers.js)
 pnpm start
+```
+
+### Option 3: Create Your Own Executable
+
+```bash
+# Build executables for all platforms
+npm run build:executable
+
+# Or build for specific platform
+npm run bundle:linux    # Creates rag-server-linux-x64
+npm run bundle:macos    # Creates rag-server-macos-x64  
+npm run bundle:windows  # Creates rag-server-windows-x64.exe
+
+# Create distribution packages
+npm run package:all     # Creates .deb, .pkg, .msi installers
+
+# Full release build
+npm run release:build   # Build executables + create packages
+```
+
+### 🐳 Docker Usage
+
+```bash
+# Development environment  
+docker-compose -f deploy/docker/docker-compose.yml up rag-server-dev
+
+# Build executables in Docker
+docker-compose -f deploy/docker/docker-compose.yml run build-linux
 ```
 
 **That's it!** The server will:
@@ -209,7 +247,19 @@ src/
     ├── utils/            # Shared utilities (crypto, resilience)
     ├── errors/           # Structured error handling
     ├── logger/           # Pino-based structured logging
-    └── monitoring/       # Error tracking and health monitoring
+    └── monitoring/       # Error monitoring and observability
+
+deploy/                   # 🚀 Cross-platform deployment system
+├── scripts/              # Build automation scripts
+│   └── build-executable.js    # Caxa-based executable builder
+├── packaging/            # Platform-specific installers
+│   ├── linux.js         # DEB/RPM package creation
+│   ├── macos.js         # PKG/DMG installer creation
+│   └── windows.js       # MSI/EXE installer creation
+├── docker/              # Container deployment
+│   ├── Dockerfile       # Multi-stage build configuration
+│   └── docker-compose.yml     # Development & build environments
+└── docs/                # Deployment documentation
 ```
 
 ### Data Flow & Monitoring
@@ -487,4 +537,39 @@ This RAG MCP Server is production-ready and has been validated for:
 - **Integration** - Claude Code, MCP clients, custom applications
 - **Scaling** - From single user to enterprise-scale deployments
 
-**Last Verified**: August 17, 2025 ✨
+### 🚀 **Cross-Platform Distribution**
+
+**NEW**: Complete executable distribution system! No Node.js required for end users.
+
+#### **Available Formats**
+- **Linux**: Native executables, `.deb` packages, `.rpm` packages
+- **macOS**: Native executables, `.pkg` installers, `.dmg` disk images, `.app` bundles  
+- **Windows**: Native executables, `.msi` installers, `.exe` NSIS installers, portable `.zip`
+
+#### **Build Commands**
+```bash
+# Create all platform executables (works from Ubuntu/macOS dev environment)
+npm run build:executable
+
+# Create distribution packages for all platforms
+npm run package:all
+
+# Complete release build
+npm run release:build
+```
+
+#### **GitHub Actions**
+- ✅ **Automated Multi-Platform Builds** - Linux, macOS, Windows executables
+- ✅ **Release Packaging** - Automatic `.deb`, `.pkg`, `.msi` creation
+- ✅ **GitHub Releases** - Tag-based automatic releases with all binaries
+
+#### **Docker Cross-Compilation**
+```bash
+# Build for different platforms via Docker
+docker-compose -f deploy/docker/docker-compose.yml run build-linux
+docker-compose -f deploy/docker/docker-compose.yml run build-windows
+```
+
+📖 **See [`deploy/docs/README.md`](deploy/docs/README.md) for complete deployment documentation**
+
+**Last Verified**: August 18, 2025 ✨

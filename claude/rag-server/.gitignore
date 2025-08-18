@@ -112,3 +112,23 @@ ehthumbs.db
 Thumbs.db
 
 storage/
+
+# Executable distribution files
+packages/
+dist/executables/
+*.exe
+*.deb
+*.rpm
+*.pkg
+*.dmg
+*.zip
+*.msi
+*.AppImage
+
+# Build artifacts
+*.wixobj
+*.wixpdb
+deb-temp/
+rpm-temp/
+dmg-temp/
+portable/

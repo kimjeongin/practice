@@ -1,0 +1,173 @@
+name: Build Cross-Platform Executables
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub Release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            target: linux-x64
+            artifact: rag-server-linux-x64
+          - os: macos-latest
+            platform: darwin
+            target: macos-x64
+            artifact: rag-server-macos-x64
+          - os: windows-latest
+            platform: win32
+            target: windows-x64
+            artifact: rag-server-windows-x64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Build executable
+        run: pnpm run bundle:${{ matrix.platform }}
+
+      - name: Upload executable as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/executables/${{ matrix.artifact }}
+          retention-days: 30
+
+  package:
+    name: Create Platform Packages
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Setup packaging tools
+        run: |
+          # Install packaging tools
+          sudo apt-get update
+          sudo apt-get install -y rpm fakeroot
+          
+          # Install Node.js tools for packaging
+          npm install -g app-builder-bin
+
+      - name: Create Linux packages
+        run: |
+          mkdir -p packages/linux
+          
+          # Create AppImage
+          # TODO: Implement AppImage creation
+          
+          # Create DEB package
+          mkdir -p deb-package/usr/local/bin
+          cp artifacts/rag-server-linux-x64/rag-server-linux-x64 deb-package/usr/local/bin/
+          chmod +x deb-package/usr/local/bin/rag-server-linux-x64
+          
+          # Create DEBIAN control directory
+          mkdir -p deb-package/DEBIAN
+          cat > deb-package/DEBIAN/control << EOF
+          Package: rag-server
+          Version: 1.0.0
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: RAG Server Team
+          Description: Local RAG MCP Server
+           A local RAG server with vector search capabilities for desktop applications.
+          EOF
+          
+          dpkg-deb --build deb-package packages/linux/rag-server_1.0.0_amd64.deb
+
+      - name: Create macOS packages
+        run: |
+          mkdir -p packages/macos
+          # TODO: Implement macOS .pkg and .dmg creation
+
+      - name: Create Windows packages  
+        run: |
+          mkdir -p packages/windows
+          cp artifacts/rag-server-windows-x64.exe/rag-server-windows-x64.exe packages/windows/
+          # TODO: Implement Windows MSI/EXE installer creation
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-packages
+          path: packages/
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: [build, package]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-assets/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

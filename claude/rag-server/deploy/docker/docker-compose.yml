@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Development environment
+  rag-server-dev:
+    build:
+      context: .
+      target: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    networks:
+      - rag-network
+
+  # Production environment
+  rag-server-prod:
+    build:
+      context: .
+      target: production
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    networks:
+      - rag-network
+
+  # Build Linux executable
+  build-linux:
+    build:
+      context: .
+      target: build-executable
+      args:
+        TARGET_PLATFORM: linux
+    volumes:
+      - ./dist/executables:/app/dist/executables
+
+  # Build macOS executable (requires macOS host or emulation)
+  build-macos:
+    build:
+      context: .
+      target: build-executable
+      args:
+        TARGET_PLATFORM: darwin
+    volumes:
+      - ./dist/executables:/app/dist/executables
+
+  # Build Windows executable
+  build-windows:
+    build:
+      context: .
+      target: build-executable
+      args:
+        TARGET_PLATFORM: win32
+    volumes:
+      - ./dist/executables:/app/dist/executables
+
+networks:
+  rag-network:
+    driver: bridge
