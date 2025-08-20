@@ -14,7 +14,7 @@ This directory contains comprehensive examples demonstrating how to build client
 - ✅ Beginner-friendly
 
 ```bash
-cd basic-client && npm install && npm start
+cd basic-client && yarn install && yarn start
 ```
 
 **Use Case**: Learning MCP basics, quick prototyping, simple integrations
@@ -31,7 +31,7 @@ cd basic-client && npm install && npm start
 - ✅ Error handling and resilience
 
 ```bash
-cd advanced-client && npm install && npm start
+cd advanced-client && yarn install && yarn start
 ```
 
 **Use Case**: Production applications, enterprise integration, full API coverage
@@ -48,7 +48,7 @@ cd advanced-client && npm install && npm start
 - ✅ Development debugging
 
 ```bash
-cd interactive-cli && npm install && npm start
+cd interactive-cli && yarn install && yarn start
 ```
 
 **Use Case**: Development, debugging, manual testing, learning
@@ -65,7 +65,7 @@ cd interactive-cli && npm install && npm start
 - ✅ Mobile-friendly design
 
 ```bash
-cd web-client && python -m http.server 8080
+cd web-client && yarn serve
 ```
 
 **Use Case**: End-user applications, dashboards, web interfaces
@@ -79,13 +79,19 @@ cd web-client && python -m http.server 8080
 1. **RAG Server Running**:
    ```bash
    # From project root
-   pnpm build && pnpm start
+   yarn build && yarn start
    ```
 
-2. **Dependencies Installed**:
+2. **Add Sample Documents**:
+   ```bash
+   # Place files in the documents/ directory
+   cp your-files.md rag-server/documents/
+   ```
+
+3. **Dependencies Installed**:
    ```bash
    # In each example directory
-   npm install
+   yarn install
    ```
 
 ### Choose Your Example

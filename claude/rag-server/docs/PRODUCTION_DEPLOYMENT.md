@@ -43,8 +43,8 @@ curl http://localhost:3001/api/health
 ### Option 2: Direct Installation
 
 **Prerequisites:**
-- Node.js 18+
-- pnpm package manager
+- Node.js 22+
+- yarn package manager
 - 2GB+ RAM available
 
 **Installation steps:**
@@ -55,15 +55,15 @@ git clone https://github.com/your-org/rag-mcp-server.git
 cd rag-mcp-server
 
 # 2. Install dependencies
-pnpm install
+yarn install
 
 # 3. Configure environment
 cp .env.example .env
 # Edit .env with your settings
 
 # 4. Build and start
-pnpm build
-pnpm start
+yarn build
+yarn start
 
 # 5. Verify installation
 curl http://localhost:3001/api/health

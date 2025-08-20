@@ -9,7 +9,7 @@
     "dev": "tsx watch interactive-cli.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.2",
+    "@modelcontextprotocol/sdk": "^1.17.3",
     "tsx": "^4.19.2"
   },
   "keywords": ["mcp", "rag", "client", "interactive", "cli", "example"],

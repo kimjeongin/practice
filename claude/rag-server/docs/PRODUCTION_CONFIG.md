@@ -28,18 +28,18 @@ GRACEFUL_SHUTDOWN_TIMEOUT=30000
 
 ```bash
 # SQLite Database
-DATABASE_PATH=./data/rag.db
+DATABASE_PATH=./storage/database/rag.db
 DATABASE_JOURNAL_MODE=WAL
 DATABASE_SYNCHRONOUS=NORMAL
 DATABASE_TIMEOUT=30000
 
 # Data Directories
-DATA_DIR=./data
+DATA_DIR=./documents
 LOGS_DIR=./logs
 BACKUP_DIR=./backups
 
 # Vector Store Configuration
-FAISS_INDEX_PATH=./data/faiss_index
+FAISS_INDEX_PATH=./storage/faiss_index
 VECTOR_STORE_CACHE_SIZE=1000
 VECTOR_STORE_BATCH_SIZE=10
 ```

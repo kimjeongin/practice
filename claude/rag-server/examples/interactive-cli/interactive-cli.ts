@@ -75,16 +75,18 @@ class InteractiveRAGCLI {
     console.log('📋 Available Commands:');
     console.log('  help           - Show this help message');
     console.log('  status         - Get server status');
-    console.log('  upload         - Upload a document');
     console.log('  list           - List all files');
     console.log('  search         - Search documents');
     console.log('  hybrid         - Hybrid search (semantic + keyword)');
     console.log('  models         - List available models');
     console.log('  model-info     - Get current model info');
-    console.log('  download       - Download a model');
-    console.log('  generate       - Generate RAG response');
+    console.log('  switch-model   - Switch embedding model');
+    console.log('  reindex        - Force reindex all documents');
+    console.log('  rag            - Perform RAG search with context');
     console.log('  clear          - Clear screen');
     console.log('  exit           - Exit the CLI');
+    console.log('');
+    console.log('⚠️  Note: File upload is done via filesystem - place files in documents/ folder');
     console.log('');
   }
 
@@ -126,8 +128,12 @@ class InteractiveRAGCLI {
         await this.getStatus();
         break;
       
-      case 'upload':
-        await this.uploadDocument();
+      case 'switch-model':
+        await this.switchModel();
+        break;
+      
+      case 'reindex':
+        await this.forceReindex();
         break;
       
       case 'list':
@@ -150,12 +156,8 @@ class InteractiveRAGCLI {
         await this.getModelInfo();
         break;
       
-      case 'download':
-        await this.downloadModel();
-        break;
-      
-      case 'generate':
-        await this.generateResponse();
+      case 'rag':
+        await this.performRAGSearch();
         break;
       
       case 'clear':
@@ -183,45 +185,56 @@ class InteractiveRAGCLI {
     
     const status = this.parseResult(result);
     console.log('📊 Server Status:');
-    console.log(`   Health: ${status.status}`);
-    console.log(`   Documents: ${status.totalDocuments}`);
-    console.log(`   Memory: ${status.memoryUsage?.used || 'N/A'}`);
-    console.log(`   Uptime: ${status.uptime || 'N/A'}`);
-    console.log(`   Error Rate: ${status.errorRate || 0}/min`);
+    console.log(`   Health: Running`);
+    console.log(`   Documents: ${status.totalDocuments || 0}`);
+    console.log(`   Vector Dimensions: ${status.vectorDimensions || 'N/A'}`);
+    console.log(`   Current Model: ${status.currentModel || 'N/A'}`);
+    console.log(`   Memory Usage: ${status.memoryUsage || 'N/A'}`);
   }
 
-  private async uploadDocument(): Promise<void> {
-    const fileName = await this.question('📝 Enter filename: ');
-    const content = await this.question('📄 Enter content (or type "sample" for example): ');
+  private async switchModel(): Promise<void> {
+    // First show available models
+    await this.listModels();
     
-    let documentContent = content;
-    if (content.toLowerCase() === 'sample') {
-      documentContent = `# Sample Document
-
-This is a sample document about artificial intelligence and machine learning.
-
-## Key Topics
-- Neural Networks
-- Deep Learning
-- Natural Language Processing
-- Computer Vision
-
-## Applications
-AI is used in various fields including healthcare, finance, and autonomous systems.`;
+    const modelName = await this.question('\n🔄 Enter model name to switch to: ');
+    
+    if (!modelName.trim()) {
+      console.log('⚠️  Model name required');
+      return;
     }
     
-    console.log('📤 Uploading document...');
+    console.log(`🔄 Switching to model: ${modelName}`);
     
-    const result = await this.client.callTool({
-      name: 'upload_file',
-      arguments: {
-        content: documentContent,
-        fileName
-      }
-    });
+    try {
+      const result = await this.client.callTool({
+        name: 'switch_embedding_model',
+        arguments: { modelName: modelName.trim() }
+      });
+      
+      console.log('✅ Model switched successfully!');
+      console.log('📊 Result:', this.parseResult(result));
+    } catch (error) {
+      console.error('❌ Model switch failed:', error.message);
+    }
+  }
+  
+  private async forceReindex(): Promise<void> {
+    const clearCache = await this.question('🗑️ Clear cache too? (y/N): ');
+    const shouldClearCache = clearCache.toLowerCase().startsWith('y');
     
-    console.log('✅ Document uploaded successfully!');
-    console.log('📊 Result:', this.parseResult(result));
+    console.log(`🔄 Force reindexing all documents${shouldClearCache ? ' (clearing cache)' : ''}...`);
+    
+    try {
+      const result = await this.client.callTool({
+        name: 'force_reindex',
+        arguments: { clearCache: shouldClearCache }
+      });
+      
+      console.log('✅ Reindexing completed!');
+      console.log('📊 Result:', this.parseResult(result));
+    } catch (error) {
+      console.error('❌ Reindexing failed:', error.message);
+    }
   }
 
   private async listFiles(): Promise<void> {
@@ -232,16 +245,17 @@ AI is used in various fields including healthcare, finance, and autonomous syste
       arguments: {}
     });
     
-    const files = this.parseResult(result);
+    const response = this.parseResult(result);
+    const files = response.files || [];
     
     if (files.length === 0) {
-      console.log('📭 No files found. Upload some documents first!');
+      console.log('📭 No files found. Place documents in the documents/ folder!');
     } else {
       console.log(`📁 Found ${files.length} files:`);
       files.forEach((file: any, index: number) => {
-        console.log(`   ${index + 1}. ${file.fileName} (${file.fileType})`);
-        console.log(`      📅 Created: ${file.createdAt}`);
-        console.log(`      📊 Chunks: ${file.chunkCount || 'N/A'}`);
+        console.log(`   ${index + 1}. ${file.name} (${file.fileType})`);
+        console.log(`      📅 Updated: ${new Date(file.updatedAt).toLocaleString()}`);
+        console.log(`      📊 Size: ${file.size} bytes`);
       });
     }
   }
@@ -261,7 +275,8 @@ AI is used in various fields including healthcare, finance, and autonomous syste
       }
     });
     
-    const results = this.parseResult(result);
+    const response = this.parseResult(result);
+    const results = response.results || [];
     
     if (results.length === 0) {
       console.log('❌ No results found');
@@ -269,7 +284,7 @@ AI is used in various fields including healthcare, finance, and autonomous syste
       console.log(`📊 Found ${results.length} results:`);
       results.forEach((result: any, index: number) => {
         console.log(`\n   ${index + 1}. ${result.metadata.fileName}`);
-        console.log(`      📊 Similarity: ${(result.similarity * 100).toFixed(1)}%`);
+        console.log(`      📊 Score: ${result.score.toFixed(4)}`);
         console.log(`      📝 Content: "${result.content.substring(0, 100)}..."`);
       });
     }
@@ -292,7 +307,8 @@ AI is used in various fields including healthcare, finance, and autonomous syste
       }
     });
     
-    const results = this.parseResult(result);
+    const response = this.parseResult(result);
+    const results = response.results || [];
     
     if (results.length === 0) {
       console.log('❌ No results found');
@@ -300,7 +316,7 @@ AI is used in various fields including healthcare, finance, and autonomous syste
       console.log(`📊 Found ${results.length} hybrid results:`);
       results.forEach((result: any, index: number) => {
         console.log(`\n   ${index + 1}. ${result.metadata.fileName}`);
-        console.log(`      📊 Similarity: ${(result.similarity * 100).toFixed(1)}%`);
+        console.log(`      📊 Score: ${result.score.toFixed(4)}`);
         console.log(`      📝 Content: "${result.content.substring(0, 100)}..."`);
       });
     }
@@ -324,11 +340,13 @@ AI is used in various fields including healthcare, finance, and autonomous syste
       console.log(`   Description: ${models.currentModel.description || 'N/A'}`);
     }
     
-    if (models.availableModels) {
-      console.log('\n📦 Available for download:');
+    if (models.availableModels && Object.keys(models.availableModels).length > 0) {
+      console.log('\n📦 Available models:');
       Object.entries(models.availableModels).forEach(([name, info]: [string, any]) => {
         console.log(`   • ${name} (${info.dimensions}D) - ${info.description}`);
       });
+    } else {
+      console.log('\n⚠️  No additional models available for switching');
     }
   }
 
@@ -349,45 +367,47 @@ AI is used in various fields including healthcare, finance, and autonomous syste
     console.log(`   Description: ${modelInfo.description || 'N/A'}`);
   }
 
-  private async downloadModel(): Promise<void> {
-    const modelName = await this.question('📥 Enter model name (or press Enter for default): ');
-    
-    console.log(`⬇️ Downloading model${modelName ? `: ${modelName}` : ' (default)'}...`);
-    
-    const result = await this.client.callTool({
-      name: 'download_model',
-      arguments: modelName ? { modelName } : {}
-    });
-    
-    const downloadResult = this.parseResult(result);
-    console.log('✅ Download result:', downloadResult);
-  }
-
-  private async generateResponse(): Promise<void> {
+  private async performRAGSearch(): Promise<void> {
     const query = await this.question('❓ Enter your question: ');
-    const context = await this.question('📄 Additional context (optional): ');
+    const contextLength = await this.question('📚 Number of context documents (default 3): ') || '3';
     
-    console.log('🤖 Generating RAG response...');
+    console.log(`🔍 Performing RAG search for: "${query}"`);
     
     try {
+      // First get the search results
       const result = await this.client.callTool({
-        name: 'generate_response',
+        name: 'search_documents',
         arguments: {
           query,
-          context: context || undefined
+          topK: parseInt(contextLength),
+          useSemanticSearch: true
         }
       });
       
       const response = this.parseResult(result);
-      console.log('🤖 Response:');
-      console.log('─'.repeat(50));
-      console.log(response);
-      console.log('─'.repeat(50));
+      const results = response.results || [];
+      
+      if (results.length === 0) {
+        console.log('❌ No relevant documents found');
+        return;
+      }
+      
+      console.log(`\n📚 Context Retrieved (${results.length} documents):`);
+      console.log('═'.repeat(60));
+      
+      results.forEach((result: any, index: number) => {
+        console.log(`\n📄 ${index + 1}. ${result.metadata.fileName} (Score: ${result.score.toFixed(4)})`);
+        console.log(`📝 ${result.content.substring(0, 200)}${result.content.length > 200 ? '...' : ''}`);
+      });
+      
+      console.log('\n═'.repeat(60));
+      console.log('💡 Use this context with your favorite LLM to generate a response!');
+      
     } catch (error) {
-      console.log('⚠️  RAG response generation not available');
-      console.log('💡 Try uploading some documents first and ensure the server supports this feature');
+      console.error('❌ RAG search failed:', error.message);
     }
   }
+
 
   private question(prompt: string): Promise<string> {
     return new Promise((resolve) => {

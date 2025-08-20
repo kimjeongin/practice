@@ -49,13 +49,13 @@ No Node.js installation required!
 
 ```bash
 # 1. Install dependencies
-pnpm install
+yarn install
 
 # 2. Build the project
-pnpm build
+yarn build
 
 # 3. Start the server (uses built-in Transformers.js)
-pnpm start
+yarn start
 ```
 
 ### Option 3: Create Your Own Executable
@@ -115,7 +115,7 @@ cp .env.example .env
 # Edit .env: set EMBEDDING_SERVICE=ollama
 
 # 3. Install and start
-pnpm install && pnpm build && pnpm start
+yarn install && yarn build && yarn start
 ```
 
 
@@ -123,12 +123,12 @@ pnpm install && pnpm build && pnpm start
 
 ### 1. Add Documents
 
-Simply place files in the `data/` directory:
+Simply place files in the `documents/` directory:
 
 ```bash
 # Supported formats: .txt, .md, .json, .xml, .html, .csv
-echo "Machine learning is a subset of AI..." > data/ai-guide.txt
-echo "# Neural Networks\nDeep learning..." > data/neural-nets.md
+echo "Machine learning is a subset of AI..." > documents/ai-guide.txt
+echo "# Neural Networks\nDeep learning..." > documents/neural-nets.md
 ```
 
 Files are automatically detected, processed, and indexed in real-time.
@@ -376,7 +376,7 @@ watch -n 1 'curl -s http://localhost:3001/api/health | jq ".totalDocuments,.proc
 
 ```bash
 # Install dependencies
-pnpm install
+yarn install
 
 # Development mode (hot reload)
 pnpm dev
@@ -388,7 +388,7 @@ pnpm typecheck
 pnpm lint
 
 # Build for production
-pnpm build
+yarn build
 ```
 
 ### Extension Points
@@ -462,7 +462,7 @@ pnpm build
 ```bash
 git clone https://github.com/your-org/rag-mcp-server.git
 cd rag-mcp-server
-pnpm install
+yarn install
 pnpm dev
 ```
 
@@ -481,7 +481,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Ready to get started?** Run `pnpm install && pnpm build && pnpm start` and you'll have a full RAG system running locally in under 30 seconds! 🚀
+**Ready to get started?** Run `yarn install && yarn build && yarn start` and you'll have a full RAG system running locally in under 30 seconds! 🚀
 
 ---
 
@@ -523,9 +523,9 @@ This RAG MCP Server has been comprehensively analyzed and verified:
 ### 🎯 **Quick Start Verified**
 ```bash
 # This exact sequence has been tested and verified:
-pnpm install     # ✅ Dependencies install correctly
-pnpm build       # ✅ TypeScript compiles without errors  
-pnpm start       # ✅ Server starts and responds at http://localhost:3001
+yarn install     # ✅ Dependencies install correctly
+yarn build       # ✅ TypeScript compiles without errors  
+yarn start       # ✅ Server starts and responds at http://localhost:3001
 pnpm test:all    # ✅ All test suites pass successfully
 ```
 

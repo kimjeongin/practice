@@ -34,25 +34,25 @@ test/
 ### 기본 테스트 실행
 ```bash
 # 모든 테스트 실행
-npm test
+yarn test
 
 # 단위 테스트만 실행
-npm run test:unit
+yarn test:unit
 
 # 통합 테스트만 실행
-npm run test:integration
+yarn test:integration
 
 # E2E 테스트만 실행
-npm run test:e2e
+yarn test:e2e
 
 # 테스트 커버리지 확인
-npm run test:coverage
+yarn test:coverage
 
 # 테스트 watch 모드
-npm run test:watch
+yarn test:watch
 
 # 상세 출력 모드
-npm run test:verbose
+yarn test:verbose
 ```
 
 ### 특정 테스트 파일 실행

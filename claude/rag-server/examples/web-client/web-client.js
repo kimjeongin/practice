@@ -1,8 +1,9 @@
 /**
  * Web Client for RAG MCP Server
  * 
- * This client communicates with the RAG server through HTTP API endpoints
- * Note: This is a demonstration client that would work with a REST API wrapper
+ * This is a demonstration web interface showing how to interact with the RAG server.
+ * Note: This simulates API calls since the server uses MCP (stdio) protocol.
+ * In a real implementation, you would need a REST API wrapper around the MCP server.
  */
 
 class RAGWebClient {
@@ -82,41 +83,33 @@ class RAGWebClient {
     }
 
     enableButtons() {
-        const buttons = ['uploadBtn', 'searchBtn', 'listBtn', 'statusBtn', 'modelInfoBtn', 'modelsBtn', 'refreshStatusBtn'];
+        const buttons = ['searchBtn', 'listBtn', 'statusBtn', 'modelInfoBtn', 'modelsBtn', 'refreshStatusBtn', 'reindexBtn'];
         buttons.forEach(id => {
-            document.getElementById(id).disabled = false;
+            const element = document.getElementById(id);
+            if (element) {
+                element.disabled = false;
+            }
         });
     }
 
-    async uploadFile() {
-        const fileName = document.getElementById('fileName').value.trim();
-        const content = document.getElementById('fileContent').value.trim();
-
-        if (!fileName || !content) {
-            this.showMessage('uploadMessage', 'Please enter both filename and content', 'error');
+    async forceReindex() {
+        if (!confirm('Force reindex all documents? This may take a while for large document collections.')) {
             return;
         }
 
-        this.showLoading('uploadBtn', true);
+        this.showLoading('reindexBtn', true);
 
         try {
-            const response = await this.simulateApiCall('/api/upload', {
-                fileName,
-                content
-            });
-
-            this.showMessage('uploadMessage', `File "${fileName}" uploaded successfully!`, 'success');
+            const response = await this.simulateApiCall('/api/reindex', {});
+            this.showMessage('uploadMessage', 'Documents reindexed successfully!', 'success');
             
-            // Refresh file list
-            await this.listFiles();
+            // Refresh file list and status
+            await Promise.all([this.listFiles(), this.getStatus()]);
             
-            // Clear form
-            document.getElementById('fileName').value = '';
-            document.getElementById('fileContent').value = '';
         } catch (error) {
-            this.showMessage('uploadMessage', `Upload failed: ${error.message}`, 'error');
+            this.showMessage('uploadMessage', `Reindex failed: ${error.message}`, 'error');
         } finally {
-            this.showLoading('uploadBtn', false);
+            this.showLoading('reindexBtn', false);
         }
     }
 
@@ -145,7 +138,7 @@ class RAGWebClient {
                 semanticWeight
             });
 
-            this.displaySearchResults(response.results || []);
+            this.displaySearchResults(response.results || [], query);
         } catch (error) {
             this.showMessage('searchResults', `Search failed: ${error.message}`, 'error');
         } finally {
@@ -153,23 +146,32 @@ class RAGWebClient {
         }
     }
 
-    displaySearchResults(results) {
+    displaySearchResults(results, query) {
         const container = document.getElementById('searchResults');
         
         if (results.length === 0) {
-            container.innerHTML = '<div class="message">No results found. Try uploading some documents first.</div>';
+            container.innerHTML = '<div class="message">No results found. Make sure documents are in the documents/ folder.</div>';
             return;
         }
 
-        const resultsHtml = results.map((result, index) => `
-            <div class="result-item">
-                <div class="result-header">
-                    <div class="result-title">${result.metadata.fileName}</div>
-                    <div class="result-score">${(result.similarity * 100).toFixed(1)}%</div>
-                </div>
-                <div class="result-content">${result.content}</div>
+        const resultsHtml = `
+            <div class="search-header" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin: 0 0 5px 0; color: #333;">Search Results for "${query}"</h3>
+                <p style="margin: 0; color: #666; font-size: 14px;">Found ${results.length} relevant document${results.length !== 1 ? 's' : ''}</p>
             </div>
-        `).join('');
+            ${results.map((result, index) => `
+                <div class="result-item">
+                    <div class="result-header">
+                        <div class="result-title">${result.metadata.fileName}</div>
+                        <div class="result-score">${result.score.toFixed(4)}</div>
+                    </div>
+                    <div class="result-meta" style="font-size: 12px; color: #666; margin: 5px 0;">
+                        Type: ${result.metadata.fileType} • Chunk: ${result.metadata.chunkIndex}
+                    </div>
+                    <div class="result-content">${result.content}</div>
+                </div>
+            `).join('')}
+        `;
 
         container.innerHTML = resultsHtml;
     }
@@ -192,17 +194,17 @@ class RAGWebClient {
         const container = document.getElementById('filesList');
         
         if (files.length === 0) {
-            container.innerHTML = '<div class="message">No files uploaded yet. Upload your first document!</div>';
+            container.innerHTML = '<div class="message">No files indexed yet. Place documents in the documents/ folder!</div>';
             return;
         }
 
         const filesHtml = files.map(file => `
             <div class="file-item">
                 <div class="file-info">
-                    <div class="file-name">${file.fileName}</div>
+                    <div class="file-name">${file.name}</div>
                     <div class="file-meta">
-                        ${file.fileType} • ${file.chunkCount || 'N/A'} chunks • 
-                        Created: ${new Date(file.createdAt).toLocaleDateString()}
+                        ${file.fileType} • ${file.size} bytes • 
+                        Updated: ${new Date(file.updatedAt).toLocaleString()}
                     </div>
                 </div>
             </div>
@@ -233,9 +235,9 @@ class RAGWebClient {
         const statusHtml = `
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
                 <div class="result-item">
-                    <div class="result-title">Health Status</div>
-                    <div style="color: ${status.status === 'healthy' ? '#28a745' : '#dc3545'}; font-weight: 600;">
-                        ${status.status || 'Unknown'}
+                    <div class="result-title">Server Status</div>
+                    <div style="color: #28a745; font-weight: 600;">
+                        Running
                     </div>
                 </div>
                 <div class="result-item">
@@ -245,18 +247,16 @@ class RAGWebClient {
                     </div>
                 </div>
                 <div class="result-item">
+                    <div class="result-title">Vector Dimensions</div>
+                    <div>${status.vectorDimensions || 'N/A'}</div>
+                </div>
+                <div class="result-item">
+                    <div class="result-title">Current Model</div>
+                    <div style="font-size: 12px;">${status.currentModel || 'N/A'}</div>
+                </div>
+                <div class="result-item">
                     <div class="result-title">Memory Usage</div>
-                    <div>${status.memoryUsage?.used || 'N/A'}</div>
-                </div>
-                <div class="result-item">
-                    <div class="result-title">Uptime</div>
-                    <div>${status.uptime || 'N/A'}</div>
-                </div>
-                <div class="result-item">
-                    <div class="result-title">Error Rate</div>
-                    <div style="color: ${(status.errorRate || 0) > 0 ? '#dc3545' : '#28a745'};">
-                        ${status.errorRate || 0}/min
-                    </div>
+                    <div>${status.memoryUsage || 'N/A'}</div>
                 </div>
             </div>
         `;
@@ -372,9 +372,10 @@ class RAGWebClient {
                     errorRate: 0
                 };
 
-            case '/api/upload':
-                this.storeDocument(data);
-                return { success: true, message: 'File uploaded successfully' };
+            case '/api/reindex':
+                // Simulate reindex delay
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return { success: true, message: 'Documents reindexed successfully' };
 
             case '/api/search':
                 return {
@@ -388,11 +389,10 @@ class RAGWebClient {
 
             case '/api/status':
                 return {
-                    status: 'healthy',
                     totalDocuments: this.getStoredDocuments().length,
-                    memoryUsage: { used: '145.2MB' },
-                    uptime: '00:15:32',
-                    errorRate: 0,
+                    vectorDimensions: 384,
+                    currentModel: 'Xenova/all-MiniLM-L6-v2',
+                    memoryUsage: '145.2MB',
                     version: '1.0.0'
                 };
 
@@ -465,13 +465,13 @@ class RAGWebClient {
         // Simple simulation of search results
         return docs.slice(0, topK).map((doc, index) => ({
             content: doc.content.substring(0, 200) + '...',
-            similarity: Math.max(0.5, 1 - (index * 0.1) - Math.random() * 0.2),
+            score: Math.max(0.3, 1 - (index * 0.15) - Math.random() * 0.2),
             metadata: {
                 fileName: doc.fileName,
                 fileType: doc.fileType,
                 chunkIndex: 0
             }
-        })).sort((a, b) => b.similarity - a.similarity);
+        })).sort((a, b) => b.score - a.score);
     }
 }
 
@@ -486,8 +486,8 @@ function connect() {
     }
 }
 
-function uploadFile() {
-    client?.uploadFile();
+function forceReindex() {
+    client?.forceReindex();
 }
 
 function searchDocuments() {

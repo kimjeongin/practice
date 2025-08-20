@@ -64,23 +64,38 @@ class AdvancedRAGClient {
 
   // === Document Management ===
 
-  async uploadFile(content: string, fileName: string): Promise<any> {
-    console.log(`📤 Uploading: ${fileName}`);
+  // Note: File upload happens through file system watcher
+  // Files should be placed in the documents/ directory for automatic indexing
+  async waitForFileIndexing(fileName: string, timeout = 10000): Promise<void> {
+    console.log(`⏳ Waiting for file indexing: ${fileName}`);
     
-    const result = await this.client.callTool({
-      name: 'upload_file',
-      arguments: { content, fileName }
-    });
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      const files = await this.listFiles();
+      if (files.files?.some(f => f.name === fileName)) {
+        console.log(`✅ File ${fileName} has been indexed`);
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
     
-    return this.parseResult(result);
+    throw new Error(`File ${fileName} not indexed within ${timeout}ms`);
   }
 
-  async listFiles(): Promise<any[]> {
+  async listFiles(options: {
+    fileType?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<any> {
     console.log('📋 Listing all files...');
     
     const result = await this.client.callTool({
       name: 'list_files',
-      arguments: {}
+      arguments: {
+        limit: 100,
+        offset: 0,
+        ...options
+      }
     });
     
     return this.parseResult(result);
@@ -88,7 +103,7 @@ class AdvancedRAGClient {
 
   // === Advanced Search ===
 
-  async searchDocuments(options: SearchOptions): Promise<any[]> {
+  async searchDocuments(options: SearchOptions): Promise<any> {
     const { query, useSemanticSearch, useHybridSearch, semanticWeight, topK, fileTypes } = options;
     
     console.log(`🔍 Searching: "${query}"${useHybridSearch ? ' (hybrid)' : useSemanticSearch ? ' (semantic)' : ' (keyword)'}`);
@@ -101,22 +116,31 @@ class AdvancedRAGClient {
         useHybridSearch: useHybridSearch ?? false,
         semanticWeight: semanticWeight ?? 0.7,
         topK: topK ?? 5,
-        fileTypes
+        fileTypes,
+        metadataFilters: {}
       }
     });
     
-    return this.parseResult(result);
+    const response = this.parseResult(result);
+    return response.results || [];
   }
 
-  async generateResponse(query: string, context?: string): Promise<string> {
-    console.log(`🤖 Generating response for: "${query}"`);
+  // Note: Response generation would typically be handled by integrating with an LLM
+  // This server focuses on retrieval - generation would be done client-side
+  async performRAGSearch(query: string, contextLength = 3): Promise<string> {
+    console.log(`🤖 Performing RAG search for: "${query}"`);
     
-    const result = await this.client.callTool({
-      name: 'generate_response',
-      arguments: { query, context }
+    const results = await this.searchDocuments({ 
+      query, 
+      topK: contextLength,
+      useSemanticSearch: true 
     });
     
-    return this.parseResult(result);
+    const contextText = results.map(result => 
+      `**${result.metadata.fileName}** (Score: ${result.score.toFixed(4)}):\n${result.content}`
+    ).join('\n\n---\n\n');
+    
+    return `Based on the search results for "${query}":\n\n${contextText}`;
   }
 
   // === Model Management ===
@@ -143,12 +167,34 @@ class AdvancedRAGClient {
     return this.parseResult(result);
   }
 
+  async switchEmbeddingModel(modelName: string): Promise<any> {
+    console.log(`🔄 Switching to embedding model: ${modelName}...`);
+    
+    const result = await this.client.callTool({
+      name: 'switch_embedding_model',
+      arguments: { modelName }
+    });
+    
+    return this.parseResult(result);
+  }
+
   async downloadModel(modelName?: string): Promise<any> {
     console.log(`⬇️ Downloading model${modelName ? `: ${modelName}` : ' (default)'}...`);
     
     const result = await this.client.callTool({
       name: 'download_model',
       arguments: modelName ? { modelName } : {}
+    });
+    
+    return this.parseResult(result);
+  }
+
+  async forceReindex(clearCache = false): Promise<any> {
+    console.log(`🔄 Force reindexing all documents${clearCache ? ' (clearing cache)' : ''}...`);
+    
+    const result = await this.client.callTool({
+      name: 'force_reindex',
+      arguments: { clearCache }
     });
     
     return this.parseResult(result);
@@ -192,7 +238,7 @@ async function runAdvancedExample() {
     
     // Check initial server status
     const status = await client.getServerStatus();
-    console.log(`📊 Server Status: ${status.status} (${status.totalDocuments} documents)\n`);
+    console.log(`📊 Server Status: Running (${status.totalDocuments || 0} documents)\n`);
     
     // === Model Management Demo ===
     console.log('🤖 === MODEL MANAGEMENT ===');
@@ -202,6 +248,9 @@ async function runAdvancedExample() {
     
     const availableModels = await client.listAvailableModels();
     console.log(`📋 Available models: ${Object.keys(availableModels.availableModels || {}).length}`);
+    if (Object.keys(availableModels.availableModels || {}).length > 0) {
+      console.log(`   Models: ${Object.keys(availableModels.availableModels || {}).join(', ')}`);
+    }
     
     // === Document Upload Demo ===
     console.log('\n📚 === DOCUMENT MANAGEMENT ===');
@@ -276,33 +325,33 @@ AI is a broad field encompassing machine learning, deep learning, natural langua
       }
     ];
     
-    // Upload all documents
-    for (const doc of documents) {
-      await client.uploadFile(doc.content, doc.fileName);
-    }
+    // Note: For this demo, we assume documents are already in the documents/ folder
+    // In practice, you would place files in the documents directory for auto-indexing
+    console.log('📂 Note: This example assumes documents are already indexed from the documents/ folder');
+    console.log('   To add new files, place them in the rag-server/documents/ directory');
     
     // List all files
-    const files = await client.listFiles();
-    console.log(`📁 Total files in system: ${files.length}`);
+    const filesResponse = await client.listFiles();
+    console.log(`📁 Total files in system: ${filesResponse.files?.length || 0}`);
     
     // === Advanced Search Demo ===
     console.log('\n🔍 === ADVANCED SEARCH DEMO ===');
     
     const searchQueries = [
       {
-        query: 'neural networks deep learning',
+        query: 'artificial intelligence machine learning',
         type: 'Semantic Search',
         options: { useSemanticSearch: true, topK: 3 }
       },
       {
-        query: 'data processing cleaning',
+        query: 'neural networks deep learning',
         type: 'Hybrid Search',
         options: { useHybridSearch: true, semanticWeight: 0.7, topK: 3 }
       },
       {
-        query: 'machine learning algorithms',
-        type: 'Filtered Search',
-        options: { useSemanticSearch: true, fileTypes: ['text/markdown'], topK: 2 }
+        query: 'data processing workflow',
+        type: 'Filtered Search (MD only)',
+        options: { useSemanticSearch: true, fileTypes: ['md'], topK: 2 }
       }
     ];
     
@@ -313,7 +362,7 @@ AI is a broad field encompassing machine learning, deep learning, natural langua
       if (results.length > 0) {
         results.slice(0, 2).forEach((result, index) => {
           console.log(`  ${index + 1}. ${result.metadata.fileName}`);
-          console.log(`     📊 Similarity: ${(result.similarity * 100).toFixed(1)}%`);
+          console.log(`     📊 Score: ${result.score.toFixed(4)}`);
           console.log(`     📝 "${result.content.substring(0, 80)}..."`);
         });
       } else {
@@ -321,23 +370,45 @@ AI is a broad field encompassing machine learning, deep learning, natural langua
       }
     }
     
-    // === RAG Demo ===
-    console.log('\n🤖 === RAG RESPONSE GENERATION ===');
+    // === RAG Search Demo ===
+    console.log('\n🤖 === RAG SEARCH DEMO ===');
     
     const ragQueries = [
-      'What are the main types of machine learning?',
-      'How do neural networks work in AI?',
-      'What is the data science workflow?'
+      'What are neural networks?',
+      'How does machine learning work?',
+      'What is data science?'
     ];
     
     for (const query of ragQueries) {
       try {
         console.log(`\n❓ Question: "${query}"`);
-        const response = await client.generateResponse(query);
-        console.log(`🤖 Response: ${response.substring(0, 200)}...`);
+        const context = await client.performRAGSearch(query, 2);
+        console.log(`📚 Context Retrieved:`);
+        console.log(context.substring(0, 300) + '...');
       } catch (error) {
-        console.log(`⚠️  RAG response generation not available (${error.message})`);
+        console.log(`⚠️  RAG search failed: ${error.message}`);
       }
+    }
+    
+    // === Model Management Demo ===
+    console.log('\n🤖 === MODEL MANAGEMENT DEMO ===');
+    
+    try {
+      const availableModels = await client.listAvailableModels();
+      console.log('Available embedding models:', Object.keys(availableModels.availableModels || {}));
+      
+      // Try switching to a different model (if available)
+      const models = Object.keys(availableModels.availableModels || {});
+      if (models.length > 1) {
+        const newModel = models.find(m => m !== currentModel.model);
+        if (newModel) {
+          console.log(`🔄 Trying to switch to: ${newModel}`);
+          await client.switchEmbeddingModel(newModel);
+          console.log('✅ Model switched successfully');
+        }
+      }
+    } catch (error) {
+      console.log(`⚠️  Model management demo failed: ${error.message}`);
     }
     
     // === Performance Analysis ===
@@ -345,18 +416,19 @@ AI is a broad field encompassing machine learning, deep learning, natural langua
     
     const finalStatus = await client.getServerStatus();
     console.log(`📈 Final server status:`);
-    console.log(`   Documents: ${finalStatus.totalDocuments}`);
-    console.log(`   Memory usage: ${finalStatus.memoryUsage?.used || 'N/A'}`);
-    console.log(`   Uptime: ${finalStatus.uptime || 'N/A'}`);
-    console.log(`   Error rate: ${finalStatus.errorRate || 0}/min`);
+    console.log(`   Documents: ${finalStatus.totalDocuments || 0}`);
+    console.log(`   Vector dimensions: ${finalStatus.vectorDimensions || 'N/A'}`);
+    console.log(`   Current model: ${finalStatus.currentModel || 'N/A'}`);
+    console.log(`   Memory usage: ${finalStatus.memoryUsage || 'N/A'}`);
     
     console.log('\n🎉 Advanced example completed successfully!');
     console.log('💡 This demo showcased:');
-    console.log('   ✅ All 7 MCP tools');
-    console.log('   ✅ Multiple search strategies');
-    console.log('   ✅ Model management');
+    console.log('   ✅ Document management via file system');
+    console.log('   ✅ Multiple search strategies (semantic, hybrid)');
+    console.log('   ✅ Model management and switching');
     console.log('   ✅ Performance monitoring');
-    console.log('   ✅ Error handling');
+    console.log('   ✅ Error handling and resilience');
+    console.log('   ✅ RAG search with context retrieval');
     
   } catch (error) {
     console.error('💥 Advanced example failed:', error);

@@ -204,11 +204,11 @@ async function simulateWebClient() {
   
   console.log('📊 Dashboard Features:');
   console.log('   ✅ Real-time status monitoring');
-  console.log('   ✅ Document upload interface');
-  console.log('   ✅ Advanced search controls');
-  console.log('   ✅ File management panel');
+  console.log('   ✅ File system integration guide');
+  console.log('   ✅ Advanced search controls (semantic + hybrid)');
+  console.log('   ✅ Document library management');
   console.log('   ✅ Model management tools');
-  console.log('   ✅ Performance metrics\n');
+  console.log('   ✅ Force reindexing capability\n');
   
   console.log('👤 User interactions:');
   console.log('   📤 Upload document via drag-and-drop');
