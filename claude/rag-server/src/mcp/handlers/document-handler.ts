@@ -36,7 +36,7 @@ export class DocumentHandler {
   async handleListFiles(args: ListFilesArgs) {
     const { fileType, limit = 100, offset = 0 } = args;
     
-    let files = this.fileRepository.getAllFiles();
+    let files = await this.fileRepository.getAllFiles();
 
     if (fileType) {
       files = files.filter(file => 
@@ -48,7 +48,7 @@ export class DocumentHandler {
     const paginatedFiles = files.slice(offset, offset + limit);
 
     return {
-      files: paginatedFiles.map(file => ({
+      files: await Promise.all(paginatedFiles.map(async file => ({
         id: file.id,
         name: file.name,
         path: file.path,
@@ -56,9 +56,9 @@ export class DocumentHandler {
         size: file.size,
         modifiedAt: file.modifiedAt.toISOString(),
         createdAt: file.createdAt.toISOString(),
-        customMetadata: this.fileRepository.getFileMetadata(file.id),
+        customMetadata: await this.fileRepository.getFileMetadata(file.id),
         chunksCount: 0 // TODO: Get chunk count from chunk repository
-      })),
+      }))),
       pagination: {
         total: totalFiles,
         limit,
@@ -77,16 +77,16 @@ export class DocumentHandler {
 
     let file = null;
     if (fileId) {
-      file = this.fileRepository.getFileById(fileId);
+      file = await this.fileRepository.getFileById(fileId);
     } else if (filePath) {
-      file = this.fileRepository.getFileByPath(filePath);
+      file = await this.fileRepository.getFileByPath(filePath);
     }
 
     if (!file) {
       throw new Error('File not found');
     }
 
-    const customMetadata = this.fileRepository.getFileMetadata(file.id);
+    const customMetadata = await this.fileRepository.getFileMetadata(file.id);
 
     return {
       file: {
@@ -112,9 +112,9 @@ export class DocumentHandler {
 
     let file = null;
     if (fileId) {
-      file = this.fileRepository.getFileById(fileId);
+      file = await this.fileRepository.getFileById(fileId);
     } else if (filePath) {
-      file = this.fileRepository.getFileByPath(filePath);
+      file = await this.fileRepository.getFileByPath(filePath);
     }
 
     if (!file) {
@@ -123,10 +123,10 @@ export class DocumentHandler {
 
     // Update metadata
     for (const [key, value] of Object.entries(metadata)) {
-      this.fileRepository.setFileMetadata(file.id, key, String(value));
+      await this.fileRepository.setFileMetadata(file.id, key, String(value));
     }
 
-    const updatedMetadata = this.fileRepository.getFileMetadata(file.id);
+    const updatedMetadata = await this.fileRepository.getFileMetadata(file.id);
 
     return {
       fileId: file.id,
@@ -137,11 +137,11 @@ export class DocumentHandler {
 
   async handleSearchFilesByMetadata(args: SearchFilesByMetadataArgs) {
     const { key, value } = args;
-    const files = this.fileRepository.searchFilesByMetadata(key, value);
+    const files = await this.fileRepository.searchFilesByMetadata(key, value);
 
     return {
       searchCriteria: { key, value },
-      files: files.map(file => ({
+      files: await Promise.all(files.map(async file => ({
         id: file.id,
         name: file.name,
         path: file.path,
@@ -149,8 +149,8 @@ export class DocumentHandler {
         size: file.size,
         modifiedAt: file.modifiedAt.toISOString(),
         createdAt: file.createdAt.toISOString(),
-        customMetadata: this.fileRepository.getFileMetadata(file.id),
-      })),
+        customMetadata: await this.fileRepository.getFileMetadata(file.id),
+      }))),
       totalResults: files.length,
     };
   }

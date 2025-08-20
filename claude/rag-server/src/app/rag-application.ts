@@ -45,7 +45,7 @@ export class RAGApplication {
   private monitoringEnabled: boolean;
 
   constructor(private config: ServerConfig) {
-    this.db = new DatabaseConnection(config.databasePath);
+    this.db = new DatabaseConnection();
     this.monitoringEnabled = process.env['ENABLE_MONITORING'] !== 'false'; // 기본값: true
   }
 
@@ -59,7 +59,7 @@ export class RAGApplication {
       logger.info('Initializing RAG Application');
       
       // Initialize database with health check
-      if (!this.db.isHealthy()) {
+      if (!(await this.db.isHealthy())) {
         throw new DatabaseError('Database is not healthy', 'health_check');
       }
       
@@ -374,7 +374,7 @@ export class RAGApplication {
     
     console.log('🎯 RAG Application started successfully');
     console.log(`📁 Documents directory: ${this.config.documentsDir}`);
-    console.log(`💾 Storage directory: ${this.config.storageDir}`);
+    console.log(`💾 Data directory: ${this.config.dataDir}`);
   }
 
   async shutdown(): Promise<void> {
@@ -429,7 +429,7 @@ export class RAGApplication {
       
       // Close database last
       if (this.db) {
-        this.db.close();
+        await this.db.close();
       }
       
       // Reset circuit breakers
@@ -469,13 +469,16 @@ export class RAGApplication {
     const endTiming = startTiming('unvectorized_processing', { component: 'RAGApplication' });
     
     try {
-      const allFiles = fileRepository.getAllFiles();
+      const allFiles = await fileRepository.getAllFiles();
       logger.info('Processing unvectorized documents', { totalFiles: allFiles.length });
 
-      const unvectorizedFiles = allFiles.filter(file => {
-        const chunks = this.db.getDocumentChunks(file.id);
-        return chunks.length === 0;
-      });
+      const unvectorizedFiles = [];
+      for (const file of allFiles) {
+        const chunks = await this.db.getDocumentChunks(file.id);
+        if (chunks.length === 0) {
+          unvectorizedFiles.push(file);
+        }
+      }
       
       if (unvectorizedFiles.length === 0) {
         logger.info('All documents are already processed');

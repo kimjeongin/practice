@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model File {
+  id          String   @id @default(cuid())
+  path        String   @unique
+  name        String
+  size        Int
+  modifiedAt  DateTime @map("modified_at")
+  createdAt   DateTime @map("created_at")
+  fileType    String   @map("file_type")
+  hash        String
+  indexedAt   DateTime @default(now()) @map("indexed_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  metadata       FileMetadata[]
+  documentChunks DocumentChunk[]
+
+  @@map("files")
+  @@index([path])
+  @@index([hash])
+  @@index([modifiedAt])
+  @@index([fileType])
+}
+
+model FileMetadata {
+  id        Int      @id @default(autoincrement())
+  fileId    String   @map("file_id")
+  key       String
+  value     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, key])
+  @@map("file_metadata")
+  @@index([fileId])
+  @@index([key])
+  @@index([value])
+}
+
+model DocumentChunk {
+  id          String   @id @default(cuid())
+  fileId      String   @map("file_id")
+  chunkIndex  Int      @map("chunk_index")
+  content     String
+  embeddingId String?  @map("embedding_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, chunkIndex])
+  @@map("document_chunks")
+  @@index([fileId])
+  @@index([chunkIndex])
+  @@index([embeddingId])
+}

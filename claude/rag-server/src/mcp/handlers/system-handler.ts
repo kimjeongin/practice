@@ -27,12 +27,12 @@ export class SystemHandler {
   }
 
   async handleGetServerStatus() {
-    const files = this.fileRepository.getAllFiles();
+    const files = await this.fileRepository.getAllFiles();
     const indexedFiles = files.length;
     
     let totalChunks = 0;
     for (const file of files) {
-      const chunks = this.chunkRepository.getDocumentChunks(file.id);
+      const chunks = await this.chunkRepository.getDocumentChunks(file.id);
       totalChunks += chunks.length;
     }
 

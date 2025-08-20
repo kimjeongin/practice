@@ -181,19 +181,23 @@ export class SearchService implements ISearchService {
     });
     
     try {
-      let files = this.fileRepository.getAllFiles();
+      let files = await this.fileRepository.getAllFiles();
       
       if (fileTypes && fileTypes.length > 0) {
         files = files.filter(file => fileTypes.includes(file.fileType.toLowerCase()));
       }
       
       if (metadataFilters) {
-        files = files.filter(file => {
-          const metadata = this.fileRepository.getFileMetadata(file.id);
-          return Object.entries(metadataFilters).every(([key, value]) => 
-            metadata[key] === value
-          );
-        });
+        const filteredFiles = await Promise.all(
+          files.map(async file => {
+            const metadata = await this.fileRepository.getFileMetadata(file.id);
+            const matches = Object.entries(metadataFilters).every(([key, value]) => 
+              metadata[key] === value
+            );
+            return matches ? file : null;
+          })
+        );
+        files = filteredFiles.filter(file => file !== null);
       }
 
       const results: SearchResult[] = [];
@@ -205,8 +209,8 @@ export class SearchService implements ISearchService {
       for (const file of filesToProcess) {
         try {
           // Use synchronized chunks from SQLite (same as Vector DB chunking)
-          const chunks = this.chunkRepository.getDocumentChunks(file.id);
-          const customMetadata = this.fileRepository.getFileMetadata(file.id);
+          const chunks = await this.chunkRepository.getDocumentChunks(file.id);
+          const customMetadata = await this.fileRepository.getFileMetadata(file.id);
           
           for (const chunk of chunks) {
             const content = chunk.content.toLowerCase();

@@ -51,7 +51,7 @@ export class FaissVectorStoreManager {
   constructor(embeddings: Embeddings, config: ServerConfig) {
     this.embeddings = embeddings;
     this.config = config;
-    this.indexPath = join(config.storageDir, 'vectors');
+    this.indexPath = join(config.dataDir, 'vectors');
     
     // 인덱스 디렉토리 생성
     if (!existsSync(this.indexPath)) {

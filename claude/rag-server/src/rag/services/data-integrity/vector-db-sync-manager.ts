@@ -134,9 +134,9 @@ export class VectorDbSyncManager {
     // 5. 벡터 스토어와 데이터베이스 간 일관성 확인
     await this.checkVectorConsistency(issues);
 
-    const allFiles = this.fileRepository.getAllFiles();
+    const allFiles = await this.fileRepository.getAllFiles();
     const totalVectors = await this.getTotalVectorCount();
-    const totalChunks = this.chunkRepository.getTotalChunkCount();
+    const totalChunks = await this.chunkRepository.getTotalChunkCount();
 
     return {
       timestamp: new Date(),
@@ -159,7 +159,7 @@ export class VectorDbSyncManager {
    * 누락된 파일 확인 (DB에는 있지만 실제 파일이 없음)
    */
   private async checkMissingFiles(issues: VectorDbSyncIssue[]): Promise<void> {
-    const allFiles = this.fileRepository.getAllFiles();
+    const allFiles = await this.fileRepository.getAllFiles();
     
     for (const file of allFiles) {
       if (!existsSync(file.path)) {
@@ -178,7 +178,7 @@ export class VectorDbSyncManager {
    * 파일 해시 변경사항 확인
    */
   private async checkHashMismatches(issues: VectorDbSyncIssue[]): Promise<void> {
-    const allFiles = this.fileRepository.getAllFiles();
+    const allFiles = await this.fileRepository.getAllFiles();
     
     for (const file of allFiles) {
       if (existsSync(file.path)) {
@@ -241,7 +241,7 @@ export class VectorDbSyncManager {
           
           if (supportedExtensions.includes(fileExt)) {
             // 데이터베이스에 존재하지 않는 파일인지 확인
-            if (!this.fileRepository.getFileByPath(fullPath)) {
+            if (!(await this.fileRepository.getFileByPath(fullPath))) {
               issues.push({
                 type: 'new_file',
                 filePath: fullPath,
@@ -264,7 +264,7 @@ export class VectorDbSyncManager {
     // 벡터 스토어에는 있지만 데이터베이스에 없는 문서들 확인
     if ('getAllDocumentIds' in this.vectorStoreService) {
       const vectorDocIds = await (this.vectorStoreService as any).getAllDocumentIds();
-      const dbFileIds = new Set(this.fileRepository.getAllFiles().map(f => f.id));
+      const dbFileIds = new Set((await this.fileRepository.getAllFiles()).map(f => f.id));
       
       for (const docId of vectorDocIds) {
         // 문서 ID에서 파일 ID 추출 (구현에 따라 다를 수 있음)
@@ -286,10 +286,10 @@ export class VectorDbSyncManager {
    * 벡터 스토어와 데이터베이스 간 일관성 확인
    */
   private async checkVectorConsistency(issues: VectorDbSyncIssue[]): Promise<void> {
-    const allFiles = this.fileRepository.getAllFiles();
+    const allFiles = await this.fileRepository.getAllFiles();
     
     for (const file of allFiles) {
-      const chunks = this.chunkRepository.getChunksByFileId(file.id);
+      const chunks = await this.chunkRepository.getChunksByFileId(file.id);
       
       if (chunks.length === 0) {
         issues.push({
@@ -360,10 +360,10 @@ export class VectorDbSyncManager {
     );
 
     // 2. 청크 제거
-    this.chunkRepository.deleteDocumentChunks(issue.fileId);
+    await this.chunkRepository.deleteDocumentChunks(issue.fileId);
 
     // 3. 파일 메타데이터 제거
-    this.fileRepository.deleteFile(issue.fileId);
+    await this.fileRepository.deleteFile(issue.fileId);
   }
 
   /**
@@ -474,13 +474,13 @@ export class VectorDbSyncManager {
 
     // 1. 모든 벡터 및 청크 삭제
     await this.vectorStoreService.removeAllDocuments();
-    this.chunkRepository.deleteAllDocumentChunks();
+    await this.chunkRepository.deleteAllDocumentChunks();
 
     // 2. 파일 시스템 기준으로 데이터베이스 정리
-    const allFiles = this.fileRepository.getAllFiles();
+    const allFiles = await this.fileRepository.getAllFiles();
     for (const file of allFiles) {
       if (!existsSync(file.path)) {
-        this.fileRepository.deleteFile(file.id);
+        await this.fileRepository.deleteFile(file.id);
       }
     }
 

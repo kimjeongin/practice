@@ -49,9 +49,8 @@ describe('MCP Server Integration Tests', () => {
     } as any;
 
     testConfig = {
-      databasePath: '/test/test.db',
-      documentsDir: '/test/documents',
-      storageDir: '/test/storage',
+      documentsDir: './documents',
+      dataDir: './.data',
       chunkSize: 1000,
       chunkOverlap: 200,
       similarityTopK: 5,
@@ -116,7 +115,7 @@ describe('MCP Server Integration Tests', () => {
 
   describe('configuration', () => {
     test('should accept valid server config', () => {
-      expect(testConfig.documentsDir).toBe('/test/documents');
+      expect(testConfig.documentsDir).toBe('./documents');
       expect(testConfig.embeddingService).toBe('local');
       expect(testConfig.embeddingModel).toBe('all-MiniLM-L6-v2');
     });

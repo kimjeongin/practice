@@ -1,310 +1,220 @@
-import Database from 'better-sqlite3';
-import { readFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { randomUUID } from 'crypto';
-import { FileMetadata, CustomMetadata, DocumentChunk } from '@/shared/types/index.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { PrismaClient } from '@prisma/client';
+import { mkdirSync, existsSync } from 'fs';
+import { dirname } from 'path';
+import { FileMetadata, DocumentChunk } from '@/shared/types/index.js';
 
 export class DatabaseConnection {
-  private db: Database.Database;
+  private prisma: PrismaClient;
 
-  constructor(databasePath: string) {
+  constructor() {
     // Ensure the database directory exists
-    const dbDir = dirname(databasePath);
+    const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './.data/database/rag.db';
+    const dbDir = dirname(dbPath);
     if (!existsSync(dbDir)) {
       mkdirSync(dbDir, { recursive: true });
     }
     
-    this.db = new Database(databasePath);
-    this.initializeSchema();
-  }
-
-  private initializeSchema(): void {
-    const schema = `
--- Files table to store basic file information
-CREATE TABLE IF NOT EXISTS files (
-    id TEXT PRIMARY KEY,
-    path TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    size INTEGER NOT NULL,
-    modified_at DATETIME NOT NULL,
-    created_at DATETIME NOT NULL,
-    file_type TEXT NOT NULL,
-    hash TEXT NOT NULL,
-    indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Custom metadata table for flexible key-value storage
-CREATE TABLE IF NOT EXISTS file_metadata (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_id TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
-    UNIQUE(file_id, key)
-);
-
--- Document chunks table for storing processed text chunks
-CREATE TABLE IF NOT EXISTS document_chunks (
-    id TEXT PRIMARY KEY,
-    file_id TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    content TEXT NOT NULL,
-    embedding_id TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
-    UNIQUE(file_id, chunk_index)
-);
-
--- Indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
-CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);
-CREATE INDEX IF NOT EXISTS idx_files_modified_at ON files(modified_at);
-CREATE INDEX IF NOT EXISTS idx_files_file_type ON files(file_type);
-
-CREATE INDEX IF NOT EXISTS idx_file_metadata_file_id ON file_metadata(file_id);
-CREATE INDEX IF NOT EXISTS idx_file_metadata_key ON file_metadata(key);
-CREATE INDEX IF NOT EXISTS idx_file_metadata_value ON file_metadata(value);
-
-CREATE INDEX IF NOT EXISTS idx_document_chunks_file_id ON document_chunks(file_id);
-CREATE INDEX IF NOT EXISTS idx_document_chunks_chunk_index ON document_chunks(chunk_index);
-CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_id ON document_chunks(embedding_id);
-    `;
-    
-    this.db.exec(schema);
+    this.prisma = new PrismaClient();
   }
 
   // File operations
-  insertFile(file: Omit<FileMetadata, 'id'>): string {
-    const fileId = randomUUID();
-    const stmt = this.db.prepare(`
-      INSERT INTO files (id, path, name, size, modified_at, created_at, file_type, hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  async insertFile(file: Omit<FileMetadata, 'id'>): Promise<string> {
+    const result = await this.prisma.file.create({
+      data: {
+        path: file.path,
+        name: file.name,
+        size: file.size,
+        modifiedAt: file.modifiedAt,
+        createdAt: file.createdAt,
+        fileType: file.fileType,
+        hash: file.hash,
+      },
+    });
     
-    stmt.run(
-      fileId,
-      file.path,
-      file.name,
-      file.size,
-      file.modifiedAt.toISOString(),
-      file.createdAt.toISOString(),
-      file.fileType,
-      file.hash
-    );
-    
-    return fileId;
+    return result.id;
   }
 
-  updateFile(id: string, updates: Partial<Omit<FileMetadata, 'id'>>): void {
-    const fields: string[] = [];
-    const values: any[] = [];
+  async updateFile(id: string, updates: Partial<Omit<FileMetadata, 'id'>>): Promise<void> {
+    const data: any = {};
     
-    if (updates.path) {
-      fields.push('path = ?');
-      values.push(updates.path);
-    }
-    if (updates.name) {
-      fields.push('name = ?');
-      values.push(updates.name);
-    }
-    if (updates.size !== undefined) {
-      fields.push('size = ?');
-      values.push(updates.size);
-    }
-    if (updates.modifiedAt) {
-      fields.push('modified_at = ?');
-      values.push(updates.modifiedAt.toISOString());
-    }
-    if (updates.fileType) {
-      fields.push('file_type = ?');
-      values.push(updates.fileType);
-    }
-    if (updates.hash) {
-      fields.push('hash = ?');
-      values.push(updates.hash);
-    }
+    if (updates.path) data.path = updates.path;
+    if (updates.name) data.name = updates.name;
+    if (updates.size !== undefined) data.size = updates.size;
+    if (updates.modifiedAt) data.modifiedAt = updates.modifiedAt;
+    if (updates.fileType) data.fileType = updates.fileType;
+    if (updates.hash) data.hash = updates.hash;
     
-    if (fields.length > 0) {
-      fields.push('updated_at = CURRENT_TIMESTAMP');
-      values.push(id);
-      
-      const stmt = this.db.prepare(`
-        UPDATE files SET ${fields.join(', ')} WHERE id = ?
-      `);
-      stmt.run(...values);
+    if (Object.keys(data).length > 0) {
+      await this.prisma.file.update({
+        where: { id },
+        data,
+      });
     }
   }
 
-  getFileByPath(path: string): FileMetadata | null {
-    const stmt = this.db.prepare('SELECT * FROM files WHERE path = ?');
-    const row = stmt.get(path) as any;
+  async getFileByPath(path: string): Promise<FileMetadata | null> {
+    const file = await this.prisma.file.findUnique({
+      where: { path },
+    });
     
-    if (!row) return null;
+    if (!file) return null;
     
     return {
-      id: row.id,
-      path: row.path,
-      name: row.name,
-      size: row.size,
-      modifiedAt: new Date(row.modified_at),
-      createdAt: new Date(row.created_at),
-      fileType: row.file_type,
-      hash: row.hash
+      id: file.id,
+      path: file.path,
+      name: file.name,
+      size: file.size,
+      modifiedAt: file.modifiedAt,
+      createdAt: file.createdAt,
+      fileType: file.fileType,
+      hash: file.hash,
     };
   }
 
-  getFileById(id: string): FileMetadata | null {
-    const stmt = this.db.prepare('SELECT * FROM files WHERE id = ?');
-    const row = stmt.get(id) as any;
+  async getFileById(id: string): Promise<FileMetadata | null> {
+    const file = await this.prisma.file.findUnique({
+      where: { id },
+    });
     
-    if (!row) return null;
+    if (!file) return null;
     
     return {
-      id: row.id,
-      path: row.path,
-      name: row.name,
-      size: row.size,
-      modifiedAt: new Date(row.modified_at),
-      createdAt: new Date(row.created_at),
-      fileType: row.file_type,
-      hash: row.hash
+      id: file.id,
+      path: file.path,
+      name: file.name,
+      size: file.size,
+      modifiedAt: file.modifiedAt,
+      createdAt: file.createdAt,
+      fileType: file.fileType,
+      hash: file.hash,
     };
   }
 
-  getAllFiles(): FileMetadata[] {
-    const stmt = this.db.prepare('SELECT * FROM files ORDER BY created_at DESC');
-    const rows = stmt.all() as any[];
+  async getAllFiles(): Promise<FileMetadata[]> {
+    const files = await this.prisma.file.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
     
-    return rows.map(row => ({
-      id: row.id,
-      path: row.path,
-      name: row.name,
-      size: row.size,
-      modifiedAt: new Date(row.modified_at),
-      createdAt: new Date(row.created_at),
-      fileType: row.file_type,
-      hash: row.hash
+    return files.map((file: any): FileMetadata => ({
+      id: file.id,
+      path: file.path,
+      name: file.name,
+      size: file.size,
+      modifiedAt: file.modifiedAt,
+      createdAt: file.createdAt,
+      fileType: file.fileType,
+      hash: file.hash,
     }));
   }
 
-  deleteFile(id: string): void {
-    const stmt = this.db.prepare('DELETE FROM files WHERE id = ?');
-    stmt.run(id);
+  async deleteFile(id: string): Promise<void> {
+    await this.prisma.file.delete({
+      where: { id },
+    });
   }
 
   // Metadata operations
-  setFileMetadata(fileId: string, key: string, value: string): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO file_metadata (file_id, key, value)
-      VALUES (?, ?, ?)
-    `);
-    stmt.run(fileId, key, value);
+  async setFileMetadata(fileId: string, key: string, value: string): Promise<void> {
+    await this.prisma.fileMetadata.upsert({
+      where: {
+        fileId_key: {
+          fileId,
+          key,
+        },
+      },
+      update: { value },
+      create: { fileId, key, value },
+    });
   }
 
-  getFileMetadata(fileId: string): Record<string, string> {
-    const stmt = this.db.prepare('SELECT key, value FROM file_metadata WHERE file_id = ?');
-    const rows = stmt.all(fileId) as { key: string; value: string }[];
+  async getFileMetadata(fileId: string): Promise<Record<string, string>> {
+    const metadata = await this.prisma.fileMetadata.findMany({
+      where: { fileId },
+      select: { key: true, value: true },
+    });
     
-    const metadata: Record<string, string> = {};
-    for (const row of rows) {
-      metadata[row.key] = row.value;
+    const result: Record<string, string> = {};
+    for (const item of metadata) {
+      result[item.key] = item.value;
     }
-    return metadata;
+    return result;
   }
 
-  searchFilesByMetadata(key: string, value?: string): FileMetadata[] {
-    let query: string;
-    let params: any[];
+  async searchFilesByMetadata(key: string, value?: string): Promise<FileMetadata[]> {
+    const whereCondition = value ? { key, value } : { key };
     
-    if (value) {
-      query = `
-        SELECT DISTINCT f.* FROM files f
-        JOIN file_metadata fm ON f.id = fm.file_id
-        WHERE fm.key = ? AND fm.value = ?
-        ORDER BY f.created_at DESC
-      `;
-      params = [key, value];
-    } else {
-      query = `
-        SELECT DISTINCT f.* FROM files f
-        JOIN file_metadata fm ON f.id = fm.file_id
-        WHERE fm.key = ?
-        ORDER BY f.created_at DESC
-      `;
-      params = [key];
-    }
+    const files = await this.prisma.file.findMany({
+      where: {
+        metadata: {
+          some: whereCondition,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
     
-    const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as any[];
-    
-    return rows.map(row => ({
-      id: row.id,
-      path: row.path,
-      name: row.name,
-      size: row.size,
-      modifiedAt: new Date(row.modified_at),
-      createdAt: new Date(row.created_at),
-      fileType: row.file_type,
-      hash: row.hash
+    return files.map((file: any): FileMetadata => ({
+      id: file.id,
+      path: file.path,
+      name: file.name,
+      size: file.size,
+      modifiedAt: file.modifiedAt,
+      createdAt: file.createdAt,
+      fileType: file.fileType,
+      hash: file.hash,
     }));
   }
 
   // Document chunk operations
-  insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): string {
-    const chunkId = randomUUID();
-    const stmt = this.db.prepare(`
-      INSERT INTO document_chunks (id, file_id, chunk_index, content, embedding_id)
-      VALUES (?, ?, ?, ?, ?)
-    `);
+  async insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): Promise<string> {
+    const result = await this.prisma.documentChunk.create({
+      data: {
+        fileId: chunk.fileId,
+        chunkIndex: chunk.chunkIndex,
+        content: chunk.content,
+        embeddingId: chunk.embeddingId || null,
+      },
+    });
     
-    stmt.run(chunkId, chunk.fileId, chunk.chunkIndex, chunk.content, chunk.embeddingId || null);
-    return chunkId;
+    return result.id;
   }
 
-  getDocumentChunks(fileId: string): DocumentChunk[] {
-    const stmt = this.db.prepare('SELECT * FROM document_chunks WHERE file_id = ? ORDER BY chunk_index');
-    const rows = stmt.all(fileId) as any[];
+  async getDocumentChunks(fileId: string): Promise<DocumentChunk[]> {
+    const chunks = await this.prisma.documentChunk.findMany({
+      where: { fileId },
+      orderBy: { chunkIndex: 'asc' },
+    });
     
-    return rows.map(row => ({
-      id: row.id,
-      fileId: row.file_id,
-      chunkIndex: row.chunk_index,
-      content: row.content,
-      embeddingId: row.embedding_id
+    return chunks.map((chunk: any): DocumentChunk => ({
+      id: chunk.id,
+      fileId: chunk.fileId,
+      chunkIndex: chunk.chunkIndex,
+      content: chunk.content,
+      embeddingId: chunk.embeddingId || undefined,
     }));
   }
 
-  deleteDocumentChunks(fileId: string): void {
-    const stmt = this.db.prepare('DELETE FROM document_chunks WHERE file_id = ?');
-    stmt.run(fileId);
+  async deleteDocumentChunks(fileId: string): Promise<void> {
+    await this.prisma.documentChunk.deleteMany({
+      where: { fileId },
+    });
   }
 
-  deleteAllDocumentChunks(): void {
-    const stmt = this.db.prepare('DELETE FROM document_chunks');
-    stmt.run();
+  async deleteAllDocumentChunks(): Promise<void> {
+    await this.prisma.documentChunk.deleteMany({});
   }
 
-  getTotalChunkCount(): number {
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM document_chunks');
-    const row = stmt.get() as { count: number };
-    return row.count;
+  async getTotalChunkCount(): Promise<number> {
+    return await this.prisma.documentChunk.count();
   }
 
-  close(): void {
-    this.db.close();
+  async close(): Promise<void> {
+    await this.prisma.$disconnect();
   }
 
   // Health check
-  isHealthy(): boolean {
+  async isHealthy(): Promise<boolean> {
     try {
-      const stmt = this.db.prepare('SELECT 1');
-      stmt.get();
+      await this.prisma.$queryRaw`SELECT 1`;
       return true;
     } catch {
       return false;

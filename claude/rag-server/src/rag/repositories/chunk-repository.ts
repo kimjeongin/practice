@@ -2,38 +2,38 @@ import { DatabaseConnection } from '@/infrastructure/database/database-connectio
 import { DocumentChunk } from '@/rag/models/models.js';
 
 export interface IChunkRepository {
-  insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): string;
-  getDocumentChunks(fileId: string): DocumentChunk[];
-  getChunksByFileId(fileId: string): DocumentChunk[];
-  deleteDocumentChunks(fileId: string): void;
-  deleteAllDocumentChunks(): void;
-  getTotalChunkCount(): number;
+  insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): Promise<string>;
+  getDocumentChunks(fileId: string): Promise<DocumentChunk[]>;
+  getChunksByFileId(fileId: string): Promise<DocumentChunk[]>;
+  deleteDocumentChunks(fileId: string): Promise<void>;
+  deleteAllDocumentChunks(): Promise<void>;
+  getTotalChunkCount(): Promise<number>;
 }
 
 export class ChunkRepository implements IChunkRepository {
   constructor(private db: DatabaseConnection) {}
 
-  insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): string {
-    return this.db.insertDocumentChunk(chunk);
+  async insertDocumentChunk(chunk: Omit<DocumentChunk, 'id'>): Promise<string> {
+    return await this.db.insertDocumentChunk(chunk);
   }
 
-  getDocumentChunks(fileId: string): DocumentChunk[] {
-    return this.db.getDocumentChunks(fileId);
+  async getDocumentChunks(fileId: string): Promise<DocumentChunk[]> {
+    return await this.db.getDocumentChunks(fileId);
   }
 
-  getChunksByFileId(fileId: string): DocumentChunk[] {
-    return this.db.getDocumentChunks(fileId);
+  async getChunksByFileId(fileId: string): Promise<DocumentChunk[]> {
+    return await this.db.getDocumentChunks(fileId);
   }
 
-  deleteDocumentChunks(fileId: string): void {
-    this.db.deleteDocumentChunks(fileId);
+  async deleteDocumentChunks(fileId: string): Promise<void> {
+    await this.db.deleteDocumentChunks(fileId);
   }
 
-  deleteAllDocumentChunks(): void {
-    this.db.deleteAllDocumentChunks();
+  async deleteAllDocumentChunks(): Promise<void> {
+    await this.db.deleteAllDocumentChunks();
   }
 
-  getTotalChunkCount(): number {
-    return this.db.getTotalChunkCount();
+  async getTotalChunkCount(): Promise<number> {
+    return await this.db.getTotalChunkCount();
   }
 }

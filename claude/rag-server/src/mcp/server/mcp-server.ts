@@ -252,7 +252,7 @@ export class MCPServer {
 
   private setupResources(): void {
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      const files = this.fileRepository.getAllFiles();
+      const files = await this.fileRepository.getAllFiles();
       
       return {
         resources: files.map(file => ({
@@ -272,7 +272,7 @@ export class MCPServer {
       }
       
       const filePath = uri.replace('file://', '');
-      const file = this.fileRepository.getFileByPath(filePath);
+      const file = await this.fileRepository.getFileByPath(filePath);
       
       if (!file) {
         throw new Error('File not found');

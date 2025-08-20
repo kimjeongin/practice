@@ -26,6 +26,7 @@ build/
 
 # Data directory (contains user files)
 data/
+.data/
 
 # Logs
 logs/
@@ -111,8 +112,6 @@ temp/
 ehthumbs.db
 Thumbs.db
 
-storage/
-
 # Executable distribution files
 packages/
 dist/executables/
@@ -132,3 +131,4 @@ deb-temp/
 rpm-temp/
 dmg-temp/
 portable/
+/src/generated/prisma

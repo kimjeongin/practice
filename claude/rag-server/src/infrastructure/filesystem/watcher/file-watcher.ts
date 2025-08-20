@@ -64,7 +64,7 @@ export class FileWatcher extends EventEmitter {
     this.watcher
       .on('add', (path: string) => this.debounceFileEvent(path, 'add'))
       .on('change', (path: string) => this.debounceFileEvent(path, 'change'))
-      .on('unlink', (path: string) => this.handleFileRemoved(path))
+      .on('unlink', (path: string) => this.handleFileRemoved(path).catch(error => this.emit('error', error)))
       .on('error', (error: any) => this.emit('error', error));
 
     console.log(`FileWatcher started, watching: ${this.documentsDir}`);
@@ -115,17 +115,17 @@ export class FileWatcher extends EventEmitter {
       }
 
       const metadata = await this.extractFileMetadata(path);
-      const existingFile = this.db.getFileByPath(path);
+      const existingFile = await this.db.getFileByPath(path);
 
       if (existingFile) {
         // File already exists, check if it changed
         if (existingFile.hash !== metadata.hash) {
-          this.db.updateFile(existingFile.id, metadata);
+          await this.db.updateFile(existingFile.id, metadata);
           this.emit('change', { type: 'changed', path, metadata: { ...existingFile, ...metadata } });
         }
       } else {
         // New file
-        const fileId = this.db.insertFile(metadata);
+        const fileId = await this.db.insertFile(metadata);
         const fullMetadata = { id: fileId, ...metadata };
         this.emit('change', { type: 'added', path, metadata: fullMetadata });
       }
@@ -142,11 +142,11 @@ export class FileWatcher extends EventEmitter {
       }
 
       const metadata = await this.extractFileMetadata(path);
-      const existingFile = this.db.getFileByPath(path);
+      const existingFile = await this.db.getFileByPath(path);
 
       if (existingFile) {
         if (existingFile.hash !== metadata.hash) {
-          this.db.updateFile(existingFile.id, metadata);
+          await this.db.updateFile(existingFile.id, metadata);
           this.emit('change', { type: 'changed', path, metadata: { ...existingFile, ...metadata } });
         }
       } else {
@@ -159,11 +159,11 @@ export class FileWatcher extends EventEmitter {
     }
   }
 
-  private handleFileRemoved(path: string): void {
+  private async handleFileRemoved(path: string): Promise<void> {
     try {
-      const existingFile = this.db.getFileByPath(path);
+      const existingFile = await this.db.getFileByPath(path);
       if (existingFile) {
-        this.db.deleteFile(existingFile.id);
+        await this.db.deleteFile(existingFile.id);
         this.emit('change', { type: 'removed', path, metadata: existingFile });
       }
     } catch (error) {
@@ -213,7 +213,7 @@ export class FileWatcher extends EventEmitter {
     }
 
     // Get all files currently in database
-    const dbFiles = this.db.getAllFiles();
+    const dbFiles = await this.db.getAllFiles();
     const dbFilePaths = new Set(dbFiles.map((f: FileMetadata) => f.path));
 
     // Use chokidar to get all current files
@@ -236,7 +236,7 @@ export class FileWatcher extends EventEmitter {
             // Remove files that no longer exist
             for (const dbFile of dbFiles) {
               if (!currentFiles.has(dbFile.path)) {
-                this.db.deleteFile(dbFile.id);
+                await this.db.deleteFile(dbFile.id);
                 this.emit('change', { type: 'removed', path: dbFile.path, metadata: dbFile });
               }
             }

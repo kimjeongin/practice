@@ -44,7 +44,7 @@ export class FileProcessingService implements IFileProcessingService {
     try {
       logger.info('Starting file processing', { filePath, fileName: basename(filePath) });
       
-      let fileMetadata = this.fileRepository.getFileByPath(filePath);
+      let fileMetadata = await this.fileRepository.getFileByPath(filePath);
       if (!fileMetadata) {
         const error = new FileProcessingError(
           'File not found in database', 
@@ -103,7 +103,7 @@ export class FileProcessingService implements IFileProcessingService {
       });
 
       // Clear existing chunks for this file
-      this.chunkRepository.deleteDocumentChunks(fileMetadata.id);
+      await this.chunkRepository.deleteDocumentChunks(fileMetadata.id);
       await this.vectorStoreService.removeDocumentsByFileId(fileMetadata.id);
 
       // Process chunks in batches with enhanced error handling
@@ -144,7 +144,7 @@ export class FileProcessingService implements IFileProcessingService {
     const endTiming = startTiming('file_removal', { filePath, component: 'DocumentService' });
     
     try {
-      const fileMetadata = this.fileRepository.getFileByPath(filePath);
+      const fileMetadata = await this.fileRepository.getFileByPath(filePath);
       if (fileMetadata) {
         await withTimeout(
           this.vectorStoreService.removeDocumentsByFileId(fileMetadata.id),
@@ -225,7 +225,7 @@ export class FileProcessingService implements IFileProcessingService {
           embeddingId: chunkId,
         };
         
-        const insertedChunkId = this.chunkRepository.insertDocumentChunk(dbChunk);
+        const insertedChunkId = await this.chunkRepository.insertDocumentChunk(dbChunk);
         
         // Add SQLite ID to vector document metadata for cross-reference
         vectorDoc.metadata.sqliteId = insertedChunkId;
@@ -295,7 +295,7 @@ export class FileProcessingService implements IFileProcessingService {
       }
       
       // Reprocess all files with batch processing
-      const allFiles = this.fileRepository.getAllFiles();
+      const allFiles = await this.fileRepository.getAllFiles();
       logger.info('Reprocessing all files', { fileCount: allFiles.length });
       
       await BatchProcessor.processBatch(

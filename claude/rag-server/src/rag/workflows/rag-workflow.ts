@@ -103,14 +103,14 @@ export class RAGWorkflow {
     metadataFilters?: Record<string, string>;
   }): Promise<RAGSearchResult[]> {
     // 키워드 검색 구현 (현재는 단순 매칭)
-    const allFiles = this.fileRepository.getAllFiles();
+    const allFiles = await this.fileRepository.getAllFiles();
     const filteredFiles = this.filterFilesByType(allFiles, options.fileTypes);
     
     const results: RAGSearchResult[] = [];
     const queryLower = query.toLowerCase();
 
     for (const file of filteredFiles) {
-      const chunks = this.chunkRepository.getDocumentChunks(file.id);
+      const chunks = await this.chunkRepository.getDocumentChunks(file.id);
       
       for (const chunk of chunks) {
         const contentLower = chunk.content.toLowerCase();
