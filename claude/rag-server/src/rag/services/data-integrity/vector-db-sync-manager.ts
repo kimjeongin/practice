@@ -45,7 +45,7 @@ export interface VectorDbSyncOptions {
  * 프로그램 시작 시 일관성 검사 및 자동 복구 기능 제공
  */
 export class VectorDbSyncManager {
-  private dataDirectory: string;
+  private documentsDirectory: string;
 
   constructor(
     private fileRepository: IFileRepository,
@@ -54,7 +54,7 @@ export class VectorDbSyncManager {
     private config: ServerConfig,
     private fileProcessingService?: IFileProcessingService
   ) {
-    this.dataDirectory = dirname(config.databasePath);
+    this.documentsDirectory = config.documentsDir;
   }
 
   /**
@@ -207,9 +207,9 @@ export class VectorDbSyncManager {
     const supportedExtensions = ['.txt', '.md', '.pdf', '.csv', '.json'];
     
     try {
-      await this.scanDirectoryForNewFiles(this.dataDirectory, supportedExtensions, issues);
+      await this.scanDirectoryForNewFiles(this.documentsDirectory, supportedExtensions, issues);
     } catch (error) {
-      logger.warn('Failed to scan directory for new files', { error, directory: this.dataDirectory });
+      logger.warn('Failed to scan directory for new files', { error, directory: this.documentsDirectory });
     }
   }
 

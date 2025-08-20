@@ -14,12 +14,10 @@ export function loadConfig(): ServerConfig {
   // Default paths with proper separation
   const storageDir = resolve(process.env['STORAGE_DIR'] || './storage');
   const documentsDir = resolve(process.env['DOCUMENTS_DIR'] || './documents');
-  const dataDir = resolve(process.env['DATA_DIR'] || './data'); // 하위 호환성
   
   return {
     nodeEnv: process.env['NODE_ENV'] || 'development',
     databasePath: resolve(process.env['DATABASE_PATH'] || `${storageDir}/database/rag.db`),
-    dataDir,
     documentsDir,
     storageDir,
     chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1024', 10),

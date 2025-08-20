@@ -6,34 +6,34 @@
   "type": "module",
   "scripts": {
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "build": "pnpm run clean && tsc && tsc-alias -p tsconfig-alias.json",
+    "build": "yarn clean && tsc && tsc-alias -p tsconfig-alias.json",
     "build:fast": "tsc && tsc-alias -p tsconfig-alias.json",
     "start": "node dist/app/index.js",
     "dev": "tsx watch src/app/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
-    "test": "pnpm run build && jest",
+    "test": "yarn build && jest",
     "test:unit": "jest test/unit",
     "test:integration": "jest test/integration",
     "test:e2e": "jest test/e2e",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:verbose": "jest --verbose",
-    "test:all": "pnpm run test:unit && pnpm run test:integration && pnpm run test:e2e",
-    "build:executable": "pnpm run build && pnpm run bundle:all",
-    "bundle:all": "pnpm run bundle:linux && pnpm run bundle:macos && pnpm run bundle:windows",
+    "test:all": "yarn test:unit && yarn test:integration && yarn test:e2e",
+    "build:executable": "yarn build && yarn bundle:all",
+    "bundle:all": "yarn bundle:linux && yarn bundle:macos && yarn bundle:windows",
     "bundle:linux": "node deploy/scripts/build-executable.js linux",
     "bundle:macos": "node deploy/scripts/build-executable.js darwin",
     "bundle:windows": "node deploy/scripts/build-executable.js win32",
-    "package:all": "pnpm run package:linux && pnpm run package:macos && pnpm run package:windows",
+    "package:all": "yarn package:linux && yarn package:macos && yarn package:windows",
     "package:linux": "node deploy/packaging/linux.js",
     "package:macos": "node deploy/packaging/macos.js",
     "package:windows": "node deploy/packaging/windows.js",
-    "release:build": "pnpm run build:executable && pnpm run package:all",
+    "release:build": "yarn build:executable && yarn package:all",
     "build:sqlite": "bash scripts/build-sqlite.sh",
-    "postinstall": "pnpm run build:sqlite"
+    "postinstall": "yarn build:sqlite"
   },
-  "packageManager": "pnpm@10.15.0",
+  "packageManager": "yarn@1.22.19",
   "keywords": [
     "mcp",
     "rag",
@@ -83,7 +83,7 @@
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
-    "caxa": "^3.0.1",
+    "pkg": "^5.8.1",
     "create-dmg": "^7.0.0",
     "electron-builder": "^26.0.19",
     "eslint": "^9.32.0",
@@ -96,6 +96,6 @@
     "typescript": "^5.9.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   }
 }

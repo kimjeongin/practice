@@ -11,7 +11,7 @@ describe('Full Application E2E Tests', () => {
   let serverProcess: ChildProcess;
   let testFiles: string[] = [];
   const TEST_PORT = 9999;
-  const TEST_DB_PATH = path.join(process.cwd(), 'data', 'test-e2e-rag.db');
+  const TEST_DB_PATH = path.join(process.cwd(), 'storage', 'database', 'test-e2e-rag.db');
 
   beforeAll(async () => {
     // Clean up any existing test database
@@ -164,12 +164,12 @@ describe('Full Application E2E Tests', () => {
       testFiles.push(testFile);
 
       // Copy file to data directory to trigger file watcher
-      const dataDir = path.join(process.cwd(), 'data');
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      const documentsDir = path.join(process.cwd(), 'documents');
+      if (!fs.existsSync(documentsDir)) {
+        fs.mkdirSync(documentsDir, { recursive: true });
       }
 
-      const targetFile = path.join(dataDir, 'fs-integration.txt');
+      const targetFile = path.join(documentsDir, 'fs-integration.txt');
       fs.copyFileSync(testFile, targetFile);
 
       // Wait for file to be processed
@@ -188,8 +188,8 @@ describe('Full Application E2E Tests', () => {
       const testFile = createMockFile('update-test.txt', 'Initial content');
       testFiles.push(testFile);
 
-      const dataDir = path.join(process.cwd(), 'data');
-      const targetFile = path.join(dataDir, 'update-test.txt');
+      const documentsDir = path.join(process.cwd(), 'documents');
+      const targetFile = path.join(documentsDir, 'update-test.txt');
 
       // Create initial file
       fs.copyFileSync(testFile, targetFile);
@@ -212,8 +212,8 @@ describe('Full Application E2E Tests', () => {
       const testFile = createMockFile('delete-test.txt', 'Content to be deleted');
       testFiles.push(testFile);
 
-      const dataDir = path.join(process.cwd(), 'data');
-      const targetFile = path.join(dataDir, 'delete-test.txt');
+      const documentsDir = path.join(process.cwd(), 'documents');
+      const targetFile = path.join(documentsDir, 'delete-test.txt');
 
       // Create file
       fs.copyFileSync(testFile, targetFile);
@@ -234,7 +234,7 @@ describe('Full Application E2E Tests', () => {
       );
       testFiles.push(...files);
 
-      const dataDir = path.join(process.cwd(), 'data');
+      const documentsDir = path.join(process.cwd(), 'documents');
       const targetFiles: string[] = [];
 
       // Process files in batches to avoid overwhelming the system
@@ -242,7 +242,7 @@ describe('Full Application E2E Tests', () => {
         const batch = files.slice(i, i + 3);
         
         for (const file of batch) {
-          const targetFile = path.join(dataDir, path.basename(file));
+          const targetFile = path.join(documentsDir, path.basename(file));
           fs.copyFileSync(file, targetFile);
           targetFiles.push(targetFile);
         }
@@ -267,8 +267,8 @@ describe('Full Application E2E Tests', () => {
       const largeFile = createMockFile('large-file.txt', largeContent);
       testFiles.push(largeFile);
 
-      const dataDir = path.join(process.cwd(), 'data');
-      const targetFile = path.join(dataDir, 'large-file.txt');
+      const documentsDir = path.join(process.cwd(), 'documents');
+      const targetFile = path.join(documentsDir, 'large-file.txt');
 
       const startTime = Date.now();
       fs.copyFileSync(largeFile, targetFile);
@@ -295,8 +295,8 @@ describe('Full Application E2E Tests', () => {
       const corruptedFile = createMockFile('corrupted.txt', '\x00\x01\x02\x03\xFF\xFE');
       testFiles.push(corruptedFile);
 
-      const dataDir = path.join(process.cwd(), 'data');
-      const targetFile = path.join(dataDir, 'corrupted.txt');
+      const documentsDir = path.join(process.cwd(), 'documents');
+      const targetFile = path.join(documentsDir, 'corrupted.txt');
 
       fs.copyFileSync(corruptedFile, targetFile);
       await waitFor(2000);
@@ -305,7 +305,7 @@ describe('Full Application E2E Tests', () => {
       const normalFile = createMockFile('normal-after-error.txt', SAMPLE_DOCUMENTS.simple.content);
       testFiles.push(normalFile);
 
-      const normalTargetFile = path.join(dataDir, 'normal-after-error.txt');
+      const normalTargetFile = path.join(documentsDir, 'normal-after-error.txt');
       fs.copyFileSync(normalFile, normalTargetFile);
       await waitFor(2000);
 
@@ -327,11 +327,11 @@ describe('Full Application E2E Tests', () => {
       );
       testFiles.push(...files);
 
-      const dataDir = path.join(process.cwd(), 'data');
+      const documentsDir = path.join(process.cwd(), 'documents');
       
       // Copy all files simultaneously
       const copyPromises = files.map(file => {
-        const targetFile = path.join(dataDir, path.basename(file));
+        const targetFile = path.join(documentsDir, path.basename(file));
         return new Promise<string>((resolve) => {
           fs.copyFileSync(file, targetFile);
           resolve(targetFile);
@@ -383,8 +383,8 @@ describe('Full Application E2E Tests', () => {
       const testFile = createMockFile('embedding-test.txt', 'Short test content');
       testFiles.push(testFile);
 
-      const dataDir = path.join(process.cwd(), 'data');
-      const targetFile = path.join(dataDir, 'embedding-test.txt');
+      const documentsDir = path.join(process.cwd(), 'documents');
+      const targetFile = path.join(documentsDir, 'embedding-test.txt');
       fs.copyFileSync(testFile, targetFile);
 
       await waitFor(3000);

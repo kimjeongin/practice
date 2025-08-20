@@ -32,7 +32,6 @@ export interface McpResponse {
 
 export interface ServerConfig {
   databasePath: string;
-  dataDir: string;        // 하위 호환성을 위해 유지
   documentsDir: string;   // 사용자 파일 디렉토리 (파일 워처 대상)
   storageDir: string;     // 시스템 파일 디렉토리 (벡터DB, 캐시 등)
   chunkSize: number;

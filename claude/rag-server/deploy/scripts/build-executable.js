@@ -8,7 +8,7 @@ import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const projectRoot = resolve(__dirname, '..');
+const projectRoot = resolve(__dirname, '../..');
 
 // Parse command line arguments
 const targetPlatform = process.argv[2] || 'linux';
@@ -43,7 +43,7 @@ if (!buildConfig) {
 }
 
 // Ensure output directory exists
-const outputDir = join(projectRoot, 'dist', 'executables');
+const outputDir = join(projectRoot, 'deploy', 'dist', 'executables');
 if (!existsSync(outputDir)) {
   mkdirSync(outputDir, { recursive: true });
 }
@@ -55,7 +55,7 @@ try {
   const distPath = join(projectRoot, 'dist', 'app', 'index.js');
   if (!existsSync(distPath)) {
     console.log('📦 Building project first...');
-    execSync('npm run build', { cwd: projectRoot, stdio: 'inherit' });
+    execSync('yarn build', { cwd: projectRoot, stdio: 'inherit' });
   }
 
   // Clean up files that shouldn't be in the executable
@@ -70,23 +70,20 @@ try {
 
   const excludePaths = cleanupDirs.map(dir => `--exclude "${dir}"`).join(' ');
 
-  // Use caxa to create executable
+  // Use pkg to create executable
   const outputPath = join(outputDir, buildConfig.outputName);
-  const caxaCommand = [
-    'npx caxa',
-    `--input "${projectRoot}"`,
+  const pkgCommand = [
+    'npx pkg',
+    `"${distPath}"`,
+    `--target "node18-${buildConfig.platform}-${buildConfig.arch}"`,
     `--output "${outputPath}"`,
-    `--command "{{caxa}}/node_modules/.bin/node" "{{caxa}}/dist/app/index.js"`,
-    excludePaths,
-    '--exclude "*.log"',
-    '--exclude "*.tsbuildinfo"',
-    '--exclude "node_modules/.cache"'
+    '--compress GZip'
   ].join(' ');
 
-  console.log(`🚀 Creating executable with caxa...`);
-  console.log(`Command: ${caxaCommand}`);
+  console.log(`🚀 Creating executable with pkg...`);
+  console.log(`Command: ${pkgCommand}`);
   
-  execSync(caxaCommand, { cwd: projectRoot, stdio: 'inherit' });
+  execSync(pkgCommand, { cwd: projectRoot, stdio: 'inherit' });
 
   console.log(`✅ Successfully created executable: ${outputPath}`);
   

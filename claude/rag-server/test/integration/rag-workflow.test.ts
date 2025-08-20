@@ -44,7 +44,8 @@ describe('RAGWorkflow Integration Tests', () => {
     // Test configuration
     testConfig = {
       databasePath: '/test/test.db',
-      dataDir: '/test',
+      documentsDir: '/test/documents',
+      storageDir: '/test/storage',
       chunkSize: 1000,
       chunkOverlap: 200,
       similarityTopK: 5,

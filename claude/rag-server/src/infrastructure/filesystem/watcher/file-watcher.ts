@@ -15,15 +15,15 @@ export interface FileChangeEvent {
 export class FileWatcher extends EventEmitter {
   private watcher: any | null = null;
   private db: DatabaseConnection;
-  private dataDir: string;
+  private documentsDir: string;
   private supportedExtensions: Set<string>;
   private processingFiles: Map<string, NodeJS.Timeout> = new Map();
   private readonly DEBOUNCE_DELAY = 300; // 300ms debounce
 
-  constructor(db: DatabaseConnection, dataDir: string) {
+  constructor(db: DatabaseConnection, documentsDir: string) {
     super();
     this.db = db;
-    this.dataDir = dataDir;
+    this.documentsDir = documentsDir;
     this.supportedExtensions = new Set([
       '.txt', '.md', '.pdf', '.docx', '.doc', '.rtf', '.csv', '.json', '.xml', '.html'
     ]);
@@ -34,7 +34,7 @@ export class FileWatcher extends EventEmitter {
       throw new Error('FileWatcher is already started');
     }
 
-    this.watcher = chokidar.watch(this.dataDir, {
+    this.watcher = chokidar.watch(this.documentsDir, {
       ignored: [
         /(^|[\/\\])\../, // ignore dotfiles and directories
         '**/node_modules/**', // ignore node_modules
@@ -67,7 +67,7 @@ export class FileWatcher extends EventEmitter {
       .on('unlink', (path: string) => this.handleFileRemoved(path))
       .on('error', (error: any) => this.emit('error', error));
 
-    console.log(`FileWatcher started, watching: ${this.dataDir}`);
+    console.log(`FileWatcher started, watching: ${this.documentsDir}`);
   }
 
   stop(): void {
@@ -220,7 +220,7 @@ export class FileWatcher extends EventEmitter {
     const currentFiles = new Set<string>();
     
     return new Promise((resolve, reject) => {
-      const watcher = chokidar.watch(this.dataDir, {
+      const watcher = chokidar.watch(this.documentsDir, {
         ignored: /(^|[\/\\])\./, // ignore dotfiles
         persistent: false,
       });
