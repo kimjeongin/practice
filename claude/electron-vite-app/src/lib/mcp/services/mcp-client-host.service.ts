@@ -2,8 +2,8 @@ import { EventEmitter } from 'events'
 import { app } from 'electron'
 import { join } from 'path'
 import { promises as fs } from 'fs'
-import { ConnectionManager } from './connection-manager'
-import { ToolDiscoveryService } from './tool-discovery-service'
+import { ConnectionManager } from './mcp-connection-manager.service'
+import { ToolDiscoveryService } from './mcp-tool-discovery.service'
 import { 
   ServerConfig,
   ServerConnection,
@@ -12,7 +12,7 @@ import {
   ExecutionResult,
   ExecutionHistoryEntry,
   ClientHostConfig
-} from '../../shared/types/mcp-types'
+} from '../types/mcp-server.types'
 
 export class MCPClientHostService extends EventEmitter {
   private connectionManager: ConnectionManager
@@ -422,12 +422,11 @@ export class MCPClientHostService extends EventEmitter {
       description: 'Local RAG server with document search and upload capabilities',
       transport: 'stdio',
       command: 'node',
-      args: ['../rag-server/dist/app/index.js'],
-      cwd: process.cwd(),
+      args: ['/Users/jeongin/workspace/practice/claude/rag-server/dist/app/index.js'],
+      cwd: '/Users/jeongin/workspace/practice/claude/rag-server',
       autoReconnect: true,
       reconnectDelay: 5000,
       maxReconnectAttempts: 5,
-      enabled: true,
       tags: ['rag', 'search', 'documents']
     }
 

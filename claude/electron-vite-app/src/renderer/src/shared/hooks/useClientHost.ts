@@ -5,7 +5,7 @@ import {
   MCPTool, 
   ToolFilter,
   ExecutionHistoryEntry 
-} from '../../../shared/types/mcp-types'
+} from '../../../../shared/types/mcp.types'
 
 interface ClientHostState {
   loading: boolean

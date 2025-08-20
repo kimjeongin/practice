@@ -1,11 +1,11 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron'
-import { getClientHostService } from '../services/client-host-service'
+import { getClientHostService } from '../services/mcp-client-host.service'
 import { 
   ServerConfig, 
   ToolFilter, 
   IPC_CHANNELS,
   IPCResponse 
-} from '../../shared/types/mcp-types'
+} from '../types/mcp-server.types'
 
 // Error handling wrapper for IPC calls
 async function handleIPCRequest<T>(

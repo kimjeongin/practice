@@ -1,12 +1,12 @@
 import { EventEmitter } from 'events'
-import { ConnectionManager } from './connection-manager'
+import { ConnectionManager } from './mcp-connection-manager.service'
 import { 
   MCPTool, 
   ToolFilter, 
   ExecutionContext,
   ExecutionResult,
   ExecutionHistoryEntry
-} from '../../shared/types/mcp-types'
+} from '../types/mcp-server.types'
 
 export class ToolDiscoveryService extends EventEmitter {
   private connectionManager: ConnectionManager

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useClientHost } from '../hooks/useClientHost'
-import { ServerConfig } from '../../../shared/types/mcp-types'
+import { useClientHost } from '../../../shared/hooks/useClientHost'
+import { ServerConfig } from '../../../../../shared/types/mcp.types'
 
 interface ServerFormData {
   name: string
@@ -9,7 +9,6 @@ interface ServerFormData {
   command: string
   args: string
   cwd: string
-  enabled: boolean
   autoReconnect: boolean
   reconnectDelay: number
   maxReconnectAttempts: number
@@ -39,7 +38,6 @@ export function ServerManager() {
     command: '',
     args: '',
     cwd: '',
-    enabled: true,
     autoReconnect: true,
     reconnectDelay: 5000,
     maxReconnectAttempts: 5,
@@ -54,7 +52,6 @@ export function ServerManager() {
       command: '',
       args: '',
       cwd: '',
-      enabled: true,
       autoReconnect: true,
       reconnectDelay: 5000,
       maxReconnectAttempts: 5,
@@ -74,7 +71,6 @@ export function ServerManager() {
       command: formData.transport === 'stdio' ? formData.command : undefined,
       args: formData.transport === 'stdio' && formData.args ? formData.args.split(' ').filter(Boolean) : undefined,
       cwd: formData.cwd || undefined,
-      enabled: formData.enabled,
       autoReconnect: formData.autoReconnect,
       reconnectDelay: formData.reconnectDelay,
       maxReconnectAttempts: formData.maxReconnectAttempts,
@@ -102,7 +98,6 @@ export function ServerManager() {
       command: server.config.command || '',
       args: server.config.args ? server.config.args.join(' ') : '',
       cwd: server.config.cwd || '',
-      enabled: server.config.enabled,
       autoReconnect: server.config.autoReconnect,
       reconnectDelay: server.config.reconnectDelay,
       maxReconnectAttempts: server.config.maxReconnectAttempts,
@@ -126,14 +121,14 @@ export function ServerManager() {
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'connected': return 'text-green-600'
-      case 'connecting': case 'reconnecting': return 'text-yellow-600'
-      case 'error': return 'text-red-600'
-      default: return 'text-gray-600'
-    }
-  }
+  // const getStatusColor = (status: string) => {
+  //   switch (status) {
+  //     case 'connected': return 'text-green-600'
+  //     case 'connecting': case 'reconnecting': return 'text-yellow-600'
+  //     case 'error': return 'text-red-600'
+  //     default: return 'text-gray-600'
+  //   }
+  // }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -525,23 +520,6 @@ export function ServerManager() {
               </div>
 
               <div className="flex items-center justify-center space-x-6 py-2">
-                <label className="flex items-center cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={formData.enabled}
-                    onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                    className="sr-only"
-                  />
-                  <div className={`relative w-12 h-6 rounded-full transition-all duration-200 ${
-                    formData.enabled ? 'bg-green-500' : 'bg-gray-300'
-                  }`}>
-                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${
-                      formData.enabled ? 'translate-x-6' : 'translate-x-0'
-                    }`}></div>
-                  </div>
-                  <span className="ml-3 font-medium text-gray-700 group-hover:text-gray-900">Server Enabled</span>
-                </label>
-
                 <label className="flex items-center cursor-pointer group">
                   <input
                     type="checkbox"

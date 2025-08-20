@@ -9,7 +9,7 @@ import {
   ExecutionHistoryEntry,
   IPCResponse,
   IPC_CHANNELS
-} from '../shared/types/mcp-types'
+} from '../lib/mcp/types/mcp-server.types'
 
 // MCP Client Host API implementation
 const clientHostAPI = {

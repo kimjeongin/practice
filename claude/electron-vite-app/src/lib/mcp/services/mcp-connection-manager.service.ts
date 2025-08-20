@@ -6,7 +6,7 @@ import {
   ServerConnection, 
   ServerStatus,
   MCPTool
-} from '../../shared/types/mcp-types'
+} from '../types/mcp-server.types'
 
 export class ConnectionManager extends EventEmitter {
   private connections: Map<string, ServerConnection> = new Map()

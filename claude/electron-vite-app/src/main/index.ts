@@ -1,9 +1,9 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { startClientHostService, stopClientHostService } from './services/client-host-service'
-import { registerClientHostHandlers, unregisterClientHostHandlers } from './ipc/client-host-handlers'
+import { startClientHostService, stopClientHostService } from '../lib/mcp/services/mcp-client-host.service'
+import { registerClientHostHandlers, unregisterClientHostHandlers } from '../lib/mcp/ipc/mcp-client-host.handlers'
 
 function createWindow(): void {
   // Create the browser window.
@@ -53,7 +53,6 @@ async function initializeClientHostService(): Promise<void> {
     console.error('❌ Failed to initialize MCP Client Host Service:', error)
     
     // Show error dialog to user
-    const { dialog } = require('electron')
     dialog.showErrorBox(
       'MCP Client Host Error',
       `Failed to start MCP Client Host Service: ${error instanceof Error ? error.message : 'Unknown error'}\n\nThe application will continue but MCP features may not work.`
@@ -96,7 +95,6 @@ async function cleanupClientHostService(): Promise<void> {
     console.log('🧹 Starting comprehensive MCP Client Host cleanup...')
     
     // Show cleanup progress to user
-    const { dialog } = require('electron')
     const cleanupNotification = new Promise<void>((resolve) => {
       // Create a simple notification window or use existing main window
       const windows = BrowserWindow.getAllWindows()

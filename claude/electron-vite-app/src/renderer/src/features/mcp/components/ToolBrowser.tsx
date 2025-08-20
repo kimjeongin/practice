@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useClientHost } from '../hooks/useClientHost'
-import { MCPTool, ToolFilter } from '../../../shared/types/mcp-types'
+import { useClientHost } from '../../../shared/hooks/useClientHost'
+import { MCPTool, ToolFilter } from '../../../../../shared/types/mcp.types'
 
 interface ToolExecutionForm {
   parameters: Record<string, any>
