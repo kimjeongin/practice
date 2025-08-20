@@ -19,13 +19,13 @@ fi
 # Install dependencies if needed
 if [ ! -d node_modules ]; then
     echo "📦 Installing dependencies..."
-    pnpm install
+    yarn install
 fi
 
 # Build if needed
 if [ ! -d dist ]; then
     echo "🔨 Building project..."
-    pnpm build
+    yarn build
 fi
 
 echo "🎯 Starting RAG MCP Server..."
@@ -36,4 +36,4 @@ echo "Press Ctrl+C to stop the server"
 echo ""
 
 # Start the server
-pnpm start
+yarn start
