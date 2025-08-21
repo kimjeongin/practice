@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach, jest } from '@jest/globals';
-import { waitFor, expectAsyncThrow } from '../helpers/test-helpers';
+import { describe, test, expect } from '@jest/globals';
+import { waitFor, expectAsyncThrow } from '../helpers/test-helpers.js';
 
 describe('Test Utilities', () => {
   describe('waitFor', () => {

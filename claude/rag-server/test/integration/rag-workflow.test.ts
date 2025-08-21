@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
-import { RAGWorkflow } from '../../src/rag/workflows/rag-workflow';
-import { ISearchService } from '../../src/shared/types/interfaces';
-import { IFileRepository } from '../../src/rag/repositories/document-repository';
-import { IChunkRepository } from '../../src/rag/repositories/chunk-repository';
-import { ServerConfig } from '../../src/shared/types/index';
+import { RAGWorkflow } from '../../src/rag/workflows/rag-workflow.js';
+import { ISearchService } from '../../src/shared/types/interfaces.js';
+import { IFileRepository } from '../../src/rag/repositories/document-repository.js';
+import { IChunkRepository } from '../../src/rag/repositories/chunk-repository.js';
+import { ServerConfig } from '../../src/shared/types/index.js';
 
 describe('RAGWorkflow Integration Tests', () => {
   let ragWorkflow: RAGWorkflow;
@@ -120,8 +120,8 @@ describe('RAGWorkflow Integration Tests', () => {
         },
       ];
 
-      mockFileRepository.getAllFiles.mockReturnValue(mockFiles);
-      mockChunkRepository.getDocumentChunks.mockReturnValue(mockChunks);
+      mockFileRepository.getAllFiles.mockResolvedValue(mockFiles);
+      mockChunkRepository.getDocumentChunks.mockResolvedValue(mockChunks);
 
       const results = await ragWorkflow.search('vector databases', {
         useSemanticSearch: false,
@@ -175,8 +175,8 @@ describe('RAGWorkflow Integration Tests', () => {
         },
       ];
 
-      mockFileRepository.getAllFiles.mockReturnValue(mockFiles);
-      mockChunkRepository.getDocumentChunks.mockReturnValue(mockChunks);
+      mockFileRepository.getAllFiles.mockResolvedValue(mockFiles);
+      mockChunkRepository.getDocumentChunks.mockResolvedValue(mockChunks);
 
       const results = await ragWorkflow.search('vector databases', {
         useHybridSearch: true,
@@ -309,7 +309,7 @@ describe('RAGWorkflow Integration Tests', () => {
     test('should log search type correctly for hybrid search', async () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       mockSearchService.search.mockResolvedValue([]);
-      mockFileRepository.getAllFiles.mockReturnValue([]);
+      mockFileRepository.getAllFiles.mockResolvedValue([]);
 
       await ragWorkflow.search('test query', { useHybridSearch: true });
 

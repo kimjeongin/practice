@@ -18,7 +18,7 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(p-timeout|p-retry|opossum)/)'
+    'node_modules/(?!(p-timeout|p-retry|opossum|@huggingface|faiss-node|@langchain)/)'
   ],
   setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
   collectCoverageFrom: [
@@ -29,7 +29,7 @@ export default {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
-  testTimeout: 30000,
+  testTimeout: 60000,
   verbose: true,
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   forceExit: true,

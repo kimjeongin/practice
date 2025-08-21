@@ -1,85 +1,118 @@
-import { describe, test, expect } from '@jest/globals';
-import { spawn } from 'child_process';
+import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
+import { DatabaseConnection } from '../../src/infrastructure/database/database-connection.js';
+import { loadConfig } from '../../src/infrastructure/config/config.js';
+import { createTestFile, removeTestFile } from '../helpers/test-helpers.js';
+import fs from 'fs';
+import path from 'path';
 
-describe('Simple E2E Tests', () => {
-  test('should test basic application startup simulation', async () => {
-    // Simulate application startup without actually starting the server
-    const mockAppState = {
-      initialized: false,
-      config: null,
-      services: {}
-    };
+describe('E2E Simple Integration Tests', () => {
+  let db: DatabaseConnection;
+  let testFiles: string[] = [];
 
-    // Simulate initialization
-    mockAppState.initialized = true;
-    mockAppState.config = {
-      server: { port: 3000 },
-      database: { path: ':memory:' }
-    };
-    mockAppState.services = {
-      database: 'connected',
-      vectorStore: 'initialized',
-      embeddings: 'loaded'
-    };
+  beforeAll(async () => {
+    // Configuration is already set up by setup.ts
+    db = new DatabaseConnection();
+  }, 30000);
 
-    expect(mockAppState.initialized).toBe(true);
-    expect(mockAppState.config).toBeDefined();
-    expect(mockAppState.services).toHaveProperty('database');
-  });
-
-  test('should handle environment variables', () => {
-    const originalEnv = process.env.NODE_ENV;
+  afterAll(async () => {
+    // Clean up test files
+    testFiles.forEach(filePath => removeTestFile(filePath));
     
-    // Set test environment
-    process.env.NODE_ENV = 'test';
-    expect(process.env.NODE_ENV).toBe('test');
-    
-    // Restore original environment
-    process.env.NODE_ENV = originalEnv;
+    if (db) {
+      await db.close();
+    }
   });
 
-  test('should simulate file processing workflow', async () => {
-    const workflow = {
-      addDocument: jest.fn().mockResolvedValue({ id: 'doc1', status: 'processed' }),
-      search: jest.fn().mockResolvedValue([{ content: 'test result', score: 0.9 }]),
-      removeDocument: jest.fn().mockResolvedValue({ status: 'removed' })
+  test('should verify test environment is properly configured', async () => {
+    const config = loadConfig();
+    
+    // Test configuration values
+    expect(config.nodeEnv).toBe('test');
+    expect(config.logLevel).toBe('error');
+    expect(config.chunkSize).toBe(512); // From test env
+    expect(config.chunkOverlap).toBe(25); // From test env
+    expect(config.similarityTopK).toBe(3); // From test env
+  }, 10000);
+
+  test('should connect to test database', async () => {
+    const isHealthy = await db.isHealthy();
+    expect(isHealthy).toBe(true);
+  }, 10000);
+
+  test('should create and manage test files', async () => {
+    const testContent = `# Test Document
+    
+    This is a simple test document to verify file operations
+    are working correctly in the e2e environment.`;
+
+    const testFilePath = createTestFile('e2e-simple-test.md', testContent);
+    testFiles.push(testFilePath);
+
+    // Verify file was created
+    expect(fs.existsSync(testFilePath)).toBe(true);
+    
+    // Verify file content
+    const content = fs.readFileSync(testFilePath, 'utf8');
+    expect(content).toContain('Test Document');
+    expect(content).toContain('simple test document');
+  }, 10000);
+
+  test('should handle basic database operations', async () => {
+    const testContent = 'Test content for database operations';
+    const testFilePath = createTestFile('db-test.txt', testContent);
+    testFiles.push(testFilePath);
+
+    // Get file metadata
+    const stats = fs.statSync(testFilePath);
+    const fileMetadata = {
+      path: testFilePath,
+      name: path.basename(testFilePath),
+      size: stats.size,
+      modifiedAt: stats.mtime,
+      createdAt: stats.birthtime,
+      fileType: 'txt',
+      hash: `test-hash-${Date.now()}`
     };
 
-    // Test document addition
-    const addResult = await workflow.addDocument('/path/to/test.txt');
-    expect(addResult.status).toBe('processed');
+    // Insert file into database
+    const fileId = await db.insertFile(fileMetadata);
+    expect(fileId).toBeDefined();
+    expect(typeof fileId).toBe('string');
 
-    // Test search
-    const searchResults = await workflow.search('test query');
-    expect(searchResults).toHaveLength(1);
-    expect(searchResults[0].score).toBe(0.9);
-
-    // Test document removal
-    const removeResult = await workflow.removeDocument('/path/to/test.txt');
-    expect(removeResult.status).toBe('removed');
-  });
-
-  test('should verify system requirements', () => {
-    // Check Node.js version (should be >= 18)
-    const nodeVersion = process.version;
-    const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0]);
-    expect(majorVersion).toBeGreaterThanOrEqual(18);
-
-    // Check that required modules can be imported
-    expect(() => require('fs')).not.toThrow();
-    expect(() => require('path')).not.toThrow();
-    expect(() => require('child_process')).not.toThrow();
-  });
+    // Retrieve file from database
+    const retrievedFile = await db.getFileById(fileId);
+    expect(retrievedFile).toBeDefined();
+    expect(retrievedFile?.path).toBe(testFilePath);
+    expect(retrievedFile?.name).toBe('db-test.txt');
+  }, 20000);
 
   test('should handle concurrent operations', async () => {
-    const concurrentOps = Array.from({ length: 5 }, (_, i) => 
-      new Promise(resolve => setTimeout(() => resolve(`result-${i}`), Math.random() * 100))
+    const concurrentOps = Array.from({ length: 3 }, (_, i) => 
+      new Promise<string>(resolve => {
+        setTimeout(() => {
+          const testFilePath = createTestFile(`concurrent-${i}.txt`, `Content ${i}`);
+          testFiles.push(testFilePath);
+          resolve(testFilePath);
+        }, Math.random() * 100);
+      })
     );
 
-    const results = await Promise.all(concurrentOps);
-    expect(results).toHaveLength(5);
-    results.forEach((result, index) => {
-      expect(result).toBe(`result-${index}`);
+    const filePaths = await Promise.all(concurrentOps);
+    expect(filePaths).toHaveLength(3);
+    
+    // Verify all files exist
+    filePaths.forEach(filePath => {
+      expect(fs.existsSync(filePath)).toBe(true);
     });
-  });
-}, 30000);
+  }, 15000);
+
+  test('should handle error scenarios gracefully', async () => {
+    // Test with invalid file path
+    const nonExistentFile = await db.getFileByPath('/path/does/not/exist.txt');
+    expect(nonExistentFile).toBeNull();
+
+    // Test database health during operations
+    const isStillHealthy = await db.isHealthy();
+    expect(isStillHealthy).toBe(true);
+  }, 10000);
+});
