@@ -119,7 +119,7 @@ export class ConfigFactory {
         compressionEnabled: false,
       },
       monitoring: {
-        enabled: true,
+        enabled: false, // Disabled in development to avoid port conflicts when used as MCP server
         port: 3001,
         metricsPath: '/metrics',
         healthCheckPath: '/health',

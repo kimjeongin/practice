@@ -29,10 +29,14 @@ export default {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
-  testTimeout: 60000,
+  testTimeout: 30000, // Reduced from 60s to 30s
   verbose: true,
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   forceExit: true,
   detectOpenHandles: true,
-  maxWorkers: 1
+  maxWorkers: 1,
+  // Additional options to prevent hanging
+  watchPathIgnorePatterns: ['/node_modules/', '/dist/', '/coverage/'],
+  clearMocks: true,
+  restoreMocks: true
 };

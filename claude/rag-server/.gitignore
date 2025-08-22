@@ -95,6 +95,8 @@ dist
 # Temporary folders
 tmp/
 temp/
+# Test temporary files (but keep the temp directory structure)
+tests/temp/temp-test-*
 
 # Editor directories and files
 .vscode/

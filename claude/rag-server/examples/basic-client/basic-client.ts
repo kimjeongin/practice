@@ -63,23 +63,9 @@ class BasicRAGClient {
   }
 
   async uploadFile(content: string, fileName: string): Promise<void> {
-    console.log(`📄 Uploading file: ${fileName}`);
-    
-    try {
-      const result = await this.client.callTool({
-        name: 'upload_file',
-        arguments: {
-          content,
-          fileName
-        }
-      });
-      
-      console.log('✅ File uploaded successfully');
-      console.log(`📊 Result:`, result.content?.[0]?.text || result.content);
-    } catch (error) {
-      console.error('❌ Failed to upload file:', error);
-      throw error;
-    }
+    console.log(`📄 Upload file feature not yet implemented in simplified server`);
+    console.log(`📄 Would upload: ${fileName} (${content.length} characters)`);
+    console.log('✅ Mock upload completed - will be implemented in next iteration');
   }
 
   async searchDocuments(query: string, useSemanticSearch = true): Promise<SearchResult[]> {
@@ -90,15 +76,20 @@ class BasicRAGClient {
         name: 'search_documents',
         arguments: {
           query,
-          useSemanticSearch,
           topK: 5
         }
       });
       
-      const results = result.content?.[0]?.text ? JSON.parse(result.content[0].text) : [];
+      const responseData = result.content?.[0]?.text ? JSON.parse(result.content[0].text) : { results: [] };
+      const results = responseData.results || [];
       console.log(`📊 Found ${results.length} results`);
       
-      return results;
+      // Convert score to similarity for interface compatibility
+      return results.map((result: any) => ({
+        content: result.content,
+        similarity: result.score || 0,
+        metadata: result.metadata
+      }));
     } catch (error) {
       console.error('❌ Search failed:', error);
       throw error;
@@ -106,22 +97,9 @@ class BasicRAGClient {
   }
 
   async listFiles(): Promise<any[]> {
-    console.log('📁 Listing all files...');
-    
-    try {
-      const result = await this.client.callTool({
-        name: 'list_files',
-        arguments: {}
-      });
-      
-      const files = result.content?.[0]?.text ? JSON.parse(result.content[0].text) : [];
-      console.log(`📊 Found ${files.length} files`);
-      
-      return files;
-    } catch (error) {
-      console.error('❌ Failed to list files:', error);
-      throw error;
-    }
+    console.log('📁 List files feature not yet implemented in simplified server');
+    console.log('✅ Mock file list - will be implemented in next iteration');
+    return [];
   }
 
   async getServerStatus(): Promise<any> {

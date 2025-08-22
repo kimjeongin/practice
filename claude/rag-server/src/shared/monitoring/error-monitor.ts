@@ -467,8 +467,10 @@ export function setupGlobalErrorHandling() {
     errorMonitor.recordError(structuredError);
     logger.fatal('Uncaught Exception', structuredError);
     
-    // Graceful shutdown
-    process.exit(1);
+    // Graceful shutdown with logger flush
+    setTimeout(() => {
+      process.exit(1);
+    }, 100); // Give logger time to flush
   });
 
   logger.info('Global error handling setup completed');
