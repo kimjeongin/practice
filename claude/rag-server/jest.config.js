@@ -2,10 +2,10 @@ export default {
   preset: 'ts-jest/presets/default-esm',
   extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: 'node',
-  roots: ['<rootDir>/src', '<rootDir>/test'],
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: [
-    '<rootDir>/test/**/*.test.ts',
-    '<rootDir>/test/**/*.spec.ts',
+    '<rootDir>/tests/**/*.test.ts',
+    '<rootDir>/tests/**/*.spec.ts',
   ],
   transform: {
     '^.+\\.ts$': ['ts-jest', {
@@ -18,9 +18,9 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(p-timeout|p-retry|opossum|@huggingface|faiss-node|@langchain)/)'
+    'node_modules/(?!(p-timeout|p-retry|opossum)/)'
   ],
-  setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',

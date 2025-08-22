@@ -1,37 +1,35 @@
 # Production Deployment Guide
 
-> **Complete guide for deploying RAG MCP Server in production environments**
+## Overview
 
-This guide covers Docker deployment, scaling strategies, security configurations, and enterprise deployment patterns validated through comprehensive testing.
+This guide covers Docker deployment, cloud platforms, and production configurations for the RAG MCP Server.
 
-## 🎯 Deployment Overview
+## Deployment Options
 
-The RAG MCP Server is production-ready with the following deployment options:
+- **Docker Deployment** - Containerized deployment with health checks
+- **Cloud Deployment** - AWS, GCP, Azure platforms
+- **Direct Installation** - Node.js-based deployment
+- **Scaling Setup** - High-availability configurations
 
-- **🐳 Docker Deployment** - Containerized deployment with health checks
-- **☁️ Cloud Deployment** - AWS, GCP, Azure deployment patterns  
-- **📦 Binary Distribution** - Self-contained executable distribution
-- **🏢 Enterprise Setup** - High-availability and scaling configurations
+## Quick Installation
 
-## 🚀 Quick Installation
-
-### Option 1: Docker Installation (Recommended)
+### Docker Installation (Recommended)
 
 **Prerequisites:**
 - Docker 20.10+ and Docker Compose
 - 2GB+ RAM available
 - 10GB+ disk space
 
-**Installation steps:**
+**Steps:**
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-org/rag-mcp-server.git
-cd rag-mcp-server
+git clone <repository-url>
+cd rag-server
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your production settings
+# Edit .env with production settings
 
 # 3. Build and start
 docker-compose up -d
@@ -40,26 +38,25 @@ docker-compose up -d
 curl http://localhost:3001/api/health
 ```
 
-### Option 2: Direct Installation
+### Direct Installation
 
 **Prerequisites:**
 - Node.js 22+
 - yarn package manager
 - 2GB+ RAM available
 
-**Installation steps:**
+**Steps:**
 
 ```bash
-# 1. Clone and setup
-git clone https://github.com/your-org/rag-mcp-server.git
-cd rag-mcp-server
-
-# 2. Install dependencies
+# 1. Install dependencies
 yarn install
+
+# 2. Setup database
+yarn db:setup
 
 # 3. Configure environment
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with settings
 
 # 4. Build and start
 yarn build
@@ -69,61 +66,41 @@ yarn start
 curl http://localhost:3001/api/health
 ```
 
-### Option 3: Binary Distribution
+## Performance Metrics
 
-**Download pre-built binaries:**
+**Bundle Analysis:**
 
-```bash
-# Download for your platform
-curl -L https://github.com/your-org/rag-mcp-server/releases/latest/download/rag-server-linux-x64.tar.gz | tar -xz
+| Component | Size |
+|-----------|------|
+| Core Application | ~50MB |
+| Node.js Runtime | ~150MB |
+| FAISS Library | ~25MB |
+| AI Model (default) | 23MB |
+| **Total** | ~248MB |
 
-# Or for macOS
-curl -L https://github.com/your-org/rag-mcp-server/releases/latest/download/rag-server-macos-x64.tar.gz | tar -xz
+**Performance:**
+- Startup time: 2-3 seconds
+- Document processing: Real-time
+- Memory usage: 150-200MB
+- Search latency: <100ms average
 
-# Configure and start
-cd rag-server
-cp .env.example .env
-./start.sh
-```
-
-## 📦 Bundle Size Analysis
-
-### Validated Performance Metrics
-
-**Real-world bundle sizes measured during testing:**
-
-| Component | Size | Purpose |
-|-----------|------|---------|
-| **Core Application** | ~50MB | Compiled TypeScript + dependencies |
-| **Node.js Runtime** | ~150MB | Runtime environment |
-| **FAISS Library** | ~25MB | Vector similarity search |
-| **AI Model (all-MiniLM-L6-v2)** | 23MB | Default embedding model |
-| **Total Base Bundle** | ~225MB | Without models |
-| **Total with Model** | ~248MB | Complete package |
-
-**Performance benchmarks from END-TO-END testing:**
-- **Startup time**: 2-3 seconds (validated)
-- **Document processing**: 200ms per 10 documents
-- **Memory usage**: 150-200MB typical
-- **Search latency**: <100ms average
-
-## 🐳 Docker Deployment
+## Docker Deployment
 
 ### Production Dockerfile
 
 ```dockerfile
-# Multi-stage build for production
-FROM node:18-alpine AS builder
+# Multi-stage build
+FROM node:22-alpine AS builder
 
 WORKDIR /app
-COPY package*.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+COPY package*.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 
 COPY . .
-RUN pnpm build
+RUN yarn build
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:22-alpine AS production
 
 # Install system dependencies
 RUN apk add --no-cache \
@@ -143,10 +120,11 @@ WORKDIR /app
 COPY --from=builder --chown=rag-server:nodejs /app/dist ./dist
 COPY --from=builder --chown=rag-server:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=rag-server:nodejs /app/package.json ./
+COPY --from=builder --chown=rag-server:nodejs /app/prisma ./prisma
 
 # Create required directories
-RUN mkdir -p data logs && \
-    chown -R rag-server:nodejs data logs
+RUN mkdir -p data logs documents && \
+    chown -R rag-server:nodejs data logs documents
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
@@ -172,15 +150,16 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./data:/app/data
+      - ./documents:/app/documents
       - ./logs:/app/logs
-      - ./config:/app/config:ro
+      - ./data:/app/data
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
       - EMBEDDING_SERVICE=transformers
-      - DATABASE_PATH=/app/data/rag.db
-      - DATA_DIR=/app/data
+      - DATABASE_URL=file:./data/database.db
+      - DATA_DIR=./data
+      - DOCUMENTS_DIR=./documents
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
       interval: 30s
@@ -196,12 +175,13 @@ services:
 volumes:
   rag_data:
   rag_logs:
+  rag_documents:
 ```
 
 **Start with Docker Compose:**
 
 ```bash
-# Start all services
+# Start services
 docker-compose up -d
 
 # Monitor logs
@@ -211,67 +191,61 @@ docker-compose logs -f rag-server
 docker-compose ps
 ```
 
-## 🔧 Production Configuration
+## Production Configuration
 
 ### Essential Environment Variables
 
 ```bash
-# Production environment file (.env)
+# Production .env file
 
-# Basic Configuration
+# Application
 NODE_ENV=production
 LOG_LEVEL=info
-
-# Server Configuration
 PORT=3001
-HOST=0.0.0.0
 
-# Database & Storage
-DATABASE_PATH=./data/rag.db
+# Database
+DATABASE_URL="file:./data/database.db"
+
+# Directories
 DATA_DIR=./data
-FAISS_INDEX_PATH=./data/faiss_index
+DOCUMENTS_DIR=./documents
+FAISS_INDEX_PATH=./data/vectors
 
-# Embedding Configuration
+# Embedding Service
 EMBEDDING_SERVICE=transformers
 EMBEDDING_MODEL=all-MiniLM-L6-v2
 
-# Monitoring & Observability
-MONITORING_ENABLED=true
-MONITORING_PORT=3001
-LOG_ROTATION_ENABLED=true
-
-# Performance Settings
-MAX_CONCURRENT_REQUESTS=50
-BATCH_SIZE=10
+# Processing
 CHUNK_SIZE=1024
+CHUNK_OVERLAP=50
+BATCH_SIZE=10
+MAX_CONCURRENT_PROCESSING=3
+
+# Monitoring
+ENABLE_MONITORING=true
+MONITORING_PORT=3001
 
 # Security
 CORS_ORIGINS=https://yourdomain.com
 RATE_LIMIT_ENABLED=true
-MAX_REQUESTS_PER_MINUTE=100
 ```
 
 ### Performance Optimizations
 
 ```bash
-# Node.js optimizations
-NODE_OPTIONS="--max-old-space-size=2048 --optimize-for-size"
+# Node.js settings
+NODE_OPTIONS="--max-old-space-size=2048"
 UV_THREADPOOL_SIZE=16
 
-# Application performance
-ENABLE_CACHING=true
-CACHE_SIZE=1000
-CACHE_TTL=3600
-
-# Processing optimization
-LAZY_LOADING=true
-PRELOAD_MODELS=false
-BATCH_PROCESSING=true
+# Application tuning
+TRANSFORMERS_LAZY_LOADING=true
+EMBEDDING_CACHE_SIZE=1000
+MAX_CONCURRENT_EMBEDDINGS=3
 ```
 
-## ☁️ Cloud Deployment
+## Cloud Deployment
 
-### AWS ECS Deployment
+### AWS ECS
 
 ```bash
 # 1. Create ECR repository
@@ -280,8 +254,8 @@ aws ecr create-repository --repository-name rag-mcp-server
 # 2. Build and push image
 $(aws ecr get-login --no-include-email)
 docker build -t rag-mcp-server .
-docker tag rag-mcp-server:latest 123456789.dkr.ecr.region.amazonaws.com/rag-mcp-server:latest
-docker push 123456789.dkr.ecr.region.amazonaws.com/rag-mcp-server:latest
+docker tag rag-mcp-server:latest <account-id>.dkr.ecr.<region>.amazonaws.com/rag-mcp-server:latest
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/rag-mcp-server:latest
 
 # 3. Deploy to ECS
 aws ecs create-cluster --cluster-name rag-cluster
@@ -290,10 +264,10 @@ aws ecs create-cluster --cluster-name rag-cluster
 ### Google Cloud Run
 
 ```bash
-# 1. Build and push to Container Registry
+# 1. Build and push
 gcloud builds submit --tag gcr.io/PROJECT_ID/rag-mcp-server
 
-# 2. Deploy to Cloud Run
+# 2. Deploy
 gcloud run deploy rag-mcp-server \
   --image gcr.io/PROJECT_ID/rag-mcp-server \
   --platform managed \
@@ -313,8 +287,8 @@ services:
   github:
     repo: your-org/rag-mcp-server
     branch: main
-  build_command: pnpm build
-  run_command: pnpm start
+  build_command: yarn build
+  run_command: yarn start
   environment_slug: node-js
   instance_count: 1
   instance_size_slug: professional-xs
@@ -327,33 +301,29 @@ services:
     http_path: /api/health
 ```
 
-## 🔒 Security Configuration
+## Security Configuration
 
-### Production Security Checklist
+### Security Checklist
 
-**✅ Application Security:**
+**Application Security:**
 - [ ] Enable CORS with specific origins
-- [ ] Implement rate limiting  
+- [ ] Implement rate limiting
 - [ ] Use HTTPS in production
 - [ ] Validate all input parameters
-- [ ] Sanitize file uploads
 - [ ] Enable security headers
 - [ ] Regular dependency updates
 
-**✅ Infrastructure Security:**
+**Infrastructure Security:**
 - [ ] Run containers as non-root user
 - [ ] Use secrets management
 - [ ] Enable firewall rules
-- [ ] Regular security patches
 - [ ] Monitor security logs
 - [ ] Implement backup strategy
 
-### Security Headers Configuration
+### Nginx Configuration
 
 ```nginx
-# nginx.conf for production
 server {
-    listen 80;
     listen 443 ssl http2;
     server_name yourdomain.com;
 
@@ -364,7 +334,7 @@ server {
     add_header X-Frame-Options DENY;
     add_header X-Content-Type-Options nosniff;
     add_header X-XSS-Protection "1; mode=block";
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
+    add_header Strict-Transport-Security "max-age=31536000";
 
     location / {
         proxy_pass http://localhost:3001;
@@ -376,32 +346,23 @@ server {
 }
 ```
 
-## 📊 Monitoring & Maintenance
+## Monitoring & Maintenance
 
 ### Health Monitoring
 
 ```bash
-#!/bin/bash
-# healthcheck.sh - Production health monitoring
+# Basic health check
+curl -f http://localhost:3001/api/health
 
-# Check main health endpoint
-if ! curl -f -s http://localhost:3001/api/health > /dev/null; then
-    echo "ALERT: Health check failed"
-    exit 1
-fi
-
-# Check error rate
-ERROR_RATE=$(curl -s http://localhost:3001/api/health | jq '.errorRate')
-if (( $(echo "$ERROR_RATE > 10" | bc -l) )); then
-    echo "ALERT: High error rate: $ERROR_RATE/min"
-fi
+# Detailed health status
+curl -s http://localhost:3001/api/health | jq '.'
 ```
 
 ### Automated Backup
 
 ```bash
 #!/bin/bash
-# backup.sh - Automated backup script
+# backup.sh
 
 BACKUP_DIR="/backups"
 DATE=$(date +%Y%m%d-%H%M%S)
@@ -418,55 +379,9 @@ find "$BACKUP_DIR" -name "*.tar.gz" -mtime +30 -delete
 echo "Backup completed: $DATE"
 ```
 
-## 🚀 Deployment Scripts
+## Scaling & High Availability
 
-### Automated Deployment
-
-```bash
-#!/bin/bash
-# deploy.sh - Production deployment script
-
-set -euo pipefail
-
-VERSION=${1:-latest}
-ENVIRONMENT=${2:-production}
-
-echo "🚀 Deploying RAG MCP Server v${VERSION} to ${ENVIRONMENT}"
-
-# Pre-deployment checks
-echo "📋 Running pre-deployment checks..."
-docker --version
-docker-compose --version
-
-# Backup current data
-echo "💾 Backing up current data..."
-if [ -d "./data" ]; then
-    tar -czf "backup-$(date +%Y%m%d-%H%M%S).tar.gz" data/ logs/
-fi
-
-# Pull latest images
-echo "📥 Pulling latest images..."
-docker-compose pull
-
-# Build new version
-echo "🔨 Building new version..."
-docker-compose build --no-cache
-
-# Deploy with zero downtime
-echo "🔄 Deploying with zero downtime..."
-docker-compose up -d --remove-orphans
-
-# Wait for services to be healthy
-echo "⏳ Waiting for services to be healthy..."
-timeout 60 bash -c 'until docker-compose exec -T rag-server curl -f http://localhost:3001/api/health; do sleep 2; done'
-
-echo "🎉 Deployment completed successfully!"
-echo "📊 Monitor at: http://localhost:3001"
-```
-
-## 📈 Scaling & Load Balancing
-
-### High Availability Setup
+### Load Balancing
 
 ```yaml
 # docker-compose-ha.yml
@@ -487,13 +402,6 @@ services:
     volumes:
       - shared_data:/app/data
 
-  rag-server-3:
-    build: .
-    environment:
-      - INSTANCE_ID=server-3
-    volumes:
-      - shared_data:/app/data
-
   loadbalancer:
     image: nginx:alpine
     ports:
@@ -503,32 +411,30 @@ services:
     depends_on:
       - rag-server-1
       - rag-server-2
-      - rag-server-3
 
 volumes:
   shared_data:
 ```
 
-## 🎯 Deployment Recommendations
+## Deployment Recommendations
 
-### For Small Teams (1-10 users)
-- **Setup**: Single Docker container
-- **Resources**: 2GB RAM, 1 CPU core
-- **Storage**: 10GB disk space
-- **Cost**: $10-20/month on cloud
+### Resource Requirements
 
-### For Medium Organizations (10-100 users)  
-- **Setup**: Load balanced with 2-3 instances
-- **Resources**: 4GB RAM, 2 CPU cores per instance
-- **Storage**: 50GB shared storage
-- **Cost**: $50-100/month on cloud
+**Small Deployment (1-10 users):**
+- 2GB RAM, 1 CPU core
+- 10GB disk space
+- Single container
 
-### For Large Enterprises (100+ users)
-- **Setup**: Kubernetes with auto-scaling
-- **Resources**: 8GB RAM, 4 CPU cores, 3-10 instances
-- **Storage**: 200GB+ with backups
-- **Cost**: $200-500+/month on cloud
+**Medium Deployment (10-100 users):**
+- 4GB RAM, 2 CPU cores per instance
+- 50GB shared storage
+- 2-3 instances with load balancer
+
+**Large Deployment (100+ users):**
+- 8GB RAM, 4 CPU cores per instance
+- 200GB+ storage with backups
+- 3-10 instances with auto-scaling
 
 ---
 
-**Ready for production deployment?** Choose your deployment method and follow the security checklist for a robust, scalable RAG MCP Server! 🚀
+**Ready for production:** Choose your deployment method and follow the security checklist for a robust setup.

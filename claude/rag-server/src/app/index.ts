@@ -1,13 +1,13 @@
 /**
- * RAG MCP Server Entry Point - Modern Architecture (2025)
- * Uses the new orchestrator pattern with dependency injection
+ * RAG MCP Server Entry Point - Domain Architecture
+ * Uses the orchestrator pattern with dependency injection
  */
 
-import { ModernRAGApplication } from '@/app/modern-rag-application.js';
+import { RAGApplication } from '@/app/app.js';
 import { logger } from '@/shared/logger/index.js';
 
 async function main(): Promise<void> {
-  let app: ModernRAGApplication | null = null;
+  let app: RAGApplication | null = null;
 
   try {
     // Create application instance based on environment
@@ -15,14 +15,14 @@ async function main(): Promise<void> {
     
     switch (nodeEnv) {
       case 'production':
-        app = ModernRAGApplication.createProduction();
+        app = RAGApplication.createProduction();
         break;
       case 'test':
-        app = ModernRAGApplication.createTest();
+        app = RAGApplication.createTest();
         break;
       case 'development':
       default:
-        app = ModernRAGApplication.createDevelopment();
+        app = RAGApplication.createDevelopment();
         break;
     }
 
@@ -54,23 +54,23 @@ async function main(): Promise<void> {
       gracefulShutdown('UNCAUGHT_EXCEPTION');
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
+    process.on('unhandledRejection', (reason) => {
       logger.fatal('Unhandled promise rejection', reason instanceof Error ? reason : new Error(String(reason)));
       gracefulShutdown('UNHANDLED_REJECTION');
     });
 
     // Start the application
-    await app.start();
+    await app!.start();
 
     // Log startup success
-    logger.info('🎯 Modern RAG Application started successfully', {
+    logger.info('🎯 RAG Application started successfully', {
       pid: process.pid,
       nodeVersion: process.version,
       environment: nodeEnv
     });
 
   } catch (error) {
-    logger.fatal('Failed to start Modern RAG Application', error instanceof Error ? error : new Error(String(error)));
+    logger.fatal('Failed to start RAG Application', error instanceof Error ? error : new Error(String(error)));
     
     if (app) {
       try {
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
 }
 
 // Export for testing purposes
-export { main, ModernRAGApplication };
+export { main, RAGApplication };
 
 // Run if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {

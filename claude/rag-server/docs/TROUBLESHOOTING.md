@@ -1,10 +1,6 @@
 # Troubleshooting Guide
 
-> **Complete diagnostic and debugging guide for RAG MCP Server issues**
-
-This guide provides solutions for common issues, debugging techniques, and diagnostic procedures based on real-world deployment experience and comprehensive testing results.
-
-## 🚨 Quick Diagnosis
+## Quick Diagnosis
 
 ### Health Check Commands
 
@@ -12,103 +8,83 @@ This guide provides solutions for common issues, debugging techniques, and diagn
 # 1. Basic health check
 curl -f http://localhost:3001/api/health || echo "Service down"
 
-# 2. Detailed system status
-curl -s http://localhost:3001/api/health | jq '{status, errorRate, totalErrors, uptime}'
-
-# 3. Check if server is running
+# 2. Check if server is running
 netstat -tlnp | grep 3001 || echo "Port 3001 not listening"
 
-# 4. View recent errors
+# 3. View recent errors
 tail -20 logs/rag-server-error.log
 
-# 5. Monitor live logs
+# 4. Monitor live logs
 tail -f logs/rag-server.log | grep -E "(ERROR|WARN|FATAL)"
 ```
 
-## 🔧 Common Issues & Solutions
+## Common Issues
 
 ### 1. Server Won't Start
 
-#### **Issue**: Port already in use
+**Port already in use:**
 ```bash
 # Error: listen EADDRINUSE :::3001
-```
 
-**Solution:**
-```bash
 # Find process using port 3001
 lsof -ti:3001
 
 # Kill the process
 kill -9 $(lsof -ti:3001)
 
-# Or use a different port
+# Or use different port
 export PORT=3002
-pnpm start
+yarn start
 ```
 
-#### **Issue**: Missing dependencies
+**Missing dependencies:**
 ```bash
-# Error: Cannot find module '@langchain/community'
+# Error: Cannot find module
+
+# Clean install
+rm -rf node_modules yarn.lock
+yarn install
+
+# Rebuild
+yarn build
 ```
 
-**Solution:**
+**Database permissions:**
 ```bash
-# Clean install dependencies
-rm -rf node_modules package-lock.json
-pnpm install
+# Error: SQLITE_CANTOPEN
 
-# Check for peer dependency issues
-pnpm install --peer-deps-external-only
-```
-
-#### **Issue**: Database permissions
-```bash
-# Error: SQLITE_CANTOPEN: unable to open database file
-```
-
-**Solution:**
-```bash
-# Create data directory and set permissions
-mkdir -p data logs
-chmod 755 data logs
+# Create directories and set permissions
+mkdir -p data logs documents
+chmod 755 data logs documents
 
 # Check disk space
 df -h
 
-# Check file permissions
-ls -la data/
-chmod 644 data/rag.db  # if exists
+# Reset database
+yarn db:reset
 ```
 
 ### 2. Model Loading Issues
 
-#### **Issue**: Transformers.js model download fails
+**Transformers.js download fails:**
 ```bash
-# Error: Failed to download model all-MiniLM-L6-v2
-```
+# Error: Failed to download model
 
-**Solution:**
-```bash
-# Check internet connectivity
+# Check internet connection
 curl -I https://huggingface.co/
 
 # Clear cache and retry
-rm -rf cache/transformers
-export TRANSFORMERS_CACHE_DIR=./cache/transformers
-pnpm start
+rm -rf ./.data/.transformers-cache
+yarn start
 
 # Use different model
 export EMBEDDING_MODEL=all-MiniLM-L12-v2
 ```
 
-#### **Issue**: Ollama connection failed
+**Ollama connection failed:**
 ```bash
 # Error: fetch failed - connect ECONNREFUSED 127.0.0.1:11434
-```
 
-**Solution:**
-```bash
 # Check if Ollama is running
 curl http://localhost:11434/api/version
 
@@ -118,79 +94,50 @@ ollama serve
 # Pull required model
 ollama pull nomic-embed-text
 
-# Verify model is available
+# Verify model
 ollama list
-```
-
-#### **Issue**: OpenAI API errors
-```bash
-# Error: 401 Unauthorized / Invalid API key
-```
-
-**Solution:**
-```bash
-# Verify API key format (starts with sk-)
-echo $OPENAI_API_KEY | grep "^sk-"
-
-# Test API key directly
-curl -H "Authorization: Bearer $OPENAI_API_KEY" \
-  https://api.openai.com/v1/models
-
-# Check rate limits
-curl -s -H "Authorization: Bearer $OPENAI_API_KEY" \
-  https://api.openai.com/v1/models | jq '.error'
 ```
 
 ### 3. File Processing Issues
 
-#### **Issue**: Documents not processing
+**Documents not processing:**
 ```bash
-# Files added to ./data but not indexed
-```
+# Files added but not indexed
 
-**Solution:**
-```bash
 # Check file watcher logs
 tail -f logs/rag-server.log | grep -E "(watcher|processing)"
 
 # Verify supported file types
-ls data/ | grep -E "\.(txt|md|json|xml|html|csv)$"
+ls documents/ | grep -E "\.(txt|md|json|xml|html|csv)$"
 
 # Check file permissions
-ls -la data/
-chmod 644 data/*.txt  # Make files readable
+ls -la documents/
+chmod 644 documents/*.txt
 
 # Manually trigger processing
-curl -X POST http://localhost:3001/api/process-directory
+# Add file to documents/ directory
 ```
 
-#### **Issue**: Large file processing fails
+**Large file processing fails:**
 ```bash
-# Error: File too large or processing timeout
-```
+# Error: File too large or timeout
 
-**Solution:**
-```bash
 # Check file sizes
-ls -lh data/ | awk '$5 > "10M"'
+ls -lh documents/ | awk '$5 > "10M"'
 
 # Split large files
-split -l 1000 large-file.txt data/split-file-
+split -l 1000 large-file.txt documents/split-file-
 
-# Increase timeout
-export PROCESSING_TIMEOUT=60000
+# Increase limits
 export MAX_FILE_SIZE=104857600  # 100MB
 ```
 
-#### **Issue**: Encoding errors
+**Encoding errors:**
 ```bash
 # Error: Invalid character encoding
-```
 
-**Solution:**
-```bash
 # Check file encodings
-file -bi data/*.txt
+file -bi documents/*.txt
 
 # Convert to UTF-8
 iconv -f ISO-8859-1 -t UTF-8 file.txt > file-utf8.txt
@@ -199,299 +146,182 @@ iconv -f ISO-8859-1 -t UTF-8 file.txt > file-utf8.txt
 sed 's/[^[:print:]\t\n\r]//g' file.txt > clean-file.txt
 ```
 
-### 4. Search & Retrieval Issues
+### 4. Search Issues
 
-#### **Issue**: Search returns no results
+**Search returns no results:**
 ```bash
 # Empty search results despite having documents
-```
 
-**Solution:**
-```bash
 # Check if documents are indexed
 curl -s http://localhost:3001/api/health | jq '.totalDocuments'
 
 # Verify vector store
-ls -la data/faiss_index/
+ls -la ./.data/vectors/
 
 # Check database
-sqlite3 data/rag.db "SELECT COUNT(*) FROM file_metadata;"
+ls -la database.db
 
-# Test with different search types
-curl -X POST http://localhost:3001/search \
-  -d '{"query": "test", "useSemanticSearch": false}'
+# Test different search types
+# Use MCP tools or API endpoints
 ```
 
-#### **Issue**: Search performance is slow
+**Search performance is slow:**
 ```bash
 # Search queries taking >5 seconds
-```
 
-**Solution:**
-```bash
 # Check vector store size
-ls -lh data/faiss_index/
+ls -lh ./.data/vectors/
 
 # Monitor search performance
 tail -f logs/rag-server.log | grep -E "(search|query|duration)"
 
 # Reduce search parameters
 export SIMILARITY_TOP_K=3
-export SEARCH_TIMEOUT=5000
 
-# Consider model optimization
-export EMBEDDING_MODEL=all-MiniLM-L6-v2  # Faster model
+# Consider faster model
+export EMBEDDING_MODEL=all-MiniLM-L6-v2
 ```
 
 ### 5. Memory & Performance Issues
 
-#### **Issue**: High memory usage
+**High memory usage:**
 ```bash
 # Process consuming >2GB RAM
-```
 
-**Solution:**
-```bash
 # Monitor memory usage
 ps aux | grep rag-server
 top -p $(pgrep -f rag-server)
 
-# Check for memory leaks
-curl -s http://localhost:3001/api/health | jq '.memoryUsage'
-
 # Tune Node.js memory
 export NODE_OPTIONS="--max-old-space-size=1024"
 
-# Enable garbage collection
-export NODE_OPTIONS="$NODE_OPTIONS --expose-gc"
-
-# Restart with memory monitoring
-pnpm start | grep -E "(memory|heap|gc)"
+# Restart server
+yarn start
 ```
 
-#### **Issue**: CPU usage spikes
+**CPU usage spikes:**
 ```bash
 # 100% CPU during processing
-```
 
-**Solution:**
-```bash
 # Reduce batch size
 export BATCH_SIZE=5
-export MAX_CONCURRENT_REQUESTS=10
+export MAX_CONCURRENT_PROCESSING=2
 
 # Enable lazy loading
-export LAZY_LOADING=true
-export PRELOAD_MODELS=false
+export TRANSFORMERS_LAZY_LOADING=true
 
-# Monitor processing queue
-watch -n 1 'curl -s http://localhost:3001/api/health | jq ".processingQueue"'
+# Monitor processing
+curl -s http://localhost:3001/api/health
 ```
 
 ### 6. Database Issues
 
-#### **Issue**: Database corruption
+**Database corruption:**
 ```bash
 # Error: database disk image is malformed
-```
 
-**Solution:**
-```bash
 # Check database integrity
-sqlite3 data/rag.db "PRAGMA integrity_check;"
+sqlite3 database.db "PRAGMA integrity_check;"
 
-# Backup database
-cp data/rag.db data/rag.db.backup
+# Backup current database
+cp database.db database.db.backup
 
-# Repair database
-sqlite3 data/rag.db ".recover" | sqlite3 data/rag-recovered.db
+# Reset database
+yarn db:reset
 
-# Restore from backup
-mv data/rag-recovered.db data/rag.db
+# Restore from backup if needed
 ```
 
-#### **Issue**: Database locked
+**Database locked:**
 ```bash
 # Error: database is locked
-```
 
-**Solution:**
-```bash
 # Check for running processes
 ps aux | grep rag-server
-lsof data/rag.db
+lsof database.db
 
 # Force unlock (careful!)
-fuser -k data/rag.db
+fuser -k database.db
 
-# Enable WAL mode for better concurrency
-sqlite3 data/rag.db "PRAGMA journal_mode=WAL;"
+# Restart server
+yarn start
 ```
 
 ### 7. Network & API Issues
 
-#### **Issue**: CORS errors in browser
+**CORS errors:**
 ```bash
-# Access to fetch blocked by CORS policy
-```
+# Access blocked by CORS policy
 
-**Solution:**
-```bash
-# Enable CORS for your domain
-export CORS_ORIGINS=https://yourdomain.com
-export CORS_ENABLED=true
-
-# Or disable CORS for development
+# Enable CORS for development
 export CORS_ENABLED=false
 
-# Verify CORS headers
-curl -H "Origin: https://yourdomain.com" \
-  -H "Access-Control-Request-Method: POST" \
-  -X OPTIONS http://localhost:3001/api/health
+# Or configure for production
+export CORS_ORIGINS=https://yourdomain.com
+export CORS_ENABLED=true
 ```
 
-#### **Issue**: Rate limiting blocking requests
+**Rate limiting:**
 ```bash
 # Error: Too Many Requests (429)
-```
-
-**Solution:**
-```bash
-# Check rate limit status
-curl -s http://localhost:3001/api/health | jq '.rateLimitStatus'
 
 # Temporarily disable rate limiting
 export RATE_LIMIT_ENABLED=false
 
-# Increase rate limits
+# Or increase limits
 export RATE_LIMIT_MAX_REQUESTS=200
-export RATE_LIMIT_WINDOW_MS=60000
 ```
 
-## 🔍 Debugging Techniques
+## Debugging Techniques
 
 ### Enable Debug Logging
 
 ```bash
 # Enable verbose logging
 export LOG_LEVEL=debug
-pnpm start
+yarn start
 
 # Monitor specific components
 tail -f logs/rag-server.log | grep -E "(VectorStore|EmbeddingService|FileWatcher)"
-
-# Enable performance logging
-export PERFORMANCE_LOG_ENABLED=true
 ```
 
 ### Component-Specific Debugging
 
-#### File Watcher Debugging
+**File Watcher:**
 ```bash
 # Monitor file events
-tail -f logs/rag-server.log | grep -E "(file.*added|file.*changed|file.*removed)"
+tail -f logs/rag-server.log | grep -E "(file.*added|file.*changed)"
 
 # Check watch patterns
-export WATCH_IGNORED="node_modules/**,dist/**,.git/**,logs/**"
-export WATCH_DEBOUNCE_DELAY=2000
+export DOCUMENTS_DIR=./documents
 ```
 
-#### Vector Store Debugging
+**Vector Store:**
 ```bash
-# Check vector store operations
-tail -f logs/rag-server.log | grep -E "(vector|faiss|embedding|index)"
+# Check vector operations
+tail -f logs/rag-server.log | grep -E "(vector|faiss|embedding)"
 
 # Verify vector dimensions
-curl -s http://localhost:3001/api/model-info | jq '.dimensions'
-
-# Check index statistics
-ls -la data/faiss_index/
+curl -s http://localhost:3001/api/health | jq '.modelInfo'
 ```
 
-#### Search Debugging
+**Search Operations:**
 ```bash
-# Enable search operation logging
-curl -X POST http://localhost:3001/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "test query",
-    "debug": true,
-    "useSemanticSearch": true,
-    "topK": 3
-  }'
+# Monitor search requests
+tail -f logs/rag-server.log | grep -E "(search|query)"
 ```
 
-### Performance Profiling
-
-```bash
-# Enable Node.js profiling
-export NODE_OPTIONS="--prof"
-pnpm start
-
-# Generate profile report
-node --prof-process isolate-*.log > profile.txt
-
-# Memory heap snapshot
-export NODE_OPTIONS="--heapsnapshot-signal=SIGUSR2"
-kill -USR2 $PID  # Take heap snapshot
-```
-
-## 📊 Monitoring & Diagnostics
-
-### Real-time Monitoring
-
-```bash
-# Monitor all metrics
-watch -n 5 'curl -s http://localhost:3001/api/health | jq "{status, errorRate, totalDocuments, memoryUsage}"'
-
-# Monitor error patterns
-tail -f logs/rag-server-error.log | jq -r '.error.code + ": " + .msg'
-
-# Monitor circuit breakers
-watch -n 2 'curl -s http://localhost:3001/api/circuit-breakers | jq ".[].state"'
-```
-
-### Error Analysis
-
-```bash
-# Analyze error patterns
-grep -o '"code":"[^"]*"' logs/rag-server-error.log | sort | uniq -c
-
-# Find most frequent errors
-jq -r '.error.code' logs/rag-server-error.log | sort | uniq -c | sort -nr
-
-# Timeline analysis
-jq -r '.time + " " + .error.code' logs/rag-server-error.log | tail -20
-```
-
-### System Resource Monitoring
-
-```bash
-# Monitor system resources
-while true; do
-  echo "$(date): CPU: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'), Memory: $(free -m | awk 'NR==2{printf "%.1f%%", $3*100/$2}')"
-  sleep 10
-done
-
-# Disk space monitoring
-df -h | grep -E "(data|logs|cache)"
-
-# I/O monitoring
-iotop -p $(pgrep -f rag-server)
-```
-
-## 🚑 Emergency Procedures
+## Emergency Procedures
 
 ### Complete System Reset
 
 ```bash
 #!/bin/bash
 # emergency-reset.sh
-set -euo pipefail
 
-echo "🚨 Starting emergency system reset..."
+echo "🚨 Starting emergency reset..."
 
-# 1. Stop all processes
+# 1. Stop processes
 pkill -f rag-server || true
 
 # 2. Backup current state
@@ -500,27 +330,25 @@ mkdir -p backups/$timestamp
 cp -r data logs backups/$timestamp/ || true
 
 # 3. Clear cache and temporary files
-rm -rf cache/* dist/* || true
+rm -rf ./.data/.transformers-cache/*
+rm -rf dist/*
 
-# 4. Reset database (WARNING: DATA LOSS)
-# mv data/rag.db data/rag.db.backup.$timestamp
+# 4. Reset database
+yarn db:reset
 
-# 5. Clear vector store
-# rm -rf data/faiss_index/*
+# 5. Reinstall dependencies
+yarn install
 
-# 6. Reinstall dependencies
-pnpm install
+# 6. Rebuild
+yarn build
 
-# 7. Rebuild application
-pnpm build
-
-# 8. Start with minimal configuration
+# 7. Start with debug logging
 export LOG_LEVEL=debug
 export EMBEDDING_SERVICE=transformers
 export EMBEDDING_MODEL=all-MiniLM-L6-v2
-pnpm start
+yarn start
 
-echo "✅ Emergency reset complete"
+echo "✅ Reset complete"
 ```
 
 ### Data Recovery
@@ -529,46 +357,44 @@ echo "✅ Emergency reset complete"
 #!/bin/bash
 # data-recovery.sh
 
-echo "🔄 Starting data recovery process..."
+echo "🔄 Starting data recovery..."
 
-# 1. Stop application
+# Stop application
 pkill -f rag-server || true
 
-# 2. Check database integrity
-if sqlite3 data/rag.db "PRAGMA integrity_check;" | grep -q "ok"; then
+# Check database integrity
+if sqlite3 database.db "PRAGMA integrity_check;" | grep -q "ok"; then
     echo "✅ Database integrity OK"
 else
-    echo "❌ Database corrupted, attempting recovery"
-    sqlite3 data/rag.db ".recover" | sqlite3 data/rag-recovered.db
-    mv data/rag.db data/rag.db.corrupted
-    mv data/rag-recovered.db data/rag.db
+    echo "❌ Database corrupted, resetting"
+    yarn db:reset
 fi
 
-# 3. Rebuild vector store if needed
-if [ ! -d "data/faiss_index" ] || [ -z "$(ls -A data/faiss_index)" ]; then
-    echo "🔄 Rebuilding vector store from documents..."
-    rm -rf data/faiss_index
-    pnpm start
+# Rebuild vector store if needed
+if [ ! -d "./.data/vectors" ] || [ -z "$(ls -A ./.data/vectors)" ]; then
+    echo "🔄 Rebuilding vector store..."
+    rm -rf ./.data/vectors
+    yarn start
 fi
 
-echo "✅ Data recovery complete"
+echo "✅ Recovery complete"
 ```
 
-## 📞 Getting Help
+## Getting Help
 
-### Diagnostic Information Collection
+### Diagnostic Information
 
 ```bash
 #!/bin/bash
 # collect-diagnostics.sh
 
-echo "📋 Collecting diagnostic information..."
+echo "📋 Collecting diagnostics..."
 
 # System information
 echo "=== System Info ===" > diagnostics.txt
 uname -a >> diagnostics.txt
 node --version >> diagnostics.txt
-pnpm --version >> diagnostics.txt
+yarn --version >> diagnostics.txt
 
 # Application status
 echo "=== Application Status ===" >> diagnostics.txt
@@ -582,7 +408,7 @@ tail -100 logs/rag-server.log >> diagnostics.txt
 echo "=== Recent Errors ===" >> diagnostics.txt
 tail -50 logs/rag-server-error.log >> diagnostics.txt
 
-# Environment variables (sanitized)
+# Environment (sanitized)
 echo "=== Environment ===" >> diagnostics.txt
 env | grep -E "^(NODE_|LOG_|EMBEDDING_|DATABASE_)" | sed 's/=.*KEY.*/=***/' >> diagnostics.txt
 
@@ -595,13 +421,6 @@ df -h >> diagnostics.txt
 echo "✅ Diagnostics saved to diagnostics.txt"
 ```
 
-### Support Channels
-
-- **📖 Documentation**: Check docs/ directory for detailed guides
-- **🐛 Bug Reports**: Create issue with diagnostic information
-- **💬 Community**: Discussions for general questions
-- **📧 Enterprise**: Contact for enterprise support
-
 ### Issue Reporting Template
 
 ```markdown
@@ -610,20 +429,17 @@ Brief description of the problem
 
 ## Environment
 - OS: [e.g., Ubuntu 20.04]
-- Node.js version: [e.g., 18.17.0]
+- Node.js version: [e.g., 22.0.0]
 - RAM: [e.g., 4GB]
-- Embedding service: [transformers/ollama/openai]
+- Embedding service: [transformers/ollama]
 
 ## Steps to Reproduce
 1. Step one
 2. Step two
 3. Step three
 
-## Expected Behavior
-What should happen
-
-## Actual Behavior  
-What actually happens
+## Expected vs Actual Behavior
+What should happen vs what actually happens
 
 ## Logs
 ```
@@ -638,4 +454,4 @@ Output from collect-diagnostics.sh
 
 ---
 
-**Still having issues?** Follow the diagnostic procedures above and provide the collected information when seeking help! 🆘
+**Still having issues?** Run the diagnostic script and provide the output when seeking help.

@@ -205,9 +205,9 @@ Machine learning is used in various fields including:
       if (results.length > 0) {
         console.log(`\n📝 Top result for "${query}":`);
         console.log(`   Content: ${results[0].content.substring(0, 100)}...`);
-        console.log(`   Score: ${results[0].score.toFixed(4)}`);
+        console.log(`   Score: ${results[0].similarity.toFixed(4)}`);
         console.log(`   File: ${results[0].metadata.fileName}`);
-        console.log(`   Type: ${results[0].metadata.fileType}`);
+        console.log(`   ChunkIndex: ${results[0].metadata.chunkIndex}`);
       }
     }
     

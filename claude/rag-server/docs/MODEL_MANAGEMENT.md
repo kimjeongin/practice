@@ -1,275 +1,194 @@
-# 🤖 Model Management Guide
+# Model Management Guide
 
-## ⚡ Lazy Loading Feature
+## Overview
 
-The RAG server now supports **lazy loading** for optimal performance and reduced initial download size.
+The RAG server supports multiple embedding models with lazy loading for optimal performance.
 
-### How It Works
+## Embedding Services
 
-1. **Instant Startup**: Server starts immediately without downloading models
-2. **On-Demand Download**: Models download automatically when first used
-3. **Progress Tracking**: Real-time download progress with detailed status
-4. **Local Caching**: Downloaded models persist for offline use
+### Transformers.js (Default)
+- **Local execution**: No external dependencies
+- **Lazy loading**: Models download on first use
+- **Caching**: Models persist locally for offline use
 
-### Configuration
+### Ollama Integration
+- **High quality**: Better embedding quality
+- **Local server**: Requires Ollama installation
+- **Multiple models**: Support for various embedding models
+
+## Configuration
 
 ```env
-# Enable lazy loading (default: true in production)
-TRANSFORMERS_LAZY_LOADING=true
+# Embedding service selection
+EMBEDDING_SERVICE=transformers  # Default
+# EMBEDDING_SERVICE=ollama       # Requires Ollama
 
-# Available models
-EMBEDDING_MODEL=all-MiniLM-L6-v2  # 23MB, fast
+# Transformers.js models
+EMBEDDING_MODEL=all-MiniLM-L6-v2  # 23MB, fast (default)
 # EMBEDDING_MODEL=all-MiniLM-L12-v2  # 45MB, better quality
 # EMBEDDING_MODEL=bge-small-en       # 67MB, high quality
 # EMBEDDING_MODEL=bge-base-en        # 109MB, best quality
+
+# Ollama configuration
+OLLAMA_BASE_URL=http://localhost:11434
+# EMBEDDING_MODEL=nomic-embed-text   # For Ollama
 ```
 
-## 📱 Available MCP Tools
+## Available Models
 
-### 1. `list_available_models`
-Get all available embedding models with specifications.
+### Transformers.js Models
 
-```json
-{
-  "currentModel": {
-    "model": "Xenova/all-MiniLM-L6-v2",
-    "service": "transformers",
-    "dimensions": 384,
-    "description": "Fast and efficient, good for general use"
-  },
-  "availableModels": {
-    "all-MiniLM-L6-v2": {
-      "modelId": "Xenova/all-MiniLM-L6-v2",
-      "dimensions": 384,
-      "maxTokens": 256,
-      "description": "Fast and efficient, good for general use"
-    },
-    // ... more models
-  }
-}
-```
+| Model | Size | Speed | Quality | Dimensions | Use Case |
+|-------|------|-------|---------|------------|----------|
+| `all-MiniLM-L6-v2` | 23MB | Fast | Good | 384 | General purpose (default) |
+| `all-MiniLM-L12-v2` | 45MB | Fast | Better | 384 | Balanced performance |
+| `bge-small-en` | 67MB | Medium | High | 384 | English text focus |
+| `bge-base-en` | 109MB | Slow | Best | 768 | Maximum quality |
 
-### 2. `switch_embedding_model`
-Switch to a different embedding model.
+### Ollama Models
 
-**Input:**
-```json
-{
-  "modelName": "bge-small-en"
-}
-```
+| Model | Quality | Dimensions | Requirements |
+|-------|---------|------------|-------------|
+| `nomic-embed-text` | High | 768 | Ollama server |
+| `mxbai-embed-large` | Very High | 1024 | Ollama server |
 
-**Output:**
-```json
-{
-  "success": true,
-  "message": "Successfully switched to model: bge-small-en",
-  "newModel": {
-    "model": "Xenova/bge-small-en",
-    "dimensions": 384,
-    "service": "transformers"
-  }
-}
-```
+## MCP Tools
 
-### 3. `download_model`
-Pre-download a model for offline use.
+The server provides MCP tools for model management:
 
-**Input:**
-```json
-{
-  "modelName": "all-MiniLM-L12-v2"  // Optional
-}
-```
+### `list_available_models`
+Get information about available embedding models.
 
-**Output:**
-```json
-{
-  "success": true,
-  "message": "Model all-MiniLM-L12-v2 downloaded successfully",
-  "downloadTime": "5.2s",
-  "cacheLocation": "./data/.transformers-cache"
-}
-```
+### `get_current_model_info`
+View current model configuration and status.
 
-### 4. `get_download_progress`
-Monitor real-time download progress.
+### Model Switching
+Models can be switched by updating the environment configuration and restarting the server.
 
-**Output:**
-```json
-{
-  "downloadProgress": {
-    "model.onnx": {
-      "loaded": 15728640,
-      "total": 23068160,
-      "percentage": 68
-    }
-  },
-  "isDownloading": true
-}
-```
+## Performance Considerations
 
-### 5. `get_model_cache_info`
-Get cache statistics and management info.
+### Startup Options
 
-**Output:**
-```json
-{
-  "isCached": true,
-  "cacheSize": "97M",
-  "cachePath": "./data/.transformers-cache",
-  "modelCount": 2,
-  "availableModels": ["Xenova/all-MiniLM-L6-v2", "Xenova/bge-small-en"]
-}
-```
+**Default (Lazy Loading)**
+- Server starts in ~2 seconds
+- Models download on first use (5-10 seconds)
+- Optimal for development
 
-### 6. `force_reindex`
-Rebuild vector index with current model.
-
-**Input:**
-```json
-{
-  "clearCache": false  // Optional: clear vector cache
-}
-```
-
-## 🚀 Performance Optimization Tips
-
-### Startup Strategies
-
-#### 1. **Instant Start** (Default)
-```bash
-# Fastest startup, download on first use
-TRANSFORMERS_LAZY_LOADING=true
-```
-- ✅ Server ready in ~2 seconds
-- ⚠️ First search takes 5-10 seconds (model download)
-
-#### 2. **Pre-warmed Start**
-```bash
-# Download model during startup
-TRANSFORMERS_LAZY_LOADING=false
-```
-- ⚠️ Server startup takes 30-60 seconds
-- ✅ First search is instant
+**Pre-loading**
+- Set `TRANSFORMERS_LAZY_LOADING=false`
+- Slower startup (30-60 seconds)
+- Instant first search
+- Better for production
 
 ### Model Selection Guide
 
-| Model | Size | Speed | Quality | Use Case |
-|-------|------|-------|---------|----------|
-| `all-MiniLM-L6-v2` | 23MB | ⚡ Fast | ✅ Good | General purpose, quick setup |
-| `all-MiniLM-L12-v2` | 45MB | ⚡ Fast | ✅✅ Better | Balanced performance |
-| `bge-small-en` | 67MB | 🔄 Medium | ✅✅✅ High | English text, quality focused |
-| `bge-base-en` | 109MB | 🐌 Slow | ✅✅✅✅ Best | Maximum quality, large corpus |
+**For Development:**
+- Use `all-MiniLM-L6-v2` for fast iteration
+- Enable lazy loading for quick restarts
+
+**For Production:**
+- Use `bge-small-en` for balanced performance
+- Use `bge-base-en` for maximum quality
+- Consider pre-loading models
+
+**For High Quality:**
+- Use Ollama with `nomic-embed-text`
+- Requires Ollama server setup
 
 ### Cache Management
 
-#### Automatic Cache
+Models are automatically cached in:
+- Transformers.js: `./.data/.transformers-cache/`
+- Ollama: Managed by Ollama service
+
 ```bash
-# Models automatically cached after download
-ls ./data/.transformers-cache/
-# Xenova_all-MiniLM-L6-v2/
-# Xenova_bge-small-en/
+# Check cache size
+du -sh ./.data/.transformers-cache/
+
+# Clear cache if needed
+rm -rf ./.data/.transformers-cache/
 ```
 
-#### Manual Cache Control
-```javascript
-// Check cache status
-await server.call('get_model_cache_info');
-
-// Pre-download multiple models
-await server.call('download_model', { modelName: 'all-MiniLM-L6-v2' });
-await server.call('download_model', { modelName: 'bge-small-en' });
-
-// Switch between cached models (instant)
-await server.call('switch_embedding_model', { modelName: 'bge-small-en' });
-```
-
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-#### 1. **Download Fails**
+**Model download fails:**
 ```bash
 # Check internet connection
 curl -I https://huggingface.co
 
 # Check disk space
-df -h ./data/.transformers-cache
+df -h
+
+# Clear cache and retry
+rm -rf ./.data/.transformers-cache/
 ```
 
-#### 2. **Model Switch Takes Long**
+**Ollama connection fails:**
 ```bash
-# Model not cached - will download
-# Pre-download first:
-# Use download_model MCP tool
+# Check if Ollama is running
+curl http://localhost:11434/api/version
+
+# Start Ollama
+ollama serve
+
+# Pull required model
+ollama pull nomic-embed-text
 ```
 
-#### 3. **Cache Growing Large**
+**High memory usage:**
 ```bash
-# Check cache size
-du -sh ./data/.transformers-cache
+# Switch to smaller model
+export EMBEDDING_MODEL=all-MiniLM-L6-v2
 
-# Clean old models manually
-rm -rf ./data/.transformers-cache/Xenova_old-model/
+# Restart server
+yarn start
 ```
 
 ### Performance Monitoring
 
-#### Download Progress
 ```bash
-# Real-time progress monitoring
-watch -n 1 "curl -s http://localhost:3000/api/download-progress"
+# Check current model
+curl -s http://localhost:3001/api/health | jq '.modelInfo'
+
+# Monitor memory usage
+ps aux | grep rag-server
 ```
 
-#### Cache Statistics
-```bash
-# Check what's cached
-ls -la ./data/.transformers-cache/
-```
-
-## 💡 Best Practices
+## Best Practices
 
 ### Development
-- Use `all-MiniLM-L6-v2` for fast iteration
+- Use `all-MiniLM-L6-v2` for fast development
 - Enable lazy loading for quick restarts
-- Pre-download models you'll test
+- Test with different models to find optimal balance
 
 ### Production
-- Choose model based on quality requirements
-- Pre-warm cache during deployment
-- Monitor cache disk usage
+- Choose model based on quality vs performance requirements
+- Consider pre-loading models during deployment
+- Monitor disk usage for model cache
 - Use `bge-small-en` for balanced performance
 
-### Enterprise
-- Pre-bundle models in deployment artifacts
-- Use `bge-base-en` for maximum quality
-- Set up cache warming scripts
-- Monitor model performance metrics
+### High-Quality Applications
+- Use Ollama with `nomic-embed-text` for best results
+- Ensure adequate hardware resources
+- Monitor response times and adjust accordingly
 
-## 📈 Performance Comparison
+## Performance Metrics
 
 ### Startup Times
-```
-Lazy Loading ON:  2-3 seconds
-Lazy Loading OFF: 30-60 seconds
-Model Switch:     5-10 seconds (if cached: instant)
-```
+- Lazy loading: 2-3 seconds
+- Pre-loading: 30-60 seconds
+- Model switching: 5-10 seconds (first time)
 
 ### Memory Usage
-```
-Base Server:      ~50MB
-+ MiniLM-L6-v2:   +80MB
-+ BGE-Small:      +120MB
-+ BGE-Base:       +200MB
-```
+- Base server: ~150MB
+- With MiniLM-L6-v2: ~230MB
+- With BGE-Small: ~270MB
+- With BGE-Base: ~350MB
 
 ### Download Times (100Mbps)
-```
-all-MiniLM-L6-v2:  ~2 seconds
-all-MiniLM-L12-v2: ~4 seconds
-bge-small-en:      ~6 seconds
-bge-base-en:       ~10 seconds
-```
-
-This lazy loading system provides the perfect balance of quick startup and powerful AI capabilities! 🚀
+- all-MiniLM-L6-v2: ~2 seconds
+- all-MiniLM-L12-v2: ~4 seconds
+- bge-small-en: ~6 seconds
+- bge-base-en: ~10 seconds

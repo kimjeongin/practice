@@ -1,77 +1,48 @@
 # Monitoring Guide
 
-> **Complete observability and monitoring setup for production RAG MCP Server**
+## Overview
 
-This guide covers all monitoring capabilities, dashboard usage, logging, and production observability features validated through comprehensive testing.
+The RAG MCP Server includes built-in monitoring and observability features for production use.
 
-## 📊 Overview
+## Monitoring Features
 
-The RAG MCP Server includes a comprehensive monitoring stack:
+- **Web Dashboard** - Real-time metrics at http://localhost:3001
+- **Structured Logging** - JSON-based logging with Pino
+- **Error Tracking** - Comprehensive error monitoring
+- **Health Checks** - API endpoints for system health
+- **Performance Metrics** - Response times and throughput tracking
 
-- **🖥️ Real-time Web Dashboard** - Live metrics and system health
-- **📋 Structured Logging** - Pino-based JSON logging with rotation
-- **🛡️ Error Tracking** - Comprehensive error monitoring and alerting
-- **⚡ Circuit Breakers** - Automatic failure detection and recovery
-- **📈 Performance Metrics** - Real-time performance and throughput tracking
+## Web Dashboard
 
-## 🖥️ Web Dashboard
-
-### Accessing the Dashboard
-
-Once your RAG server is running, the monitoring dashboard is automatically available at:
-
+### Access
+The monitoring dashboard is available at:
 ```bash
 http://localhost:3001
 ```
 
-### Dashboard Features
+### Features
+- **System Health**: Server status and uptime
+- **Error Tracking**: Recent errors and error rates
+- **Performance**: Response times and throughput
+- **Resource Usage**: Memory and CPU metrics
 
-#### **System Health Overview**
-- 🏥 **Health Status**: healthy/degraded/unhealthy
-- 📊 **Error Rate**: Errors per minute
-- 📈 **Total Errors**: Cumulative error count
-- ⏱️ **Uptime**: System runtime
-
-#### **Error Statistics**
-- 📊 **By Error Code**: FILE_PARSE_ERROR, SEARCH_ERROR, etc.
-- 🧩 **By Component**: Breakdown by system component
-- 📈 **Timeline**: Error trends over time
-
-#### **Circuit Breaker Status**
-- 🔵 **Closed**: Normal operation
-- 🟡 **Half-Open**: Testing recovery
-- 🔴 **Open**: Circuit breaker triggered
-- 📊 **Success/Failure Counts**: Performance metrics
-
-#### **Real-time Error Log**
-- 🔥 **Recent Errors**: Last 10 error entries
-- 🏷️ **Error Context**: Component, operation, and details
-- 📅 **Timestamps**: Precise error timing
-
-### Dashboard API Endpoints
-
-Access monitoring data programmatically:
+### API Endpoints
 
 ```bash
-# System health
+# System health check
 curl http://localhost:3001/api/health
 
-# Error statistics  
-curl http://localhost:3001/api/errors
+# Get system status
+curl http://localhost:3001/api/status
 
-# Circuit breaker status
-curl http://localhost:3001/api/circuit-breakers
-
-# Real-time logs
-curl http://localhost:3001/api/logs
+# View recent metrics
+curl http://localhost:3001/metrics
 ```
 
-## 📋 Logging System
+## Logging System
 
-### Log Files Location
-
-The server automatically creates and rotates log files:
-
+### Log Files
+Logs are automatically created in the `./logs/` directory:
 ```bash
 ./logs/
 ├── rag-server.log       # All application logs
@@ -79,299 +50,182 @@ The server automatically creates and rotates log files:
 ```
 
 ### Log Levels
-
-**Production logging levels:**
-
-- **`INFO` (30)**: Normal operations, startup, and success events
-- **`WARN` (40)**: Non-critical issues and recoverable errors  
-- **`ERROR` (50)**: Critical errors requiring attention
-- **`FATAL` (60)**: System-level failures
+- **INFO**: Normal operations and events
+- **WARN**: Non-critical issues
+- **ERROR**: Critical errors
+- **FATAL**: System failures
 
 ### Log Format
-
-All logs use structured JSON format with consistent fields:
-
+Structured JSON format for easy parsing:
 ```json
 {
   "level": 30,
-  "time": "2025-08-16T06:03:44.589Z",
+  "time": "2025-08-22T06:03:44.589Z",
   "service": "rag-mcp-server",
-  "version": "1.0.0",
   "component": "RAGApplication",
-  "operation": "application_initialization", 
+  "operation": "document_processing",
   "duration": 207,
-  "msg": "RAG Application initialized successfully"
+  "msg": "Document processed successfully"
 }
 ```
 
-### Key Log Fields
-
-- **`service`**: Always "rag-mcp-server"
-- **`version`**: Application version
-- **`component`**: System component (RAGApplication, DocumentService, etc.)
-- **`operation`**: Specific operation being performed
-- **`duration`**: Operation duration in milliseconds
-- **`error`**: Detailed error information (if applicable)
-
-### Monitoring Log Files
-
+### Monitoring Logs
 ```bash
-# Monitor all logs in real-time
+# View all logs
 tail -f logs/rag-server.log
 
-# Monitor only errors
+# View errors only
 tail -f logs/rag-server-error.log
 
-# Filter for specific operations
-tail -f logs/rag-server.log | grep "batch_processing"
-
-# Monitor performance
-tail -f logs/rag-server.log | grep -E "(duration|performance)"
+# Filter specific operations
+tail -f logs/rag-server.log | grep "search"
 ```
 
-## 🛡️ Error Monitoring
+## Error Monitoring
 
-### Error Classification
-
-The system tracks and categorizes all errors:
-
-#### **Application Errors**
-- **`FILE_PARSE_ERROR`**: Document processing failures
-- **`SEARCH_ERROR`**: Vector search and retrieval issues
-- **`VECTOR_STORE_ERROR`**: FAISS index operations
-- **`EMBEDDING_ERROR`**: AI model inference failures
-- **`TIMEOUT_ERROR`**: Operation timeouts
-
-#### **System Errors**
-- **`DATABASE_ERROR`**: SQLite operations
-- **`FILESYSTEM_ERROR`**: File system operations
-- **`NETWORK_ERROR`**: External service communications
-- **`UNKNOWN_ERROR`**: Unclassified errors
+### Error Types
+The system tracks common error categories:
+- **FILE_PARSE_ERROR**: Document processing failures
+- **SEARCH_ERROR**: Vector search issues
+- **VECTOR_STORE_ERROR**: FAISS operations
+- **EMBEDDING_ERROR**: Model inference failures
+- **DATABASE_ERROR**: SQLite operations
+- **NETWORK_ERROR**: External service issues
 
 ### Error Context
-
-Each error includes comprehensive context:
-
+Errors include detailed context:
 ```json
 {
   "error": {
     "name": "FileProcessingError",
-    "message": "PDF parsing failed", 
+    "message": "Document parsing failed",
     "code": "FILE_PARSE_ERROR",
-    "statusCode": 500,
     "context": {
-      "filePath": "/data/document.pdf",
-      "operation": "pdf_parsing",
-      "timestamp": "2025-08-16T06:03:44.589Z"
-    },
-    "isOperational": true,
-    "stack": "Full stack trace..."
+      "filePath": "/documents/file.pdf",
+      "operation": "document_processing"
+    }
   }
 }
 ```
 
-### Alert Thresholds
-
-**Automatic alerts trigger when:**
-
-- **Error Rate**: >10 errors per minute
-- **Specific Error Types**: FILE_PARSE_ERROR >20 occurrences
-- **Circuit Breaker**: Any breaker opens
-- **System Health**: Status becomes 'unhealthy'
-
 ### Error Recovery
+- **Retry Logic**: Failed operations retry automatically
+- **Graceful Degradation**: System continues with reduced functionality
+- **Error Logging**: All errors and recovery attempts logged
 
-The system includes automatic error recovery:
+## Circuit Breakers
 
-- **🔄 Retry Logic**: Failed operations retry up to 3 times
-- **⚡ Circuit Breakers**: Automatically isolate failing services
-- **🏥 Graceful Degradation**: Continue operating with reduced functionality
-- **📋 Error Logging**: All recovery attempts are logged
-
-## ⚡ Circuit Breakers
-
-### Circuit Breaker States
-
-**🔵 Closed (Normal)**
-- All requests pass through
-- Success/failure metrics tracked
-- No failures detected
-
-**🟡 Half-Open (Testing)**
-- Limited requests allowed through  
-- Testing if service recovered
-- Automatic state transition based on results
-
-**🔴 Open (Circuit Breaker Triggered)**
-- Requests immediately fail
-- Service considered unavailable
-- Automatic recovery attempt after timeout
+### States
+- **Closed**: Normal operation, all requests pass through
+- **Half-Open**: Testing recovery, limited requests allowed
+- **Open**: Service unavailable, requests fail immediately
 
 ### Configuration
+Circuit breakers protect against cascading failures:
+- Request timeout: 1000ms
+- Error threshold: 50% failure rate
+- Reset timeout: 10 seconds
+- Volume threshold: 5 requests minimum
 
-Circuit breakers are configured per service:
-
-```typescript
-{
-  timeout: 1000,              // Request timeout (ms)
-  errorThresholdPercentage: 50, // Failure rate to trigger (%)
-  resetTimeout: 10000,         // Recovery test interval (ms)
-  volumeThreshold: 5          // Minimum requests before evaluation
-}
-```
-
-### Monitoring Circuit Breakers
-
+### Monitoring
 ```bash
 # Check circuit breaker status
-curl http://localhost:3001/api/circuit-breakers
+curl http://localhost:3001/api/health | jq '.circuitBreakers'
 
-# Monitor circuit breaker logs
-tail -f logs/rag-server.log | grep -E "(circuit|breaker)"
-
-# Watch for breaker state changes
-watch -n 5 'curl -s http://localhost:3001/api/circuit-breakers | jq ".[].state"'
+# Monitor in logs
+tail -f logs/rag-server.log | grep "circuit"
 ```
 
-## 📈 Performance Monitoring
+## Performance Monitoring
 
-### Key Metrics Tracked
+### Key Metrics
+- **Processing**: Document processing rate and embedding generation time
+- **Search**: Query response times and result quality
+- **Resources**: Memory usage (~150MB baseline) and CPU utilization
+- **Throughput**: Concurrent request handling and indexing rate
 
-**📊 Processing Metrics**
-- Document processing rate (docs/minute)
-- Embedding generation time (ms/document)
-- Vector indexing throughput
-- Search response latency
-
-**💾 Resource Metrics**
-- Memory usage (baseline ~150MB)
-- CPU utilization during processing
-- Disk I/O for vector operations
-- File system watcher activity
-
-**🔍 Search Metrics**
-- Query response times
-- Search result quality scores
-- Cache hit ratios
-- Concurrent request handling
-
-### Performance Log Analysis
-
+### Performance Analysis
 ```bash
-# Monitor processing performance
-tail -f logs/rag-server.log | grep -E "(batch_processing|embedding|duration)"
+# Monitor processing
+tail -f logs/rag-server.log | grep "duration"
 
-# Track memory usage
-tail -f logs/rag-server.log | grep -E "(memory|heap)"
+# Track search performance
+tail -f logs/rag-server.log | grep "search"
 
-# Monitor search performance  
-tail -f logs/rag-server.log | grep -E "(search|query|latency)"
+# Monitor memory
+ps aux | grep rag-server
 ```
 
 ### Performance Baselines
+- Startup: 2-3 seconds
+- Search response: <100ms average
+- Memory usage: 150-200MB typical
+- Document processing: Real-time indexing
+- Throughput: 1000+ documents/hour
 
-**Established performance baselines:**
+## Production Setup
 
-```
-🚀 Startup: 2-3 seconds (cold start)
-📊 Processing: 200ms per 10 documents  
-🔍 Search: <100ms average response
-💾 Memory: 150-200MB typical usage
-🔄 Throughput: 1000+ documents/hour
-```
-
-## 🔧 Production Monitoring Setup
-
-### Health Check Endpoint
-
-Set up automated health monitoring:
-
+### Health Checks
+Set up automated monitoring:
 ```bash
 # Basic health check
-curl -f http://localhost:3001/api/health || echo "Service unhealthy"
+curl -f http://localhost:3001/api/health
 
-# Detailed health with metrics
-curl -s http://localhost:3001/api/health | jq '{status, errorRate, totalErrors, uptime}'
+# Detailed health status
+curl -s http://localhost:3001/api/health | jq '.'
 ```
 
-### Log Aggregation
+### External Monitoring
+For production, consider integrating with:
+- **Prometheus**: Metrics collection
+- **Grafana**: Visualization dashboards
+- **ELK Stack**: Log aggregation and analysis
+- **AlertManager**: Automated alerting
 
-**For production deployment, consider:**
+### Alerting
+Set up alerts for:
+- High error rates (>10 errors/minute)
+- Circuit breaker activation
+- High memory usage (>500MB)
+- Slow response times (>1 second)
 
-- **Fluentd/Fluent Bit**: Log collection and forwarding
-- **ELK Stack**: Elasticsearch, Logstash, Kibana for analysis
-- **Grafana**: Visualization of metrics and dashboards
-- **Prometheus**: Metrics collection (can be added via custom middleware)
-
-### Alerting Setup
-
-**Recommended alerts:**
-
-```bash
-# Error rate alert
-while true; do
-  rate=$(curl -s http://localhost:3001/api/health | jq '.errorRate')
-  if (( $(echo "$rate > 10" | bc -l) )); then
-    echo "ALERT: High error rate: $rate/min"
-  fi
-  sleep 60
-done
-
-# Circuit breaker alert
-breaker_status=$(curl -s http://localhost:3001/api/circuit-breakers | jq -r '.[].state')
-if [[ "$breaker_status" == "open" ]]; then
-  echo "ALERT: Circuit breaker open"
-fi
-```
-
-### Custom Monitoring Integration
-
-**Add custom metrics collection:**
-
+### Custom Metrics
+Add custom tracking in your application:
 ```typescript
-// Example: Custom performance tracking
 import { logger } from './src/shared/logger/index.js';
 
-function trackCustomMetric(operation: string, duration: number) {
-  logger.info('Custom metric', {
-    operation,
-    duration,
-    timestamp: new Date().toISOString(),
-    component: 'CustomMetrics'
-  });
-}
+logger.info('Custom metric', {
+  operation: 'custom_operation',
+  duration: 150,
+  component: 'CustomComponent'
+});
 ```
 
-## 🐛 Debugging & Troubleshooting
+## Troubleshooting
 
 ### Debug Logging
-
-Enable verbose logging for troubleshooting:
-
+Enable verbose logging:
 ```bash
-# Set debug level (in development)
+# Set debug level
 export LOG_LEVEL=debug
-npm start
-
-# Or modify logger configuration
+yarn start
 ```
 
-### Common Monitoring Issues
+### Common Issues
 
 **Dashboard not accessible:**
 ```bash
-# Check if port 3001 is available
-netstat -tlnp | grep 3001
+# Check if port is in use
+netstat -tulpn | grep 3001
 
-# Check server logs for dashboard startup
+# Check server startup logs
 tail -f logs/rag-server.log | grep "dashboard"
 ```
 
 **Missing logs:**
 ```bash
-# Verify log directory exists and is writable
+# Verify log directory
 ls -la logs/
-chmod 755 logs/
 
 # Check disk space
 df -h
@@ -379,52 +233,43 @@ df -h
 
 **High error rates:**
 ```bash
-# Identify error patterns
-tail -f logs/rag-server-error.log | grep -E "(FILE_PARSE_ERROR|SEARCH_ERROR)"
+# Check error patterns
+tail -f logs/rag-server-error.log
 
-# Check system resources
+# Monitor system resources
 top -p $(pgrep -f "rag-server")
 ```
 
-### Performance Debugging
-
+### Performance Issues
 ```bash
 # Monitor resource usage
-watch -n 2 'ps aux | grep rag-server'
+ps aux | grep rag-server
 
-# Check file processing queue
-curl -s http://localhost:3001/api/health | jq '.processingQueue'
-
-# Monitor embedding performance
-tail -f logs/rag-server.log | grep "Generated.*embeddings" | tail -20
+# Check processing status
+curl -s http://localhost:3001/api/health
 ```
 
-## 🎯 Best Practices
+## Best Practices
 
 ### Production Monitoring
-
-1. **📊 Set up automated health checks** every minute
-2. **🚨 Configure alerting** for error rates >10/min
-3. **📋 Rotate logs daily** to prevent disk space issues
-4. **💾 Monitor memory usage** trends for potential leaks
-5. **🔄 Test circuit breaker functionality** in staging
+1. Set up automated health checks every minute
+2. Configure alerting for error rates >10/minute
+3. Rotate logs daily to prevent disk space issues
+4. Monitor memory usage trends
+5. Test monitoring setup in staging
 
 ### Log Management
-
-1. **📁 Use log rotation** (logrotate or similar)
-2. **🗜️ Compress old logs** to save disk space  
-3. **🔍 Index logs** for faster searching
-4. **📊 Create dashboards** for key metrics
-5. **🚨 Set up log-based alerts** for critical errors
+1. Use log rotation (logrotate)
+2. Compress old logs to save space
+3. Index logs for faster searching
+4. Set up log-based alerts for critical errors
 
 ### Performance Optimization
-
-1. **⚡ Monitor batch processing** efficiency
-2. **🔍 Track search latency** trends
-3. **💾 Watch memory usage** patterns
-4. **📊 Analyze error patterns** for optimization opportunities
-5. **🎯 Set performance baselines** and track deviations
+1. Monitor search latency trends
+2. Track memory usage patterns
+3. Analyze error patterns for improvements
+4. Set performance baselines and track deviations
 
 ---
 
-**Ready to monitor your RAG server?** Start with the web dashboard at http://localhost:3001 and explore the comprehensive observability features! 🚀
+**Start monitoring:** Access the dashboard at http://localhost:3001
