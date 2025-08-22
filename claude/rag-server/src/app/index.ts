@@ -1,187 +1,118 @@
 /**
  * RAG MCP Server Entry Point
- * Simplified architecture - directly starts the MCP Server with minimal setup
+ * Production multi-transport MCP server with full RAG integration
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { 
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-
-// Shared imports
+import { ConfigFactory } from '@/shared/config/config-factory.js';
 import { logger } from '@/shared/logger/index.js';
+import { MCPServer } from '@/domains/mcp/server/server.js';
+import { SearchHandler } from '@/domains/mcp/handlers/search.js';
+import { DocumentHandler } from '@/domains/mcp/handlers/document.js';
+import { SystemHandler } from '@/domains/mcp/handlers/system.js';
+import { ModelHandler } from '@/domains/mcp/handlers/model.js';
+import { RAGWorkflow } from '@/domains/rag/workflows/workflow.js';
+import { FileRepository } from '@/domains/rag/repositories/document.js';
+import { ChunkRepository } from '@/domains/rag/repositories/chunk.js';
+import { SearchService } from '@/domains/rag/services/search/search-service.js';
+import { DatabaseConnection } from '@/shared/database/connection.js';
+import { serviceRegistry } from '@/shared/dependency-injection/service-registry.js';
 
 /**
- * Simplified MCP Server that provides basic functionality
- * This replaces the complex domain architecture with a minimal working server
+ * Initialize all dependencies and create MCPServer instance
  */
-class SimpleMCPServer {
-  private server: Server;
+async function initializeServices(config: any) {
+  // Initialize database connection
+  const dbConnection = new DatabaseConnection();
 
-  constructor() {
-    this.server = new Server(
-      {
-        name: 'rag-mcp-server',
-        version: '1.0.0',
-      },
-      {
-        capabilities: {
-          tools: {},
-        },
-      }
-    );
+  // Register services in dependency injection container
+  serviceRegistry
+    .registerInstance('config', config)
+    .registerInstance('dbConnection', dbConnection)
+    .register('fileRepository', FileRepository, { dependencies: ['dbConnection'] })
+    .register('chunkRepository', ChunkRepository, { dependencies: ['dbConnection'] });
 
-    this.setupTools();
-  }
+  // Initialize repositories
+  const fileRepository = await serviceRegistry.resolve<FileRepository>('fileRepository');
+  const chunkRepository = await serviceRegistry.resolve<ChunkRepository>('chunkRepository');
 
-  private setupTools(): void {
-    // List available tools
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: [
-          {
-            name: 'search_documents',
-            description: 'Search through documents using semantic search',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                query: {
-                  type: 'string',
-                  description: 'Search query'
-                },
-                topK: {
-                  type: 'number',
-                  description: 'Number of results to return',
-                  default: 5
-                }
-              },
-              required: ['query']
-            }
-          },
-          {
-            name: 'get_server_status',
-            description: 'Get server status and health information',
-            inputSchema: {
-              type: 'object',
-              properties: {}
-            }
-          }
-        ]
-      };
-    });
+  // Initialize vector store and search service  
+  const { VectorStoreFactory } = await import('@/shared/config/vector-store-factory.js');
+  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore);
+  const vectorStore = VectorStoreFactory.createService(config.vectorStore);
+  
+  const searchService = new SearchService(vectorStoreProvider, fileRepository, chunkRepository, config);
+  
+  // Initialize RAG workflow
+  const ragWorkflow = new RAGWorkflow(searchService, fileRepository, chunkRepository, config);
 
-    // Handle tool execution
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
-      
-      try {
-        switch (name) {
-          case 'search_documents':
-            return await this.handleSearchDocuments(args);
-          case 'get_server_status':
-            return await this.handleGetServerStatus();
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
-      } catch (error) {
-        logger.error(`Tool execution failed for ${name}:`, error instanceof Error ? error : new Error(String(error)));
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
-              })
-            }
-          ],
-          isError: true
-        };
-      }
-    });
-  }
-
-  private async handleSearchDocuments(args: any) {
-    const query = args?.query || '';
-    const topK = args?.topK || 5;
-    
-    logger.info('Search documents called', { query, topK });
-    
-    // Simple mock implementation - replace with actual RAG search later
-    const mockResults = Array.from({ length: Math.min(topK, 3) }, (_, i) => ({
-      content: `Mock search result ${i + 1} for query: "${query}". This would be actual document content in a real implementation.`,
-      score: 0.9 - (i * 0.1),
-      metadata: {
-        fileName: `document_${i + 1}.txt`,
-        filePath: `/documents/document_${i + 1}.txt`,
-        chunkIndex: 0
-      }
-    }));
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            query,
-            totalResults: mockResults.length,
-            results: mockResults,
-            message: 'Mock search results - RAG functionality will be integrated step by step'
-          }, null, 2)
-        }
-      ]
+  // Initialize model management service
+  let modelService;
+  try {
+    const { ModelManagementService } = await import('@/domains/rag/services/model-management.js');
+    modelService = new ModelManagementService(config);
+  } catch (error) {
+    logger.warn('Model management service not available, using mock implementation');
+    modelService = {
+      getAvailableModels: async () => ({ 'all-MiniLM-L6-v2': { name: 'all-MiniLM-L6-v2', dimensions: 384 } }),
+      getCurrentModelInfo: async () => ({ name: 'all-MiniLM-L6-v2', dimensions: 384 }),
+      switchEmbeddingModel: async () => {},
+      downloadModel: async () => ({ success: true, message: 'Mock download' }),
+      getModelCacheInfo: async () => ({ cacheSize: 0, models: [] }),
+      getDownloadProgress: async () => ({})
     };
   }
 
-  private async handleGetServerStatus() {
-    logger.info('Get server status called');
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            status: 'running',
-            uptime: process.uptime(),
-            version: '1.0.0',
-            transport: process.env.MCP_TRANSPORT || 'stdio',
-            pid: process.pid,
-            message: 'MCP Server is running with simplified architecture'
-          }, null, 2)
-        }
-      ]
-    };
+  // Initialize file processing service (optional)
+  let fileProcessingService;
+  try {
+    const { FileProcessingService } = await import('@/domains/rag/services/document/processor.js');
+    fileProcessingService = new FileProcessingService(fileRepository, chunkRepository, vectorStore, config);
+  } catch (error) {
+    logger.warn('File processing service not available');
   }
 
-  async start(): Promise<void> {
-    logger.info('🔗 Starting MCP Server with stdio transport...');
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    logger.info('🎯 MCP Server started and ready for connections');
-  }
+  // Initialize handlers
+  const searchHandler = new SearchHandler(ragWorkflow);
+  const documentHandler = new DocumentHandler(fileRepository, fileProcessingService!);
+  const systemHandler = new SystemHandler(
+    searchService, 
+    fileRepository, 
+    chunkRepository, 
+    config,
+    vectorStore,
+    fileProcessingService
+  );
+  const modelHandler = new ModelHandler(modelService);
 
-  async shutdown(): Promise<void> {
-    logger.info('🔄 Shutting down MCP Server...');
-    // Add any cleanup logic here if needed
-    logger.info('✅ MCP Server shutdown completed');
-  }
+  // Create and return MCP Server
+  return new MCPServer(
+    searchHandler,
+    documentHandler,
+    systemHandler,
+    modelHandler,
+    fileRepository,
+    config
+  );
 }
 
 async function main(): Promise<void> {
-  let mcpServer: SimpleMCPServer | null = null;
+  let mcpServer: MCPServer | null = null;
 
   try {
-    logger.info('🎯 Starting RAG MCP Server', {
+    const config = ConfigFactory.getCurrentConfig();
+    
+    logger.info('🎯 Starting Production RAG MCP Server', {
       version: '1.0.0',
-      transport: process.env.MCP_TRANSPORT || 'stdio',
+      transport: config.mcp.type,
+      port: config.mcp.port,
+      host: config.mcp.host,
       nodeVersion: process.version,
       pid: process.pid
     });
 
-    // Create and start MCP server
-    mcpServer = new SimpleMCPServer();
+    // Initialize all services and create MCP server
+    logger.info('🔧 Initializing RAG services and dependencies...');
+    mcpServer = await initializeServices(config);
 
     // Setup graceful shutdown
     const gracefulShutdown = async (signal: string) => {
@@ -194,6 +125,9 @@ async function main(): Promise<void> {
           logger.error('Error during MCP server shutdown', error instanceof Error ? error : new Error(String(error)));
         }
       }
+
+      // Cleanup service registry
+      serviceRegistry.clear();
 
       process.exit(0);
     };
@@ -214,11 +148,14 @@ async function main(): Promise<void> {
     });
 
     // Start the MCP server
+    logger.info('🚀 Starting RAG MCP Server...');
     await mcpServer.start();
 
-    logger.info('🚀 RAG MCP Server started successfully', {
-      transport: process.env.MCP_TRANSPORT || 'stdio',
-      message: 'Server is ready for MCP client connections'
+    logger.info('✅ Production RAG MCP Server started successfully', {
+      transport: config.mcp.type,
+      port: config.mcp.port,
+      host: config.mcp.host,
+      message: 'Server ready with full RAG capabilities and multi-transport support'
     });
 
   } catch (error) {
@@ -231,6 +168,9 @@ async function main(): Promise<void> {
         logger.error('Error during emergency shutdown', shutdownError instanceof Error ? shutdownError : new Error(String(shutdownError)));
       }
     }
+    
+    // Cleanup service registry on error
+    serviceRegistry.clear();
     
     process.exit(1);
   }

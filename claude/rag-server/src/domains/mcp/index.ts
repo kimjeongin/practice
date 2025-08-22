@@ -5,3 +5,4 @@ export * from './handlers/document.js';
 export * from './handlers/system.js';
 export * from './handlers/model.js';
 export * from './handlers/sync.js';
+export * from './transport/transport-factory.js';

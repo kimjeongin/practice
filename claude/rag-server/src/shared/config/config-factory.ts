@@ -38,6 +38,16 @@ export interface VectorStoreConfig {
   };
 }
 
+export interface MCPTransportConfig {
+  type: 'stdio' | 'streamable-http' | 'sse';
+  port?: number;
+  host?: string;
+  enableCors?: boolean;
+  sessionTimeout?: number;
+  allowedOrigins?: string[];
+  enableDnsRebindingProtection?: boolean;
+}
+
 export interface ServerConfig extends BaseServerConfig {
   // Vector store configuration
   vectorStore: VectorStoreConfig;
@@ -77,6 +87,9 @@ export interface ServerConfig extends BaseServerConfig {
     contextualCompression: boolean;
     adaptiveRetrieval: boolean;
   };
+
+  // MCP Transport configuration
+  mcp: MCPTransportConfig;
 }
 
 export class ConfigFactory {
@@ -129,6 +142,15 @@ export class ConfigFactory {
         multiStepRetrieval: false, 
         contextualCompression: false,
         adaptiveRetrieval: false,
+      },
+      mcp: {
+        type: (process.env['MCP_TRANSPORT'] as any) || 'stdio',
+        port: parseInt(process.env['MCP_PORT'] || '3000'),
+        host: process.env['MCP_HOST'] || 'localhost',
+        enableCors: process.env['MCP_ENABLE_CORS'] !== 'false',
+        sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),
+        allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],
+        enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true',
       }
     };
   }
@@ -185,6 +207,15 @@ export class ConfigFactory {
         multiStepRetrieval: process.env['ENABLE_MULTI_STEP_RETRIEVAL'] === 'true',
         contextualCompression: process.env['ENABLE_CONTEXTUAL_COMPRESSION'] === 'true',
         adaptiveRetrieval: process.env['ENABLE_ADAPTIVE_RETRIEVAL'] === 'true',
+      },
+      mcp: {
+        type: (process.env['MCP_TRANSPORT'] as any) || 'streamable-http',
+        port: parseInt(process.env['MCP_PORT'] || '3000'),
+        host: process.env['MCP_HOST'] || '0.0.0.0',
+        enableCors: process.env['MCP_ENABLE_CORS'] !== 'false',
+        sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),
+        allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],
+        enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true',
       }
     };
   }
@@ -234,6 +265,15 @@ export class ConfigFactory {
         multiStepRetrieval: false,
         contextualCompression: false,
         adaptiveRetrieval: false,
+      },
+      mcp: {
+        type: 'stdio',
+        port: 3002,
+        host: 'localhost',
+        enableCors: true,
+        sessionTimeout: 30000,
+        allowedOrigins: ['*'],
+        enableDnsRebindingProtection: false,
       }
     };
   }
@@ -324,7 +364,7 @@ export class ConfigFactory {
     }
   }
   
-  private static createBaseConfig(): Omit<ServerConfig, 'vectorStore' | 'pipeline' | 'search' | 'monitoring' | 'features'> {
+  private static createBaseConfig(): Omit<ServerConfig, 'vectorStore' | 'pipeline' | 'search' | 'monitoring' | 'features' | 'mcp'> {
     const service = process.env['EMBEDDING_SERVICE'] || 'transformers';
     const dataDir = resolve(process.env['DATA_DIR'] || './.data');
     const documentsDir = resolve(process.env['DOCUMENTS_DIR'] || './documents');

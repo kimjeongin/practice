@@ -71,6 +71,15 @@ export function validateConfig(config: BaseServerConfig): void {
       multiStepRetrieval: false,
       contextualCompression: false,
       adaptiveRetrieval: false,
+    },
+    mcp: {
+      type: (process.env['MCP_TRANSPORT'] as any) || 'stdio',
+      port: parseInt(process.env['MCP_PORT'] || '3000'),
+      host: process.env['MCP_HOST'] || 'localhost',
+      enableCors: process.env['MCP_ENABLE_CORS'] !== 'false',
+      sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),
+      allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],
+      enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true',
     }
   };
   

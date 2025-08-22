@@ -49,6 +49,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@fastify/cors": "^11.1.0",
     "@huggingface/transformers": "^3.7.2",
     "@langchain/community": "^0.3.53",
     "@langchain/core": "^0.3.70",
@@ -59,6 +60,7 @@
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.1",
     "faiss-node": "^0.5.1",
+    "fastify": "^5.5.0",
     "langchain": "^0.3.31",
     "mammoth": "^1.10.0",
     "node-fetch": "^3.3.2",

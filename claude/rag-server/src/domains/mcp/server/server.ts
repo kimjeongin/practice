@@ -1,5 +1,4 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { 
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -14,7 +13,7 @@ import { DocumentHandler } from '../handlers/document.js';
 import { SystemHandler } from '../handlers/system.js';
 import { ModelHandler } from '../handlers/model.js';
 import { IFileRepository } from '@/domains/rag/repositories/document.js';
-import { ServerConfig } from '@/shared/types/index.js';
+import { ServerConfig } from '@/shared/config/config-factory.js';
 
 export class MCPServer {
   private server: Server;
@@ -362,10 +361,28 @@ export class MCPServer {
   }
 
   async start(): Promise<void> {
-    console.log('🔗 Starting stdio MCP server transport...');
-    const transport = new StdioServerTransport();
+    const { TransportFactory } = await import('../transport/transport-factory.js');
+    
+    // Validate transport configuration
+    TransportFactory.validateConfig(this.config.mcp);
+    
+    console.log(`🔗 Starting MCP server with ${this.config.mcp.type} transport...`);
+    
+    const { transport, context } = await TransportFactory.createTransport(this.config.mcp);
+    
+    // Connect MCP server to transport
     await this.server.connect(transport);
-    console.log('🎯 MCP Server started and ready for stdio connections');
+    
+    // Start HTTP server if needed
+    if (context && this.config.mcp.type !== 'stdio') {
+      await TransportFactory.startHTTPServer(context, this.config.mcp);
+    }
+    
+    console.log(`🎯 MCP Server started and ready for ${this.config.mcp.type} connections`, {
+      transport: this.config.mcp.type,
+      port: this.config.mcp.port,
+      host: this.config.mcp.host,
+    });
   }
 
   async shutdown(): Promise<void> {

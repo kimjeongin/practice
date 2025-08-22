@@ -8,7 +8,7 @@ export class DatabaseConnection {
 
   constructor() {
     // Ensure the database directory exists
-    const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './.data/database/rag.db';
+    const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './database.db';
     const dbDir = dirname(dbPath);
     if (!existsSync(dbDir)) {
       mkdirSync(dbDir, { recursive: true });
