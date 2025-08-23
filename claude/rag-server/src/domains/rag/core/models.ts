@@ -8,6 +8,7 @@ export interface FileMetadata {
   createdAt: Date;
   fileType: string;
   hash: string;
+  indexedAt?: Date;
 }
 
 export interface DocumentChunk {

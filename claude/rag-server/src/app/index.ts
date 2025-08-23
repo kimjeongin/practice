@@ -6,17 +6,16 @@
 import { ConfigFactory } from '@/shared/config/config-factory.js';
 import { logger } from '@/shared/logger/index.js';
 import { MCPServer } from '@/domains/mcp/server/server.js';
-import { SearchHandler } from '@/domains/mcp/handlers/search.js';
-import { DocumentHandler } from '@/domains/mcp/handlers/document.js';
-import { SystemHandler } from '@/domains/mcp/handlers/system.js';
-import { ModelHandler } from '@/domains/mcp/handlers/model.js';
+import { RagSearchHandler } from '@/domains/mcp/handlers/rag-search.js';
+import { ListSourcesHandler } from '@/domains/mcp/handlers/list-sources.js';
+import { SearchSimilarHandler } from '@/domains/mcp/handlers/search-similar.js';
+import { ExtractInformationHandler } from '@/domains/mcp/handlers/extract-information.js';
 import { RAGWorkflow } from '@/domains/rag/workflows/workflow.js';
 import { FileRepository } from '@/domains/rag/repositories/document.js';
 import { ChunkRepository } from '@/domains/rag/repositories/chunk.js';
 import { SearchService } from '@/domains/rag/services/search/search-service.js';
 import { DatabaseConnection } from '@/shared/database/connection.js';
 import { serviceRegistry } from '@/shared/dependency-injection/service-registry.js';
-import { SyncHandler } from '@/domains/mcp/handlers/sync.js';
 
 /**
  * Initialize all dependencies and create MCPServer instance
@@ -46,22 +45,7 @@ async function initializeServices(config: any) {
   // Initialize RAG workflow
   const ragWorkflow = new RAGWorkflow(searchService, fileRepository, chunkRepository, config);
 
-  // Initialize model management service
-  let modelService;
-  try {
-    const { ModelManagementService } = await import('@/domains/rag/services/model-management.js');
-    modelService = new ModelManagementService(config);
-  } catch (error) {
-    logger.warn('Model management service not available, using mock implementation');
-    modelService = {
-      getAvailableModels: async () => ({ 'all-MiniLM-L6-v2': { name: 'all-MiniLM-L6-v2', dimensions: 384 } }),
-      getCurrentModelInfo: async () => ({ name: 'all-MiniLM-L6-v2', dimensions: 384 }),
-      switchEmbeddingModel: async () => {},
-      downloadModel: async () => ({ success: true, message: 'Mock download' }),
-      getModelCacheInfo: async () => ({ cacheSize: 0, models: [] }),
-      getDownloadProgress: async () => ({})
-    };
-  }
+  // Model management service removed - auto-managed through configuration
 
   // Initialize file processing service (optional)
   let fileProcessingService;
@@ -73,26 +57,17 @@ async function initializeServices(config: any) {
   }
 
   // Initialize handlers
-  const searchHandler = new SearchHandler(ragWorkflow);
-  const documentHandler = new DocumentHandler(fileRepository, fileProcessingService!);
-  const systemHandler = new SystemHandler(
-    searchService, 
-    fileRepository, 
-    chunkRepository, 
-    config,
-    vectorStore,
-    fileProcessingService
-  );
-  const modelHandler = new ModelHandler(modelService);
-  const syncHandler = new SyncHandler(fileRepository, chunkRepository,vectorStore,config,fileProcessingService)
+  const ragSearchHandler = new RagSearchHandler(ragWorkflow);
+  const listSourcesHandler = new ListSourcesHandler(fileRepository);
+  const searchSimilarHandler = new SearchSimilarHandler(ragWorkflow, fileRepository);
+  const extractInformationHandler = new ExtractInformationHandler(ragWorkflow);
 
   // Create and return MCP Server
   return new MCPServer(
-    searchHandler,
-    documentHandler,
-    systemHandler,
-    modelHandler,
-    syncHandler,
+    ragSearchHandler,
+    listSourcesHandler,
+    searchSimilarHandler,
+    extractInformationHandler,
     fileRepository,
     config
   );

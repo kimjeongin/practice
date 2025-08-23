@@ -8,24 +8,22 @@ import {
   GetPromptRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { SearchHandler } from '../handlers/search.js';
-import { DocumentHandler } from '../handlers/document.js';
-import { SystemHandler } from '../handlers/system.js';
-import { ModelHandler } from '../handlers/model.js';
+import { RagSearchHandler } from '../handlers/rag-search.js';
+import { ListSourcesHandler } from '../handlers/list-sources.js';
+import { SearchSimilarHandler } from '../handlers/search-similar.js';
+import { ExtractInformationHandler } from '../handlers/extract-information.js';
 import { IFileRepository } from '@/domains/rag/repositories/document.js';
 import { ServerConfig } from '@/shared/config/config-factory.js';
-import { SyncHandler } from '../handlers/sync.js';
 import { logger } from '@/shared/logger/index.js';
 
 export class MCPServer {
   private server: Server;
 
   constructor(
-    private searchHandler: SearchHandler,
-    private documentHandler: DocumentHandler,
-    private systemHandler: SystemHandler,
-    private modelHandler: ModelHandler,
-    private syncHandler: SyncHandler,
+    private ragSearchHandler: RagSearchHandler,
+    private listSourcesHandler: ListSourcesHandler,
+    private searchSimilarHandler: SearchSimilarHandler,
+    private extractInformationHandler: ExtractInformationHandler,
     private fileRepository: IFileRepository,
     private config: ServerConfig
   ) {
@@ -52,11 +50,10 @@ export class MCPServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
         tools: [
-          ...this.searchHandler.getTools(),
-          ...this.documentHandler.getTools(),
-          ...this.modelHandler.getTools(),
-          ...this.syncHandler.getTools(),
-          ...this.systemHandler.getTools(),
+          ...this.ragSearchHandler.getTools(),
+          ...this.listSourcesHandler.getTools(),
+          ...this.searchSimilarHandler.getTools(),
+          ...this.extractInformationHandler.getTools(),
         ],
       };
     });
@@ -68,57 +65,17 @@ export class MCPServer {
         let result;
 
         switch (name) {
-          case 'search_documents':
-            result = await this.searchHandler.handleSearchDocuments(this.validateAndCastArgs(args, 'search_documents'));
+          case 'rag_search':
+            result = await this.ragSearchHandler.handleRagSearch(this.validateAndCastArgs(args, 'rag_search'));
             break;
-          case 'list_files':
-            result = await this.documentHandler.handleListFiles(this.validateAndCastArgs(args, 'list_files'));
+          case 'list_sources':
+            result = await this.listSourcesHandler.handleListSources(this.validateAndCastArgs(args, 'list_sources'));
             break;
-          case 'get_file_metadata':
-            result = await this.documentHandler.handleGetFileMetadata(this.validateAndCastArgs(args, 'get_file_metadata'));
+          case 'search_similar':
+            result = await this.searchSimilarHandler.handleSearchSimilar(this.validateAndCastArgs(args, 'search_similar'));
             break;
-          case 'update_file_metadata':
-            result = await this.documentHandler.handleUpdateFileMetadata(this.validateAndCastArgs(args, 'update_file_metadata'));
-            break;
-          case 'search_files_by_metadata':
-            result = await this.documentHandler.handleSearchFilesByMetadata(this.validateAndCastArgs(args, 'search_files_by_metadata'));
-            break;
-          case 'force_reindex':
-            result = await this.documentHandler.handleForceReindex(this.validateAndCastArgs(args, 'force_reindex'));
-            break;
-          case 'get_server_status':
-            result = await this.systemHandler.handleGetServerStatus();
-            break;
-          case 'list_available_models':
-            result = await this.modelHandler.handleListAvailableModels();
-            break;
-          case 'get_current_model_info':
-            result = await this.modelHandler.handleGetCurrentModelInfo();
-            break;
-          case 'switch_embedding_model':
-            result = await this.modelHandler.handleSwitchEmbeddingModel(this.validateAndCastArgs(args, 'switch_embedding_model'));
-            break;
-          case 'download_model':
-            result = await this.modelHandler.handleDownloadModel(this.validateAndCastArgs(args, 'download_model'));
-            break;
-          case 'get_model_cache_info':
-            result = await this.modelHandler.handleGetModelCacheInfo();
-            break;
-          case 'get_download_progress':
-            result = await this.modelHandler.handleGetDownloadProgress();
-            break;
-          // Vector DB sync tools
-          case 'vector_db_sync_check':
-            result = await this.syncHandler.handleSyncCheck(args);
-            break;
-          case 'vector_db_cleanup_orphaned':
-            result = await this.syncHandler.handleCleanupOrphaned(args);
-            break;
-          case 'vector_db_force_sync':
-            result = await this.syncHandler.handleForceSync(args);
-            break;
-          case 'vector_db_integrity_report':
-            result = await this.syncHandler.handleIntegrityReport(args);
+          case 'extract_information':
+            result = await this.extractInformationHandler.handleExtractInformation(this.validateAndCastArgs(args, 'extract_information'));
             break;
           default:
             // Graceful handling of unknown tools instead of crashing the service
@@ -233,14 +190,14 @@ export class MCPServer {
             throw new Error('Query is required for rag_search prompt');
           }
 
-          const results = await this.searchHandler.handleSearchDocuments({
+          const results = await this.ragSearchHandler.handleRagSearch({
             query,
-            topK: contextLength,
+            limit: contextLength,
           });
           
-          const contextText = results.results.map(result => 
-            `**${result.metadata.fileName}** (Score: ${result.score.toFixed(4)}):\n${result.content}`
-          ).join('\n\n---\n\n');
+          const contextText = results.results ? results.results.map(result => 
+            `**${result.source.filename}** (Score: ${result.relevance_score.toFixed(4)}):\n${result.content}`
+          ).join('\n\n---\n\n') : 'No results found';
 
           return {
             messages: [
@@ -317,23 +274,10 @@ export class MCPServer {
 
   private getAvailableToolNames(): string[] {
     return [
-      'search_documents',
-      'list_files', 
-      'get_file_metadata',
-      'update_file_metadata',
-      'search_files_by_metadata',
-      'force_reindex',
-      'get_server_status',
-      'list_available_models',
-      'get_current_model_info', 
-      'switch_embedding_model',
-      'download_model',
-      'get_model_cache_info',
-      'get_download_progress',
-      'vector_db_sync_check',
-      'vector_db_cleanup_orphaned',
-      'vector_db_force_sync',
-      'vector_db_integrity_report'
+      'rag_search',
+      'list_sources',
+      'search_similar',
+      'extract_information'
     ];
   }
 }

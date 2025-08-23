@@ -1,5 +1,13 @@
-import { IModelManagementService } from '../../mcp/handlers/model.js';
 import { IEmbeddingService } from '@/shared/types/interfaces.js';
+
+interface IModelManagementService {
+  getAvailableModels(): Promise<Record<string, any>>;
+  getCurrentModelInfo(): Promise<any>;
+  switchEmbeddingModel(modelName: string): Promise<void>;
+  downloadModel(modelName?: string): Promise<any>;
+  getModelCacheInfo(): Promise<any>;
+  getDownloadProgress(): Promise<any>;
+}
 
 export class ModelManagementService implements IModelManagementService {
   constructor(
