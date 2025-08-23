@@ -2,10 +2,11 @@ import { ISearchService, IVectorStoreService, IFileProcessingService } from '@/s
 import { IFileRepository } from '@/domains/rag/repositories/document.js';
 import { IChunkRepository } from '@/domains/rag/repositories/chunk.js';
 import { ServerConfig } from '@/shared/types/index.js';
-import { VectorDbSyncHandler } from './sync.js';
+import { SyncHandler } from './sync.js';
+import { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 export class SystemHandler {
-  private syncHandler?: VectorDbSyncHandler;
+  private syncHandler?: SyncHandler;
 
   constructor(
     private searchService: ISearchService,
@@ -16,7 +17,7 @@ export class SystemHandler {
     fileProcessingService?: IFileProcessingService
   ) {
     if (vectorStoreService) {
-      this.syncHandler = new VectorDbSyncHandler(
+      this.syncHandler = new SyncHandler(
         fileRepository,
         chunkRepository,
         vectorStoreService,
@@ -86,36 +87,11 @@ export class SystemHandler {
     };
   }
 
-  // Sync-related methods
-  async handleSyncCheck(args: any) {
-    if (!this.syncHandler) {
-      throw new Error('Sync functionality not available - vector store service not initialized');
-    }
-    return await this.syncHandler.handleToolCall('vector_db_sync_check', args);
-  }
-
-  async handleCleanupOrphaned(args: any) {
-    if (!this.syncHandler) {
-      throw new Error('Sync functionality not available - vector store service not initialized');
-    }
-    return await this.syncHandler.handleToolCall('vector_db_cleanup_orphaned', args);
-  }
-
-  async handleForceSync(args: any) {
-    if (!this.syncHandler) {
-      throw new Error('Sync functionality not available - vector store service not initialized');
-    }
-    return await this.syncHandler.handleToolCall('vector_db_force_sync', args);
-  }
-
-  async handleIntegrityReport(args: any) {
-    if (!this.syncHandler) {
-      throw new Error('Sync functionality not available - vector store service not initialized');
-    }
-    return await this.syncHandler.handleToolCall('vector_db_integrity_report', args);
-  }
-
-  getSyncTools() {
-    return this.syncHandler ? this.syncHandler.getTools() : [];
+  getTools(): Tool[] {
+    return [{
+      name: 'get_server_status',
+      description: 'Get the current status and statistics of the RAG server',
+      inputSchema: { type: 'object', properties: {}, required: [] },
+    }]    
   }
 }

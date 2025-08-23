@@ -1,4 +1,5 @@
 import { RAGWorkflow, RAGSearchOptions } from '@/domains/rag/workflows/workflow.js';
+import { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 export interface SearchDocumentsArgs {
   query: string;
@@ -55,4 +56,55 @@ export class SearchHandler {
       totalResults: results.length,
     };
   }
+  getTools(): Tool[] {
+        return [{
+            name: 'search_documents',
+            description: 'Search through indexed documents using natural language queries',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'The search query in natural language',
+                },
+                topK: {
+                  type: 'number',
+                  description: 'Maximum number of results to return (default: 5)',
+                  default: 5,
+                  minimum: 1,
+                  maximum: 50,
+                },
+                fileTypes: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Filter by file types (e.g., ["txt", "md", "pdf"])',
+                },
+                metadataFilters: {
+                  type: 'object',
+                  description: 'Filter by custom metadata key-value pairs',
+                  additionalProperties: { type: 'string' },
+                },
+                useSemanticSearch: {
+                  type: 'boolean',
+                  description: 'Use semantic search with embeddings (default: true)',
+                  default: true,
+                },
+                useHybridSearch: {
+                  type: 'boolean',
+                  description: 'Combine semantic and keyword search (default: false)',
+                  default: false,
+                },
+                semanticWeight: {
+                  type: 'number',
+                  description: 'Weight for semantic search vs keyword search (0-1, default: 0.7)',
+                  default: 0.7,
+                  minimum: 0,
+                  maximum: 1,
+                },
+              },
+              required: ['query'],
+            },
+          }
+            ]    
+      }
 }

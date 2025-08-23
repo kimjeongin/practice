@@ -1,5 +1,6 @@
 import { IFileRepository } from '@/domains/rag/repositories/document.js';
 import { IFileProcessingService } from '@/shared/types/interfaces.js';
+import { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 export interface ListFilesArgs {
   fileType?: string;
@@ -170,4 +171,35 @@ export class DocumentHandler {
       clearedCache: clearCache,
     };
   }
+  getTools(): Tool[] {
+          return [{
+            name: 'list_files',
+            description: 'List all indexed files with their metadata',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                fileType: { type: 'string', description: 'Filter by specific file type' },
+                limit: { type: 'number', description: 'Maximum number of files to return (default: 100)', default: 100 },
+                offset: { type: 'number', description: 'Number of files to skip (default: 0)', default: 0 },
+              },
+              required: [],
+            },
+          },
+          {
+            name: 'force_reindex',
+            description: 'Force complete reindexing of all files',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                clearCache: {
+                  type: 'boolean',
+                  description: 'Whether to clear the vector cache before reindexing (default: false)',
+                  default: false,
+                },
+              },
+              required: [],
+            },
+          }
+              ]    
+        }
 }

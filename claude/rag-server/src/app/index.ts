@@ -16,6 +16,7 @@ import { ChunkRepository } from '@/domains/rag/repositories/chunk.js';
 import { SearchService } from '@/domains/rag/services/search/search-service.js';
 import { DatabaseConnection } from '@/shared/database/connection.js';
 import { serviceRegistry } from '@/shared/dependency-injection/service-registry.js';
+import { SyncHandler } from '@/domains/mcp/handlers/sync.js';
 
 /**
  * Initialize all dependencies and create MCPServer instance
@@ -83,6 +84,7 @@ async function initializeServices(config: any) {
     fileProcessingService
   );
   const modelHandler = new ModelHandler(modelService);
+  const syncHandler = new SyncHandler(fileRepository, chunkRepository,vectorStore,config,fileProcessingService)
 
   // Create and return MCP Server
   return new MCPServer(
@@ -90,6 +92,7 @@ async function initializeServices(config: any) {
     documentHandler,
     systemHandler,
     modelHandler,
+    syncHandler,
     fileRepository,
     config
   );

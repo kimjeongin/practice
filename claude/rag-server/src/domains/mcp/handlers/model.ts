@@ -1,3 +1,5 @@
+import { Tool } from "@modelcontextprotocol/sdk/types.js";
+
 export interface SwitchEmbeddingModelArgs {
   modelName: string;
 }
@@ -86,4 +88,32 @@ export class ModelHandler {
     };
   }
 
+  getTools(): Tool[] {
+      return [{
+            name: 'list_available_models',
+            description: 'List all available embedding models with their specifications',
+            inputSchema: { type: 'object', properties: {}, required: [] },
+          },
+          {
+            name: 'get_current_model_info',
+            description: 'Get information about the currently selected embedding model',
+            inputSchema: { type: 'object', properties: {}, required: [] },
+          },
+          {
+            name: 'switch_embedding_model',
+            description: 'Switch to a different embedding model',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                modelName: {
+                  type: 'string',
+                  description: 'The name of the model to switch to',
+                  enum: ['all-MiniLM-L6-v2', 'all-MiniLM-L12-v2', 'bge-small-en', 'bge-base-en'],
+                },
+              },
+              required: ['modelName'],
+            },
+          }
+          ]    
+    }
 }

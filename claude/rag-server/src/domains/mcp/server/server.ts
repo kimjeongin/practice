@@ -14,6 +14,7 @@ import { SystemHandler } from '../handlers/system.js';
 import { ModelHandler } from '../handlers/model.js';
 import { IFileRepository } from '@/domains/rag/repositories/document.js';
 import { ServerConfig } from '@/shared/config/config-factory.js';
+import { SyncHandler } from '../handlers/sync.js';
 
 export class MCPServer {
   private server: Server;
@@ -23,6 +24,7 @@ export class MCPServer {
     private documentHandler: DocumentHandler,
     private systemHandler: SystemHandler,
     private modelHandler: ModelHandler,
+    private syncHandler: SyncHandler,
     private fileRepository: IFileRepository,
     private config: ServerConfig
   ) {
@@ -49,116 +51,11 @@ export class MCPServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
         tools: [
-          {
-            name: 'search_documents',
-            description: 'Search through indexed documents using natural language queries',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                query: {
-                  type: 'string',
-                  description: 'The search query in natural language',
-                },
-                topK: {
-                  type: 'number',
-                  description: 'Maximum number of results to return (default: 5)',
-                  default: 5,
-                  minimum: 1,
-                  maximum: 50,
-                },
-                fileTypes: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'Filter by file types (e.g., ["txt", "md", "pdf"])',
-                },
-                metadataFilters: {
-                  type: 'object',
-                  description: 'Filter by custom metadata key-value pairs',
-                  additionalProperties: { type: 'string' },
-                },
-                useSemanticSearch: {
-                  type: 'boolean',
-                  description: 'Use semantic search with embeddings (default: true)',
-                  default: true,
-                },
-                useHybridSearch: {
-                  type: 'boolean',
-                  description: 'Combine semantic and keyword search (default: false)',
-                  default: false,
-                },
-                semanticWeight: {
-                  type: 'number',
-                  description: 'Weight for semantic search vs keyword search (0-1, default: 0.7)',
-                  default: 0.7,
-                  minimum: 0,
-                  maximum: 1,
-                },
-              },
-              required: ['query'],
-            },
-          },
-          // Add other tool definitions here...
-          {
-            name: 'list_files',
-            description: 'List all indexed files with their metadata',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                fileType: { type: 'string', description: 'Filter by specific file type' },
-                limit: { type: 'number', description: 'Maximum number of files to return (default: 100)', default: 100 },
-                offset: { type: 'number', description: 'Number of files to skip (default: 0)', default: 0 },
-              },
-              required: [],
-            },
-          },
-          {
-            name: 'get_server_status',
-            description: 'Get the current status and statistics of the RAG server',
-            inputSchema: { type: 'object', properties: {}, required: [] },
-          },
-          // Model management tools
-          {
-            name: 'list_available_models',
-            description: 'List all available embedding models with their specifications',
-            inputSchema: { type: 'object', properties: {}, required: [] },
-          },
-          {
-            name: 'get_current_model_info',
-            description: 'Get information about the currently selected embedding model',
-            inputSchema: { type: 'object', properties: {}, required: [] },
-          },
-          {
-            name: 'switch_embedding_model',
-            description: 'Switch to a different embedding model',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                modelName: {
-                  type: 'string',
-                  description: 'The name of the model to switch to',
-                  enum: ['all-MiniLM-L6-v2', 'all-MiniLM-L12-v2', 'bge-small-en', 'bge-base-en'],
-                },
-              },
-              required: ['modelName'],
-            },
-          },
-          {
-            name: 'force_reindex',
-            description: 'Force complete reindexing of all files',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                clearCache: {
-                  type: 'boolean',
-                  description: 'Whether to clear the vector cache before reindexing (default: false)',
-                  default: false,
-                },
-              },
-              required: [],
-            },
-          },
-          // Add sync tools
-          ...this.systemHandler.getSyncTools(),
+          ...this.searchHandler.getTools(),
+          ...this.documentHandler.getTools(),
+          ...this.modelHandler.getTools(),
+          ...this.syncHandler.getTools(),
+          ...this.systemHandler.getTools(),
         ],
       };
     });
@@ -185,6 +82,9 @@ export class MCPServer {
           case 'search_files_by_metadata':
             result = await this.documentHandler.handleSearchFilesByMetadata(this.validateAndCastArgs(args, 'search_files_by_metadata'));
             break;
+          case 'force_reindex':
+            result = await this.documentHandler.handleForceReindex(this.validateAndCastArgs(args, 'force_reindex'));
+            break;
           case 'get_server_status':
             result = await this.systemHandler.handleGetServerStatus();
             break;
@@ -206,21 +106,18 @@ export class MCPServer {
           case 'get_download_progress':
             result = await this.modelHandler.handleGetDownloadProgress();
             break;
-          case 'force_reindex':
-            result = await this.documentHandler.handleForceReindex(this.validateAndCastArgs(args, 'force_reindex'));
-            break;
           // Vector DB sync tools
           case 'vector_db_sync_check':
-            result = await this.systemHandler.handleSyncCheck(args);
+            result = await this.syncHandler.handleSyncCheck(args);
             break;
           case 'vector_db_cleanup_orphaned':
-            result = await this.systemHandler.handleCleanupOrphaned(args);
+            result = await this.syncHandler.handleCleanupOrphaned(args);
             break;
           case 'vector_db_force_sync':
-            result = await this.systemHandler.handleForceSync(args);
+            result = await this.syncHandler.handleForceSync(args);
             break;
           case 'vector_db_integrity_report':
-            result = await this.systemHandler.handleIntegrityReport(args);
+            result = await this.syncHandler.handleIntegrityReport(args);
             break;
           default:
             throw new Error(`Unknown tool: ${name}`);

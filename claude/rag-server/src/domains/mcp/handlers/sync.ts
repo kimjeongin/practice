@@ -6,7 +6,7 @@ import { IVectorStoreService, IFileProcessingService } from '@/shared/types/inte
 import { ServerConfig } from '@/shared/types/index.js';
 import { logger } from '@/shared/logger/index.js';
 
-export class VectorDbSyncHandler {
+export class SyncHandler {
   private syncManager: SyncManager;
 
   constructor(
@@ -97,27 +97,7 @@ export class VectorDbSyncHandler {
     ];
   }
 
-  async handleToolCall(name: string, args: any): Promise<any> {
-    try {
-      switch (name) {
-        case 'vector_db_sync_check':
-          return await this.handleSyncCheck(args);
-        case 'vector_db_cleanup_orphaned':
-          return await this.handleCleanupOrphaned(args);
-        case 'vector_db_force_sync':
-          return await this.handleForceSync(args);
-        case 'vector_db_integrity_report':
-          return await this.handleIntegrityReport(args);
-        default:
-          throw new Error(`Unknown vector DB sync tool: ${name}`);
-      }
-    } catch (error) {
-      logger.error(`Vector DB sync handler error for tool ${name}`, error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    }
-  }
-
-  private async handleSyncCheck(args: any): Promise<any> {
+  async handleSyncCheck(args: any): Promise<any> {
     const options: Partial<VectorDbSyncOptions> = {
       deepScan: args.deepScan || false,
       includeNewFiles: args.includeNewFiles !== false,
@@ -155,7 +135,7 @@ export class VectorDbSyncHandler {
     };
   }
 
-  private async handleCleanupOrphaned(args: any): Promise<any> {
+  async handleCleanupOrphaned(args: any): Promise<any> {
     const dryRun = args.dryRun !== false;
 
     logger.info('Starting vector DB orphaned data cleanup', { dryRun });
@@ -207,7 +187,7 @@ export class VectorDbSyncHandler {
     };
   }
 
-  private async handleForceSync(args: any): Promise<any> {
+  async handleForceSync(args: any): Promise<any> {
     if (!args.confirm) {
       return {
         content: [
@@ -239,7 +219,7 @@ export class VectorDbSyncHandler {
     };
   }
 
-  private async handleIntegrityReport(args: any): Promise<any> {
+  async handleIntegrityReport(args: any): Promise<any> {
     const format = args.format || 'summary';
 
     const report = await this.syncManager.generateSyncReport({
