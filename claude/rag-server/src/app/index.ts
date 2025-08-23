@@ -6,10 +6,8 @@
 import { ConfigFactory } from '@/shared/config/config-factory.js';
 import { logger } from '@/shared/logger/index.js';
 import { MCPServer } from '@/domains/mcp/server/server.js';
-import { RagSearchHandler } from '@/domains/mcp/handlers/rag-search.js';
-import { ListSourcesHandler } from '@/domains/mcp/handlers/list-sources.js';
-import { SearchSimilarHandler } from '@/domains/mcp/handlers/search-similar.js';
-import { ExtractInformationHandler } from '@/domains/mcp/handlers/extract-information.js';
+import { SearchHandler } from '@/domains/mcp/handlers/search.js';
+import { InformationHandler } from '@/domains/mcp/handlers/information.js';
 import { RAGWorkflow } from '@/domains/rag/workflows/workflow.js';
 import { FileRepository } from '@/domains/rag/repositories/document.js';
 import { ChunkRepository } from '@/domains/rag/repositories/chunk.js';
@@ -57,17 +55,13 @@ async function initializeServices(config: any) {
   }
 
   // Initialize handlers
-  const ragSearchHandler = new RagSearchHandler(ragWorkflow);
-  const listSourcesHandler = new ListSourcesHandler(fileRepository);
-  const searchSimilarHandler = new SearchSimilarHandler(ragWorkflow, fileRepository);
-  const extractInformationHandler = new ExtractInformationHandler(ragWorkflow);
+  const searchHandler = new SearchHandler(ragWorkflow, fileRepository);
+  const informationHandler = new InformationHandler(fileRepository);
 
   // Create and return MCP Server
   return new MCPServer(
-    ragSearchHandler,
-    listSourcesHandler,
-    searchSimilarHandler,
-    extractInformationHandler,
+    searchHandler,
+    informationHandler,
     fileRepository,
     config
   );

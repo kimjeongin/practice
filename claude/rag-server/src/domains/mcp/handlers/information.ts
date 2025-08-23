@@ -8,7 +8,7 @@ export interface ListSourcesArgs {
   limit?: number;
 }
 
-export class ListSourcesHandler {
+export class InformationHandler {
   constructor(private fileRepository: IFileRepository) {}
 
   async handleListSources(args: ListSourcesArgs = {}) {

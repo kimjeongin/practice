@@ -8,10 +8,8 @@ import {
   GetPromptRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { RagSearchHandler } from '../handlers/rag-search.js';
-import { ListSourcesHandler } from '../handlers/list-sources.js';
-import { SearchSimilarHandler } from '../handlers/search-similar.js';
-import { ExtractInformationHandler } from '../handlers/extract-information.js';
+import { SearchHandler } from '../handlers/search.js';
+import { InformationHandler } from '../handlers/information.js';
 import { IFileRepository } from '@/domains/rag/repositories/document.js';
 import { ServerConfig } from '@/shared/config/config-factory.js';
 import { logger } from '@/shared/logger/index.js';
@@ -20,10 +18,8 @@ export class MCPServer {
   private server: Server;
 
   constructor(
-    private ragSearchHandler: RagSearchHandler,
-    private listSourcesHandler: ListSourcesHandler,
-    private searchSimilarHandler: SearchSimilarHandler,
-    private extractInformationHandler: ExtractInformationHandler,
+    private searchHandler: SearchHandler,
+    private informationHandler: InformationHandler,
     private fileRepository: IFileRepository,
     private config: ServerConfig
   ) {
@@ -50,10 +46,8 @@ export class MCPServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
         tools: [
-          ...this.ragSearchHandler.getTools(),
-          ...this.listSourcesHandler.getTools(),
-          ...this.searchSimilarHandler.getTools(),
-          ...this.extractInformationHandler.getTools(),
+          ...this.searchHandler.getTools(),
+          ...this.informationHandler.getTools(),
         ],
       };
     });
@@ -65,21 +59,22 @@ export class MCPServer {
         let result;
 
         switch (name) {
-          case 'rag_search':
-            result = await this.ragSearchHandler.handleRagSearch(this.validateAndCastArgs(args, 'rag_search'));
-            break;
-          case 'list_sources':
-            result = await this.listSourcesHandler.handleListSources(this.validateAndCastArgs(args, 'list_sources'));
+          case 'search':
+            result = await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'));
             break;
           case 'search_similar':
-            result = await this.searchSimilarHandler.handleSearchSimilar(this.validateAndCastArgs(args, 'search_similar'));
+            result = await this.searchHandler.handleSearchSimilar(this.validateAndCastArgs(args, 'search_similar'));
             break;
-          case 'extract_information':
-            result = await this.extractInformationHandler.handleExtractInformation(this.validateAndCastArgs(args, 'extract_information'));
+          case 'search_by_question':
+            result = await this.searchHandler.handleSearchByQuestion(this.validateAndCastArgs(args, 'search_by_question'));
             break;
-          default:
-            // Graceful handling of unknown tools instead of crashing the service
-            logger.warn('Unknown tool requested', { toolName: name, availableTools: this.getAvailableToolNames() });
+          case 'list_sources':
+            result = await this.informationHandler.handleListSources(this.validateAndCastArgs(args, 'list_sources'));
+            break;
+        }
+
+        // Graceful handling of unknown tools instead of crashing the service
+        logger.warn('Unknown tool requested', { toolName: name, availableTools: this.getAvailableToolNames() });
             return {
               content: [
                 {
@@ -94,16 +89,6 @@ export class MCPServer {
               ],
               isError: true
             };
-        }
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
@@ -117,6 +102,12 @@ export class MCPServer {
         };
       }
     });
+  }
+    private getAvailableToolNames(): string[] {
+    return [
+      ...this.searchHandler.getTools().map(tool => tool.name),
+      ...this.informationHandler.getTools().map(tool => tool.name)
+    ];
   }
 
   private setupResources(): void {
@@ -190,7 +181,7 @@ export class MCPServer {
             throw new Error('Query is required for rag_search prompt');
           }
 
-          const results = await this.ragSearchHandler.handleRagSearch({
+          const results = await this.searchHandler.handleSearch({
             query,
             limit: contextLength,
           });
@@ -270,14 +261,5 @@ export class MCPServer {
       throw new Error(`Invalid arguments for ${operation}: args must be an object`);
     }
     return args;
-  }
-
-  private getAvailableToolNames(): string[] {
-    return [
-      'rag_search',
-      'list_sources',
-      'search_similar',
-      'extract_information'
-    ];
   }
 }
