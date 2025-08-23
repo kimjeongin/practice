@@ -15,6 +15,7 @@ import { ModelHandler } from '../handlers/model.js';
 import { IFileRepository } from '@/domains/rag/repositories/document.js';
 import { ServerConfig } from '@/shared/config/config-factory.js';
 import { SyncHandler } from '../handlers/sync.js';
+import { logger } from '@/shared/logger/index.js';
 
 export class MCPServer {
   private server: Server;
@@ -120,7 +121,22 @@ export class MCPServer {
             result = await this.syncHandler.handleIntegrityReport(args);
             break;
           default:
-            throw new Error(`Unknown tool: ${name}`);
+            // Graceful handling of unknown tools instead of crashing the service
+            logger.warn('Unknown tool requested', { toolName: name, availableTools: this.getAvailableToolNames() });
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    error: 'UnknownTool',
+                    message: `Tool '${name}' is not available`,
+                    availableTools: this.getAvailableToolNames(),
+                    suggestion: 'Use the list_tools endpoint to see all available tools'
+                  }, null, 2)
+                }
+              ],
+              isError: true
+            };
         }
 
         return {
@@ -297,5 +313,27 @@ export class MCPServer {
       throw new Error(`Invalid arguments for ${operation}: args must be an object`);
     }
     return args;
+  }
+
+  private getAvailableToolNames(): string[] {
+    return [
+      'search_documents',
+      'list_files', 
+      'get_file_metadata',
+      'update_file_metadata',
+      'search_files_by_metadata',
+      'force_reindex',
+      'get_server_status',
+      'list_available_models',
+      'get_current_model_info', 
+      'switch_embedding_model',
+      'download_model',
+      'get_model_cache_info',
+      'get_download_progress',
+      'vector_db_sync_check',
+      'vector_db_cleanup_orphaned',
+      'vector_db_force_sync',
+      'vector_db_integrity_report'
+    ];
   }
 }

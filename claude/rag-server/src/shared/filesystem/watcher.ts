@@ -19,6 +19,11 @@ export class FileWatcher extends EventEmitter {
   private supportedExtensions: Set<string>;
   private processingFiles: Map<string, NodeJS.Timeout> = new Map();
   private readonly DEBOUNCE_DELAY = 300; // 300ms debounce
+  private readonly MAX_SCAN_DEPTH = 5; // Reduced from 10 to prevent deep recursion
+  private readonly MAX_SCAN_TIME_MS = 30000; // 30 seconds max for directory scan
+  private readonly MAX_PROCESSING_QUEUE = 100; // Max concurrent file processing
+  private visitedPaths: Set<string> = new Set(); // Track visited paths to prevent cycles
+  private scanAbortController: AbortController | null = null;
 
   constructor(db: DatabaseConnection, documentsDir: string) {
     super();
@@ -44,6 +49,17 @@ export class FileWatcher extends EventEmitter {
         '**/dist/**', // ignore build output
         (path: string) => {
           // Additional filtering for vector store and system files
+          // Also check for symbolic links to prevent infinite loops
+          try {
+            const stats = require('fs').lstatSync(path);
+            if (stats.isSymbolicLink()) {
+              console.warn(`Skipping symbolic link: ${path}`);
+              return true;
+            }
+          } catch (err) {
+            // If we can't stat the file, skip it for safety
+            return true;
+          }
           return path.includes('vectors') || 
                  path.includes('storage') ||
                  path.includes('docstore.json') || 
@@ -58,7 +74,7 @@ export class FileWatcher extends EventEmitter {
         stabilityThreshold: 200,
         pollInterval: 100
       },
-      depth: 10, // limit recursion depth
+      depth: this.MAX_SCAN_DEPTH, // Reduced depth limit
     });
 
     this.watcher
@@ -77,31 +93,49 @@ export class FileWatcher extends EventEmitter {
       console.log('FileWatcher stopped');
     }
     
+    // Abort any ongoing directory scan
+    if (this.scanAbortController) {
+      this.scanAbortController.abort();
+      this.scanAbortController = null;
+    }
+    
     // Clear all pending timeouts
     for (const timeout of this.processingFiles.values()) {
       clearTimeout(timeout);
     }
     this.processingFiles.clear();
+    this.visitedPaths.clear();
   }
 
   /**
    * Debounce file events to prevent duplicate processing
    */
   private debounceFileEvent(path: string, eventType: 'add' | 'change'): void {
+    // Check if processing queue is full to prevent memory issues
+    if (this.processingFiles.size >= this.MAX_PROCESSING_QUEUE) {
+      console.warn(`Processing queue full (${this.MAX_PROCESSING_QUEUE}), skipping file: ${path}`);
+      return;
+    }
+
     // Clear existing timeout for this file
     const existingTimeout = this.processingFiles.get(path);
     if (existingTimeout) {
       clearTimeout(existingTimeout);
     }
 
-    // Set new debounced timeout
-    const timeout = setTimeout(() => {
+    // Set new debounced timeout with error handling
+    const timeout = setTimeout(async () => {
       this.processingFiles.delete(path);
       
-      if (eventType === 'add') {
-        this.handleFileAdded(path);
-      } else {
-        this.handleFileChanged(path);
+      try {
+        if (eventType === 'add') {
+          await this.handleFileAdded(path);
+        } else {
+          await this.handleFileChanged(path);
+        }
+      } catch (error) {
+        console.error(`Error processing file ${path}:`, error);
+        this.emit('error', error);
       }
     }, this.DEBOUNCE_DELAY);
 
@@ -206,32 +240,74 @@ export class FileWatcher extends EventEmitter {
     };
   }
 
-  // Method to manually scan and sync the entire directory
+  // Method to manually scan and sync the entire directory with safety checks
   async syncDirectory(): Promise<void> {
     if (!this.watcher) {
       throw new Error('FileWatcher must be started before syncing directory');
     }
 
+    // Clear visited paths for fresh scan
+    this.visitedPaths.clear();
+    this.scanAbortController = new AbortController();
+
     // Get all files currently in database
     const dbFiles = await this.db.getAllFiles();
     const dbFilePaths = new Set(dbFiles.map((f: FileMetadata) => f.path));
 
-    // Use chokidar to get all current files
+    // Use chokidar to get all current files with timeout protection
     const currentFiles = new Set<string>();
     
     return new Promise((resolve, reject) => {
+      // Set maximum scan time
+      const scanTimeout = setTimeout(() => {
+        console.warn('Directory scan timed out, aborting...');
+        if (this.scanAbortController) {
+          this.scanAbortController.abort();
+        }
+        watcher.close();
+        reject(new Error('Directory scan timed out'));
+      }, this.MAX_SCAN_TIME_MS);
+
       const watcher = chokidar.watch(this.documentsDir, {
-        ignored: /(^|[\/\\])\./, // ignore dotfiles
+        ignored: [
+          /(^|[\/\\])\../, // ignore dotfiles  
+          '**/node_modules/**',
+          '**/vectors/**',
+          '**/.transformers-cache/**',
+          '**/logs/**',
+          '**/dist/**'
+        ],
         persistent: false,
+        depth: this.MAX_SCAN_DEPTH, // Use same depth limit
       });
 
       watcher
         .on('add', (path) => {
+          if (this.scanAbortController?.signal.aborted) {
+            return;
+          }
+
+          // Check for potential cycles
+          const realPath = require('fs').realpathSync(path);
+          if (this.visitedPaths.has(realPath)) {
+            console.warn(`Potential cycle detected, skipping: ${path}`);
+            return;
+          }
+          this.visitedPaths.add(realPath);
+
           if (this.isSupportedFile(path)) {
             currentFiles.add(path);
           }
         })
         .on('ready', async () => {
+          clearTimeout(scanTimeout);
+          
+          if (this.scanAbortController?.signal.aborted) {
+            watcher.close();
+            reject(new Error('Directory scan was aborted'));
+            return;
+          }
+
           try {
             // Remove files that no longer exist
             for (const dbFile of dbFiles) {
@@ -242,14 +318,21 @@ export class FileWatcher extends EventEmitter {
             }
 
             watcher.close();
+            this.visitedPaths.clear();
+            this.scanAbortController = null;
             resolve();
           } catch (error) {
             watcher.close();
+            this.visitedPaths.clear();
+            this.scanAbortController = null;
             reject(error);
           }
         })
         .on('error', (error) => {
+          clearTimeout(scanTimeout);
           watcher.close();
+          this.visitedPaths.clear();
+          this.scanAbortController = null;
           reject(error);
         });
     });

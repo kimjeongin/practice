@@ -84,7 +84,11 @@ export class DocumentHandler {
     }
 
     if (!file) {
-      throw new Error('File not found');
+      return {
+        error: 'FileNotFound', 
+        message: fileId ? `File with ID '${fileId}' not found` : `File at path '${filePath}' not found`,
+        suggestion: 'Use list_files to see available files or check if the file path is correct'
+      };
     }
 
     const customMetadata = await this.fileRepository.getFileMetadata(file.id);
@@ -119,7 +123,11 @@ export class DocumentHandler {
     }
 
     if (!file) {
-      throw new Error('File not found');
+      return {
+        error: 'FileNotFound',
+        message: fileId ? `File with ID '${fileId}' not found` : `File at path '${filePath}' not found`,
+        suggestion: 'Use list_files to see available files or check if the file path is correct'
+      };
     }
 
     // Update metadata
@@ -162,7 +170,11 @@ export class DocumentHandler {
     if ('forceReindex' in this.fileProcessingService && typeof this.fileProcessingService.forceReindex === 'function') {
       await this.fileProcessingService.forceReindex(clearCache);
     } else {
-      throw new Error('forceReindex method not available on file processing service');
+      return {
+        error: 'ServiceUnavailable',
+        message: 'forceReindex method not available on file processing service',
+        suggestion: 'Check if the file processing service is properly configured and running'
+      };
     }
 
     return {

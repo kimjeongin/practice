@@ -18,6 +18,10 @@ export class VectorDbSyncScheduler {
   private isRunning = false;
   private lastSyncTime?: Date;
   private syncCount = 0;
+  private consecutiveFailures = 0;
+  private readonly MAX_CONSECUTIVE_FAILURES = 5;
+  private readonly FAILURE_BACKOFF_MS = 60000; // 1 minute backoff after failures
+  private isInBackoff = false;
 
   constructor(
     private syncManager: SyncManager,
@@ -79,16 +83,24 @@ export class VectorDbSyncScheduler {
    * 예약된 기본 동기화 수행
    */
   private async performScheduledSync(): Promise<void> {
+    // Skip if in backoff period due to consecutive failures
+    if (this.isInBackoff) {
+      logger.debug('Skipping scheduled sync due to backoff period');
+      return;
+    }
+
     try {
       logger.debug('Performing scheduled vector DB sync check');
 
       if (!this.syncManager) {
         logger.error('VectorDbSyncManager not available for scheduled sync');
+        this.handleSyncFailure('SyncManager not available');
         return;
       }
 
       if (!this.config) {
         logger.error('Config not available for scheduled sync');
+        this.handleSyncFailure('Config not available');
         return;
       }
 
@@ -106,6 +118,8 @@ export class VectorDbSyncScheduler {
 
       this.lastSyncTime = new Date();
       this.syncCount++;
+      this.consecutiveFailures = 0; // Reset failure count on success
+      this.isInBackoff = false;
 
       // Background integrity monitoring
       const hasIntegrityIssues = this.checkBackgroundIntegrity(report);
@@ -127,6 +141,7 @@ export class VectorDbSyncScheduler {
 
     } catch (error) {
       logger.error('Scheduled vector DB sync failed', error instanceof Error ? error : new Error(String(error)));
+      this.handleSyncFailure(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -134,16 +149,24 @@ export class VectorDbSyncScheduler {
    * 예약된 깊은 동기화 수행
    */
   private async performDeepSync(): Promise<void> {
+    // Skip deep sync if in backoff period
+    if (this.isInBackoff) {
+      logger.debug('Skipping deep sync due to backoff period');
+      return;
+    }
+
     try {
       logger.info('Performing scheduled deep vector DB sync');
 
       if (!this.syncManager) {
         logger.error('VectorDbSyncManager not available for deep sync');
+        this.handleSyncFailure('SyncManager not available for deep sync');
         return;
       }
 
       if (!this.config) {
         logger.error('Config not available for deep sync');
+        this.handleSyncFailure('Config not available for deep sync');
         return;
       }
 
@@ -170,6 +193,7 @@ export class VectorDbSyncScheduler {
 
     } catch (error) {
       logger.error('Deep vector DB sync failed', error instanceof Error ? error : new Error(String(error)));
+      this.handleSyncFailure(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -201,6 +225,8 @@ export class VectorDbSyncScheduler {
       isRunning: this.isRunning,
       lastSyncTime: this.lastSyncTime,
       syncCount: this.syncCount,
+      consecutiveFailures: this.consecutiveFailures,
+      isInBackoff: this.isInBackoff,
       config: this.config,
       nextSyncIn: this.intervalId ? this.config.interval : null
     };
@@ -269,6 +295,34 @@ export class VectorDbSyncScheduler {
     }
 
     logger.info('Vector DB sync scheduler config updated', this.config);
+  }
+
+  /**
+   * 동기화 실패 처리 및 백오프 관리
+   */
+  private handleSyncFailure(errorMessage: string): void {
+    this.consecutiveFailures++;
+    logger.warn('Sync failure recorded', { 
+      consecutiveFailures: this.consecutiveFailures, 
+      maxFailures: this.MAX_CONSECUTIVE_FAILURES,
+      errorMessage
+    });
+
+    if (this.consecutiveFailures >= this.MAX_CONSECUTIVE_FAILURES) {
+      logger.error('Too many consecutive sync failures, entering backoff period', undefined, { 
+        consecutiveFailures: this.consecutiveFailures,
+        backoffMs: this.FAILURE_BACKOFF_MS 
+      });
+      
+      this.isInBackoff = true;
+      
+      // Schedule automatic recovery attempt
+      setTimeout(() => {
+        logger.info('Exiting backoff period, will retry sync on next scheduled interval');
+        this.isInBackoff = false;
+        this.consecutiveFailures = 0;
+      }, this.FAILURE_BACKOFF_MS);
+    }
   }
 
   /**
