@@ -88,6 +88,15 @@ export interface ServerConfig extends BaseServerConfig {
     adaptiveRetrieval: boolean
   }
 
+  // Model migration and compatibility settings
+  modelMigration: {
+    enableAutoMigration: boolean
+    enableIncompatibilityDetection: boolean
+    clearVectorsOnModelChange: boolean
+    backupEmbeddingsBeforeMigration: boolean
+    migrationTimeout: number
+  }
+
   // Document synchronization settings
   enableAutoSync?: boolean
   syncOnStartup?: boolean
@@ -147,6 +156,13 @@ export class ConfigFactory {
         multiStepRetrieval: false,
         contextualCompression: false,
         adaptiveRetrieval: false,
+      },
+      modelMigration: {
+        enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
+        enableIncompatibilityDetection: process.env['ENABLE_INCOMPATIBILITY_DETECTION'] !== 'false',
+        clearVectorsOnModelChange: process.env['CLEAR_VECTORS_ON_MODEL_CHANGE'] !== 'false',
+        backupEmbeddingsBeforeMigration: process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] === 'true', // False by default in dev
+        migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '300000'), // 5 minutes
       },
       // Document synchronization settings
       enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
@@ -217,6 +233,13 @@ export class ConfigFactory {
         contextualCompression: process.env['ENABLE_CONTEXTUAL_COMPRESSION'] === 'true',
         adaptiveRetrieval: process.env['ENABLE_ADAPTIVE_RETRIEVAL'] === 'true',
       },
+      modelMigration: {
+        enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
+        enableIncompatibilityDetection: process.env['ENABLE_INCOMPATIBILITY_DETECTION'] !== 'false',
+        clearVectorsOnModelChange: process.env['CLEAR_VECTORS_ON_MODEL_CHANGE'] !== 'false',
+        backupEmbeddingsBeforeMigration: process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] !== 'false', // True by default in production
+        migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '600000'), // 10 minutes in production
+      },
       // Document synchronization settings
       enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
       syncOnStartup: process.env['SYNC_ON_STARTUP'] !== 'false',
@@ -278,6 +301,13 @@ export class ConfigFactory {
         multiStepRetrieval: false,
         contextualCompression: false,
         adaptiveRetrieval: false,
+      },
+      modelMigration: {
+        enableAutoMigration: false, // Disabled in tests to avoid interference
+        enableIncompatibilityDetection: false,
+        clearVectorsOnModelChange: false,
+        backupEmbeddingsBeforeMigration: false,
+        migrationTimeout: 30000, // Short timeout for tests
       },
       // Document synchronization settings (disabled for tests by default)
       enableAutoSync: process.env['ENABLE_AUTO_SYNC'] === 'true',
@@ -383,7 +413,7 @@ export class ConfigFactory {
 
   private static createBaseConfig(): Omit<
     ServerConfig,
-    'vectorStore' | 'pipeline' | 'search' | 'monitoring' | 'features' | 'mcp'
+    'vectorStore' | 'pipeline' | 'search' | 'monitoring' | 'features' | 'modelMigration' | 'mcp'
   > {
     const service = process.env['EMBEDDING_SERVICE'] || 'transformers'
     const dataDir = resolve(process.env['DATA_DIR'] || './.data')

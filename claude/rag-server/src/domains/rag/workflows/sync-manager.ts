@@ -5,12 +5,13 @@ import { IFileRepository } from '../repositories/document.js'
 import { IChunkRepository } from '../repositories/chunk.js'
 import { IVectorStoreService, IFileProcessingService } from '@/shared/types/interfaces.js'
 import { FileMetadata } from '../core/models.js'
-import { ServerConfig } from '@/shared/types/index.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { withTimeout, withRetry } from '@/shared/utils/resilience.js'
+import { EmbeddingMetadataService } from '../services/embedding-metadata-service.js'
 
 export interface VectorDbSyncIssue {
-  type: 'missing_file' | 'orphaned_vector' | 'hash_mismatch' | 'missing_chunks' | 'new_file'
+  type: 'missing_file' | 'orphaned_vector' | 'hash_mismatch' | 'missing_chunks' | 'new_file' | 'dimension_mismatch' | 'model_incompatibility'
   filePath: string
   fileId?: string
   description: string
@@ -29,6 +30,8 @@ export interface VectorDbSyncReport {
     orphanedVectors: number
     hashMismatches: number
     newFiles: number
+    dimensionMismatches: number
+    modelIncompatibilities: number
     totalIssues: number
   }
 }
@@ -52,7 +55,8 @@ export class SyncManager {
     private chunkRepository: IChunkRepository,
     private vectorStoreService: IVectorStoreService,
     private config: ServerConfig,
-    private fileProcessingService?: IFileProcessingService
+    private fileProcessingService?: IFileProcessingService,
+    private embeddingMetadataService?: EmbeddingMetadataService
   ) {
     this.documentsDirectory = config.documentsDir
   }
@@ -142,6 +146,11 @@ export class SyncManager {
     // 5. 벡터 스토어와 데이터베이스 간 일관성 확인
     await this.checkVectorConsistency(issues)
 
+    // 6. 임베딩 모델 호환성 및 차원 검증
+    if (this.embeddingMetadataService) {
+      await this.checkEmbeddingCompatibility(issues)
+    }
+
     const allFiles = await this.fileRepository.getAllFiles()
     const totalVectors = await this.getTotalVectorCount()
     const totalChunks = await this.chunkRepository.getTotalChunkCount()
@@ -158,6 +167,8 @@ export class SyncManager {
         orphanedVectors: issues.filter((i) => i.type === 'orphaned_vector').length,
         hashMismatches: issues.filter((i) => i.type === 'hash_mismatch').length,
         newFiles: issues.filter((i) => i.type === 'new_file').length,
+        dimensionMismatches: issues.filter((i) => i.type === 'dimension_mismatch').length,
+        modelIncompatibilities: issues.filter((i) => i.type === 'model_incompatibility').length,
         totalIssues: issues.length,
       },
     }
@@ -340,6 +351,83 @@ export class SyncManager {
   }
 
   /**
+   * 임베딩 모델 호환성 및 차원 검증
+   */
+  private async checkEmbeddingCompatibility(issues: VectorDbSyncIssue[]): Promise<void> {
+    if (!this.embeddingMetadataService) {
+      return
+    }
+
+    try {
+      logger.info('🔍 Checking embedding model compatibility and dimensions')
+
+      // Get current model information from vector store provider
+      const vectorStoreProvider = (this.vectorStoreService as any).provider
+      if (!vectorStoreProvider) {
+        logger.warn('Vector store provider not available for compatibility check')
+        return
+      }
+
+      // Check if provider has model info method
+      let currentModelInfo
+      if (typeof vectorStoreProvider.getModelInfo === 'function') {
+        currentModelInfo = await vectorStoreProvider.getModelInfo()
+      } else {
+        // Fallback to config-based model info
+        currentModelInfo = {
+          name: this.config.embeddingModel || 'unknown',
+          service: this.config.embeddingService || 'unknown',
+          dimensions: this.config.embeddingDimensions || 384,
+          model: this.config.embeddingModel || 'unknown',
+        }
+      }
+
+      // Check compatibility with stored metadata
+      const compatibilityResult = await this.embeddingMetadataService.checkModelCompatibility(
+        this.config,
+        currentModelInfo
+      )
+
+      if (!compatibilityResult.isCompatible) {
+        issues.push({
+          type: 'model_incompatibility',
+          filePath: 'system',
+          description: `Model incompatibility detected: ${compatibilityResult.issues.join(', ')}`,
+          severity: 'high',
+        })
+      } else if (compatibilityResult.requiresReindexing) {
+        issues.push({
+          type: 'dimension_mismatch',
+          filePath: 'system',
+          description: `Model changes require reindexing: ${compatibilityResult.issues.join(', ')}`,
+          severity: 'medium',
+        })
+      }
+
+      // Additional dimension validation
+      const totalVectors = await this.getTotalVectorCount()
+      if (totalVectors > 0 && compatibilityResult.currentMetadata) {
+        const expectedDimensions = compatibilityResult.currentMetadata.dimensions
+        const currentDimensions = currentModelInfo.dimensions
+
+        if (expectedDimensions !== currentDimensions) {
+          issues.push({
+            type: 'dimension_mismatch',
+            filePath: 'system',
+            description: `Vector dimension mismatch: stored vectors have ${expectedDimensions} dimensions but current model produces ${currentDimensions} dimensions`,
+            severity: 'high',
+          })
+        }
+      }
+
+    } catch (error) {
+      logger.warn('Failed to check embedding compatibility', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  /**
    * 동기화 문제 자동 수정
    */
   async fixSyncIssues(
@@ -373,6 +461,12 @@ export class SyncManager {
 
           case 'missing_chunks':
             await this.fixMissingChunks(issue)
+            fixedIssues.push(issue)
+            break
+
+          case 'dimension_mismatch':
+          case 'model_incompatibility':
+            await this.fixModelIncompatibility(issue)
             fixedIssues.push(issue)
             break
         }
@@ -541,6 +635,77 @@ export class SyncManager {
       })
     } else {
       logger.warn('FileProcessingService not available for fixing missing chunks')
+    }
+  }
+
+  /**
+   * 모델 비호환성 문제 해결
+   */
+  private async fixModelIncompatibility(issue: VectorDbSyncIssue): Promise<void> {
+    logger.info('🔄 Fixing model incompatibility issue', { 
+      type: issue.type, 
+      description: issue.description 
+    })
+
+    if (!this.embeddingMetadataService) {
+      logger.warn('EmbeddingMetadataService not available for fixing model incompatibility')
+      return
+    }
+
+    try {
+      if (issue.type === 'model_incompatibility' || issue.type === 'dimension_mismatch') {
+        // Check if auto migration is enabled
+        if (!this.config.modelMigration?.enableAutoMigration) {
+          logger.warn('⚠️ Model incompatibility detected but auto migration is disabled', {
+            enableAutoMigration: this.config.modelMigration?.enableAutoMigration,
+            issue: issue.description
+          })
+          return
+        }
+
+        logger.info('🗑️ Clearing existing vector store due to model incompatibility')
+        
+        // Clear vector store only if configured to do so
+        if (this.config.modelMigration?.clearVectorsOnModelChange && 
+            typeof (this.vectorStoreService as any).provider?.clearAll === 'function') {
+          await (this.vectorStoreService as any).provider.clearAll()
+        }
+
+        // Force migration to new model by deactivating old metadata
+        await this.embeddingMetadataService.forceMigration()
+
+        // Re-process all existing files to regenerate embeddings with new model
+        if (this.fileProcessingService) {
+          logger.info('🔄 Regenerating all embeddings with new model configuration')
+          const allFiles = await this.fileRepository.getAllFiles()
+          
+          for (const file of allFiles) {
+            try {
+              if (existsSync(file.path)) {
+                logger.info(`📄 Reprocessing file: ${file.name}`)
+                await this.fileProcessingService.processFile(file.path)
+              } else {
+                logger.warn(`📄 File not found, skipping: ${file.path}`)
+              }
+            } catch (fileError) {
+              logger.error(
+                `❌ Failed to reprocess file ${file.name}:`,
+                fileError instanceof Error ? fileError : new Error(String(fileError))
+              )
+            }
+          }
+
+          logger.info('✅ Model migration completed - all embeddings regenerated')
+        } else {
+          logger.warn('⚠️ FileProcessingService not available - embeddings not regenerated')
+        }
+      }
+    } catch (error) {
+      logger.error(
+        `❌ Failed to fix model incompatibility: ${issue.type} - ${issue.description}`,
+        error instanceof Error ? error : new Error(String(error))
+      )
+      throw error
     }
   }
 

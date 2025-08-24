@@ -61,3 +61,23 @@ model DocumentChunk {
   @@index([chunkIndex])
   @@index([embeddingId])
 }
+
+model EmbeddingMetadata {
+  id               String   @id @default(cuid())
+  modelName        String   @map("model_name")
+  serviceName      String   @map("service_name")
+  dimensions       Int
+  modelVersion     String?  @map("model_version")
+  configHash       String   @map("config_hash")
+  isActive         Boolean  @default(true) @map("is_active")
+  totalDocuments   Int      @default(0) @map("total_documents")
+  totalVectors     Int      @default(0) @map("total_vectors")
+  createdAt        DateTime @default(now()) @map("created_at")
+  lastUsedAt       DateTime @default(now()) @map("last_used_at")
+  
+  @@map("embedding_metadata")
+  @@index([modelName])
+  @@index([serviceName])
+  @@index([isActive])
+  @@index([configHash])
+}

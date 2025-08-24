@@ -213,6 +213,72 @@ export class DatabaseConnection {
     return await this.prisma.documentChunk.count()
   }
 
+  // EmbeddingMetadata operations
+  async createEmbeddingMetadata(metadata: any): Promise<string> {
+    const result = await this.prisma.embeddingMetadata.create({
+      data: {
+        modelName: metadata.modelName,
+        serviceName: metadata.serviceName,
+        dimensions: metadata.dimensions,
+        modelVersion: metadata.modelVersion,
+        configHash: metadata.configHash,
+        isActive: metadata.isActive !== false, // default to true
+        totalDocuments: metadata.totalDocuments || 0,
+        totalVectors: metadata.totalVectors || 0,
+      },
+    })
+    return result.id
+  }
+
+  async getActiveEmbeddingMetadata(): Promise<any> {
+    return await this.prisma.embeddingMetadata.findFirst({
+      where: { isActive: true },
+      orderBy: { lastUsedAt: 'desc' },
+    })
+  }
+
+  async getEmbeddingMetadataByConfigHash(configHash: string): Promise<any> {
+    return await this.prisma.embeddingMetadata.findFirst({
+      where: { configHash },
+    })
+  }
+
+  async updateEmbeddingMetadata(id: string, updates: any): Promise<void> {
+    const data: any = { lastUsedAt: new Date() }
+    
+    if (updates.modelName !== undefined) data.modelName = updates.modelName
+    if (updates.serviceName !== undefined) data.serviceName = updates.serviceName
+    if (updates.dimensions !== undefined) data.dimensions = updates.dimensions
+    if (updates.modelVersion !== undefined) data.modelVersion = updates.modelVersion
+    if (updates.configHash !== undefined) data.configHash = updates.configHash
+    if (updates.isActive !== undefined) data.isActive = updates.isActive
+    if (updates.totalDocuments !== undefined) data.totalDocuments = updates.totalDocuments
+    if (updates.totalVectors !== undefined) data.totalVectors = updates.totalVectors
+
+    await this.prisma.embeddingMetadata.update({
+      where: { id },
+      data,
+    })
+  }
+
+  async deactivateAllEmbeddingMetadata(): Promise<void> {
+    await this.prisma.embeddingMetadata.updateMany({
+      data: { isActive: false },
+    })
+  }
+
+  async getAllEmbeddingMetadata(): Promise<any[]> {
+    return await this.prisma.embeddingMetadata.findMany({
+      orderBy: { createdAt: 'desc' },
+    })
+  }
+
+  async deleteEmbeddingMetadata(id: string): Promise<void> {
+    await this.prisma.embeddingMetadata.delete({
+      where: { id },
+    })
+  }
+
   async close(): Promise<void> {
     await this.prisma.$disconnect()
   }

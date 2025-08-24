@@ -9,18 +9,19 @@ import { QdrantProvider } from '@/domains/rag/integrations/vectorstores/provider
 import { VectorStoreAdapter } from '@/domains/rag/integrations/vectorstores/adapter.js'
 import { VectorStoreConfig } from './config-factory.js'
 import { IVectorStoreService } from '@/shared/types/interfaces.js'
+import { EmbeddingMetadataService } from '@/domains/rag/services/embedding-metadata-service.js'
 
 export class VectorStoreFactory {
   /**
    * 설정에 따라 VectorStoreProvider 생성
    */
-  static createProvider(config: VectorStoreConfig, serverConfig?: any): VectorStoreProvider {
+  static createProvider(config: VectorStoreConfig, serverConfig?: any, embeddingMetadataService?: EmbeddingMetadataService): VectorStoreProvider {
     switch (config.provider.toLowerCase()) {
       case 'faiss':
         return new FaissProvider({
           indexPath: config.config.indexPath,
           dimensions: config.config.dimensions,
-        }, serverConfig)
+        }, serverConfig, embeddingMetadataService)
 
       case 'qdrant':
         return new QdrantProvider({
@@ -39,8 +40,8 @@ export class VectorStoreFactory {
   /**
    * 설정에 따라 VectorStoreAdapter 생성 (IVectorStoreService 호환)
    */
-  static createService(config: VectorStoreConfig, serverConfig?: any): IVectorStoreService {
-    const provider = VectorStoreFactory.createProvider(config, serverConfig)
+  static createService(config: VectorStoreConfig, serverConfig?: any, embeddingMetadataService?: EmbeddingMetadataService): IVectorStoreService {
+    const provider = VectorStoreFactory.createProvider(config, serverConfig, embeddingMetadataService)
     return new VectorStoreAdapter(provider)
   }
 }

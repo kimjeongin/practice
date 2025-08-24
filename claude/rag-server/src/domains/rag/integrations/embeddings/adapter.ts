@@ -15,7 +15,15 @@ export class EmbeddingAdapter implements IEmbeddingService {
   getModelInfo(): ModelInfo {
     try {
       if ('getModelInfo' in this.langchainEmbeddings) {
-        return (this.langchainEmbeddings as any).getModelInfo()
+        const rawModelInfo = (this.langchainEmbeddings as any).getModelInfo()
+
+        // Convert to standardized ModelInfo format
+        return {
+          name: rawModelInfo.model || rawModelInfo.name || 'Unknown Model',
+          service: rawModelInfo.service || this.actualService,
+          dimensions: rawModelInfo.dimensions || 384,
+          model: rawModelInfo.model || rawModelInfo.name,
+        }
       }
 
       // Fallback model info
@@ -23,6 +31,7 @@ export class EmbeddingAdapter implements IEmbeddingService {
         name: 'Unknown Model',
         service: this.actualService,
         dimensions: 384, // Default dimensions
+        model: 'Unknown Model',
       }
     } catch (error) {
       console.warn('Could not get embedding model info:', error)
@@ -30,6 +39,7 @@ export class EmbeddingAdapter implements IEmbeddingService {
         name: 'Unknown Model',
         service: this.actualService,
         dimensions: 384,
+        model: 'Unknown Model',
       }
     }
   }

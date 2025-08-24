@@ -10,7 +10,9 @@ import {
   IndexStats,
   FaissConfig,
 } from '../core/types.js'
-import { TransformersEmbeddings } from '../../embeddings/providers/transformers.js'
+import { EmbeddingFactory } from '../../embeddings/index.js'
+import { EmbeddingAdapter } from '../../embeddings/adapter.js'
+import { EmbeddingMetadataService } from '../../../services/embedding-metadata-service.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 
@@ -26,7 +28,8 @@ export class FaissProvider implements VectorStoreProvider {
   private vectors: Map<string, StoredVector> = new Map() // id -> vector with embeddings
   private fileIdMap: Map<string, Set<string>> = new Map() // fileId -> docIds
   private indexStats: { total: number; occupied: number } = { total: 0, occupied: 0 }
-  private embeddings: TransformersEmbeddings | null = null
+  private embeddings: EmbeddingAdapter | null = null
+  private embeddingMetadataService?: EmbeddingMetadataService
   private isInitialized = false
 
   public readonly capabilities: VectorStoreCapabilities = {
@@ -38,15 +41,17 @@ export class FaissProvider implements VectorStoreProvider {
     supportsIndexCompaction: true,
   }
 
-  constructor(private config: FaissConfig = {}, private serverConfig?: ServerConfig) {
-    // Initialize embeddings service if server config is available
-    if (this.serverConfig) {
-      this.embeddings = new TransformersEmbeddings(this.serverConfig)
-    }
+  constructor(private config: FaissConfig = {}, private serverConfig?: ServerConfig, embeddingMetadataService?: EmbeddingMetadataService) {
+    // Embeddings will be initialized lazily when first needed
+    // This allows for proper error handling and fallback mechanisms
+    this.embeddingMetadataService = embeddingMetadataService
   }
 
   async addDocuments(documents: VectorDocument[]): Promise<void> {
     console.log(`🔄 Adding ${documents.length} documents to FAISS with embeddings...`)
+
+    // Ensure embedding service is initialized
+    await this.initializeEmbeddingService()
 
     if (!this.embeddings) {
       console.warn('⚠️ No embeddings service available, using mock implementation')
@@ -96,6 +101,18 @@ export class FaissProvider implements VectorStoreProvider {
         totalVectors: this.vectors.size,
         embeddingDimensions: embeddings[0]?.length || 0,
       })
+
+      // Update metadata vector counts if service is available
+      if (this.embeddingMetadataService) {
+        try {
+          await this.embeddingMetadataService.updateVectorCounts(
+            this.documents.size,
+            this.vectors.size
+          )
+        } catch (error) {
+          logger.error('❌ Failed to update vector counts in metadata', error instanceof Error ? error : new Error(String(error)))
+        }
+      }
     } catch (error) {
       logger.error(
         '❌ Failed to add documents with embeddings',
@@ -128,6 +145,9 @@ export class FaissProvider implements VectorStoreProvider {
 
   async search(query: string, options?: VectorSearchOptions): Promise<VectorSearchResult[]> {
     console.log(`🔍 Searching FAISS with query: "${query.substring(0, 100)}..."`)
+
+    // Ensure embedding service is initialized
+    await this.initializeEmbeddingService()
 
     if (!this.embeddings || this.vectors.size === 0) {
       console.log(`⚠️ No embeddings available, using keyword-based fallback search`)
@@ -342,18 +362,96 @@ export class FaissProvider implements VectorStoreProvider {
     return doc ? doc.metadata : null
   }
 
+  /**
+   * Initialize embeddings service using EmbeddingFactory
+   */
+  private async initializeEmbeddingService(): Promise<void> {
+    if (this.embeddings || !this.serverConfig) {
+      return
+    }
+
+    try {
+      console.log('🔄 Initializing embedding service...')
+      
+      // Use EmbeddingFactory with fallback mechanism
+      const { embeddings, actualService } = await EmbeddingFactory.createWithFallback(this.serverConfig)
+      
+      // Wrap with adapter for consistent interface
+      this.embeddings = new EmbeddingAdapter(embeddings, actualService)
+      
+      // Test the service
+      await this.embeddings.embedQuery('test')
+      
+      console.log(`✅ Embedding service initialized successfully (${actualService})`)
+      const modelInfo = this.embeddings.getModelInfo()
+      console.log(`📊 Model: ${modelInfo.name}, Dimensions: ${modelInfo.dimensions}`)
+
+      // Check model compatibility and update metadata if service is available
+      if (this.embeddingMetadataService && this.serverConfig.modelMigration?.enableIncompatibilityDetection !== false) {
+        try {
+          const compatibility = await this.embeddingMetadataService.checkModelCompatibility(this.serverConfig, modelInfo)
+          
+          if (!compatibility.isCompatible) {
+            logger.warn('⚠️ Model compatibility issues detected', {
+              issues: compatibility.issues,
+              requiresReindexing: compatibility.requiresReindexing,
+              autoMigrationEnabled: this.serverConfig.modelMigration?.enableAutoMigration
+            })
+            
+            // Optionally clear vectors if auto migration and clearing are both enabled
+            if (this.serverConfig.modelMigration?.enableAutoMigration && 
+                this.serverConfig.modelMigration?.clearVectorsOnModelChange) {
+              logger.info('🔄 Clearing existing vectors due to model incompatibility')
+              
+              // Clear all vectors and documents
+              this.documents.clear()
+              this.vectors.clear()
+              this.fileIdMap.clear()
+              this.indexStats = { total: 0, occupied: 0 }
+              logger.info('✅ All vectors cleared for model migration')
+            }
+          }
+
+          // Create or update metadata
+          await this.embeddingMetadataService.createOrUpdateMetadata(this.serverConfig, modelInfo)
+          
+          if (compatibility.requiresReindexing && compatibility.currentMetadata) {
+            logger.warn('🔄 Model configuration changed - existing embeddings may need regeneration', {
+              oldModel: compatibility.currentMetadata.modelName,
+              newModel: modelInfo.name,
+              oldDimensions: compatibility.currentMetadata.dimensions,
+              newDimensions: modelInfo.dimensions,
+            })
+          }
+        } catch (error) {
+          logger.error('❌ Failed to check/update embedding metadata', error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+      
+      this.isInitialized = true
+    } catch (error) {
+      console.error('❌ Failed to initialize embedding service:', error)
+      this.embeddings = null
+      this.isInitialized = false
+    }
+  }
+
   async initialize(): Promise<void> {
     console.log('🔄 Initializing FAISS store with embeddings...')
+    
+    // Initialize embeddings service if not already done
+    await this.initializeEmbeddingService()
 
     if (this.embeddings && !this.isInitialized) {
       try {
-        // Test embeddings service
+        // Final test
         await this.embeddings.embedQuery('test')
-        console.log('✅ Embeddings service initialized successfully')
+        console.log('✅ FAISS store initialized successfully')
         this.isInitialized = true
       } catch (error) {
-        console.warn('⚠️ Failed to initialize embeddings service:', error)
+        console.warn('⚠️ Final initialization test failed:', error)
         this.embeddings = null
+        this.isInitialized = false
       }
     }
   }
@@ -432,6 +530,9 @@ export class FaissProvider implements VectorStoreProvider {
    * This is needed when server restarts and embeddings need to be restored from document content
    */
   async regenerateEmbeddings(): Promise<void> {
+    // Ensure embedding service is initialized
+    await this.initializeEmbeddingService()
+
     if (!this.embeddings) {
       console.log('⚠️ No embeddings service available for regeneration')
       return

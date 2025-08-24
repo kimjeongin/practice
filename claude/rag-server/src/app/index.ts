@@ -11,7 +11,9 @@ import { InformationHandler } from '@/domains/mcp/handlers/information.js'
 import { RAGWorkflow } from '@/domains/rag/workflows/workflow.js'
 import { FileRepository } from '@/domains/rag/repositories/document.js'
 import { ChunkRepository } from '@/domains/rag/repositories/chunk.js'
+import { EmbeddingMetadataRepository } from '@/domains/rag/repositories/embedding-metadata.js'
 import { SearchService } from '@/domains/rag/services/search/search-service.js'
+import { EmbeddingMetadataService } from '@/domains/rag/services/embedding-metadata-service.js'
 import { DatabaseConnection } from '@/shared/database/connection.js'
 import { serviceRegistry } from '@/shared/dependency-injection/service-registry.js'
 
@@ -28,16 +30,21 @@ async function initializeServices(config: any) {
     .registerInstance('dbConnection', dbConnection)
     .register('fileRepository', FileRepository, { dependencies: ['dbConnection'] })
     .register('chunkRepository', ChunkRepository, { dependencies: ['dbConnection'] })
+    .register('embeddingMetadataRepository', EmbeddingMetadataRepository, { dependencies: ['dbConnection'] })
 
   // Initialize repositories
   const fileRepository = await serviceRegistry.resolve<FileRepository>('fileRepository')
   const chunkRepository = await serviceRegistry.resolve<ChunkRepository>('chunkRepository')
+  const embeddingMetadataRepository = await serviceRegistry.resolve<EmbeddingMetadataRepository>('embeddingMetadataRepository')
+
+  // Initialize embedding metadata service
+  const embeddingMetadataService = new EmbeddingMetadataService(embeddingMetadataRepository)
 
   // Initialize vector store and search service
   const { VectorStoreFactory } = await import('@/shared/config/vector-store-factory.js')
   
   // IMPORTANT: Create only ONE provider instance and reuse it everywhere
-  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config)
+  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config, embeddingMetadataService)
   const vectorStore = new (await import('@/domains/rag/integrations/vectorstores/adapter.js')).VectorStoreAdapter(vectorStoreProvider)
 
   const searchService = new SearchService(
@@ -73,7 +80,8 @@ async function initializeServices(config: any) {
     chunkRepository,
     vectorStore,
     config,
-    fileProcessingService
+    fileProcessingService,
+    embeddingMetadataService
   )
 
   // Perform startup document synchronization

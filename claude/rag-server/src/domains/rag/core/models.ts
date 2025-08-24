@@ -25,6 +25,20 @@ export interface CustomMetadata {
   value: string
 }
 
+export interface EmbeddingMetadataModel {
+  id: string
+  modelName: string
+  serviceName: string
+  dimensions: number
+  modelVersion?: string
+  configHash: string
+  isActive: boolean
+  totalDocuments: number
+  totalVectors: number
+  createdAt: Date
+  lastUsedAt: Date
+}
+
 export class FileChangeEvent {
   constructor(
     public readonly type: 'added' | 'changed' | 'removed',

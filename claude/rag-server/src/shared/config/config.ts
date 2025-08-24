@@ -72,6 +72,13 @@ export function validateConfig(config: BaseServerConfig): void {
       contextualCompression: false,
       adaptiveRetrieval: false,
     },
+    modelMigration: {
+      enableAutoMigration: true,
+      enableIncompatibilityDetection: true,
+      clearVectorsOnModelChange: true,
+      backupEmbeddingsBeforeMigration: false,
+      migrationTimeout: 300000,
+    },
     mcp: {
       type: (process.env['MCP_TRANSPORT'] as any) || 'stdio',
       port: parseInt(process.env['MCP_PORT'] || '3000'),
