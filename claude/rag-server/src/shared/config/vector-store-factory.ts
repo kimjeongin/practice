@@ -14,13 +14,13 @@ export class VectorStoreFactory {
   /**
    * 설정에 따라 VectorStoreProvider 생성
    */
-  static createProvider(config: VectorStoreConfig): VectorStoreProvider {
+  static createProvider(config: VectorStoreConfig, serverConfig?: any): VectorStoreProvider {
     switch (config.provider.toLowerCase()) {
       case 'faiss':
         return new FaissProvider({
           indexPath: config.config.indexPath,
           dimensions: config.config.dimensions,
-        })
+        }, serverConfig)
 
       case 'qdrant':
         return new QdrantProvider({
@@ -39,8 +39,8 @@ export class VectorStoreFactory {
   /**
    * 설정에 따라 VectorStoreAdapter 생성 (IVectorStoreService 호환)
    */
-  static createService(config: VectorStoreConfig): IVectorStoreService {
-    const provider = VectorStoreFactory.createProvider(config)
+  static createService(config: VectorStoreConfig, serverConfig?: any): IVectorStoreService {
+    const provider = VectorStoreFactory.createProvider(config, serverConfig)
     return new VectorStoreAdapter(provider)
   }
 }

@@ -640,8 +640,46 @@ class SemanticSearchPipeline implements SearchPipeline {
   constructor(private vectorStore: VectorStoreProvider) {}
 
   async execute(query: ProcessedQuery, options?: SearchOptions): Promise<SearchResult[]> {
-    // Implementation would go here
-    return []
+    const results: SearchResult[] = []
+    
+    // Execute semantic search for each processed query
+    for (const queryText of query.processed) {
+      const searchOptions = {
+        topK: Math.max(options?.topK || 10, 20),
+        scoreThreshold: options?.scoreThreshold,
+        fileTypes: options?.fileTypes,
+        metadataFilters: options?.metadataFilters,
+      }
+
+      try {
+        const vectorResults = await this.vectorStore.search(queryText, searchOptions)
+        
+        // Convert VectorSearchResult to SearchResult format
+        const converted = vectorResults.map((result: any) => ({
+          content: result.content,
+          score: result.score,
+          semanticScore: result.score,
+          metadata: {
+            ...result.metadata,
+            source: {
+              filename: result.metadata.fileName || 'unknown',
+              filePath: result.metadata.filePath || '',
+              fileType: result.metadata.fileType || 'unknown'
+            }
+          },
+          chunkIndex: result.metadata.chunkIndex || 0,
+          relevance_score: result.score
+        }))
+        
+        results.push(...converted)
+      } catch (error) {
+        logger.warn(`Semantic search failed for query: ${queryText}`, {
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
+    return results
   }
 }
 

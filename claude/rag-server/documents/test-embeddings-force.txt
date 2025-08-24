@@ -1,0 +1,7 @@
+Python is a versatile programming language used in web development, data science, artificial intelligence, and automation.
+
+Machine learning is a subset of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed.
+
+Key machine learning concepts include supervised learning, unsupervised learning, and reinforcement learning algorithms.
+
+Deep learning uses neural networks with multiple layers to process complex patterns in data for tasks like image recognition and natural language processing.

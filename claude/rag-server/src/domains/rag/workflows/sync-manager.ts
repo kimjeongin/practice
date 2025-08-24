@@ -98,6 +98,9 @@ export class SyncManager {
         }
       }
 
+      // Regenerate embeddings for existing documents if needed
+      await this.regenerateEmbeddingsIfNeeded()
+
       logger.info('Startup sync completed', {
         totalIssues: report.issues.length,
         fixedIssues: report.fixedIssues.length,
@@ -596,5 +599,82 @@ export class SyncManager {
       includeNewFiles: true,
       maxConcurrency: 3,
     })
+  }
+
+  /**
+   * Regenerate embeddings for existing documents if the vector store has documents but no embeddings
+   */
+  private async regenerateEmbeddingsIfNeeded(): Promise<void> {
+    try {
+      // Get document and vector counts
+      const totalChunks = await this.chunkRepository.getTotalChunkCount()
+      const vectorCount = this.vectorStoreService.getDocumentCount?.() || 0
+      
+      logger.info('Checking embedding regeneration need', {
+        totalChunks,
+        vectorCount,
+      })
+
+      // If we have chunks but no vectors, we need to regenerate embeddings
+      if (totalChunks > 0 && vectorCount === 0) {
+        logger.info('🔄 Embedding regeneration needed - chunks exist but no vectors found')
+        
+        // Check if the vector store has a regeneration method
+        const vectorStoreService = this.vectorStoreService as any
+        if (vectorStoreService.provider && typeof vectorStoreService.provider.regenerateEmbeddings === 'function') {
+          
+          // Load all chunks from database and create documents for the vector store
+          const allFiles = await this.fileRepository.getAllFiles()
+          
+          for (const file of allFiles) {
+            try {
+              const chunks = await this.chunkRepository.getChunksByFileId(file.id)
+              if (chunks.length === 0) continue
+
+              // Create documents for embedding regeneration
+              const documents = chunks.map((chunk) => ({
+                id: chunk.id,
+                content: chunk.content,
+                metadata: {
+                  fileId: file.id,
+                  fileName: file.name,
+                  fileType: file.fileType,
+                  chunkIndex: chunk.chunkIndex,
+                  source: { filename: file.name },
+                },
+              }))
+
+              // Add documents to vector store (this will regenerate embeddings)
+              await vectorStoreService.provider.addDocuments(documents)
+              
+              logger.info(`✅ Regenerated embeddings for ${chunks.length} chunks from ${file.name}`)
+              
+            } catch (error) {
+              logger.error(`❌ Failed to regenerate embeddings for file ${file.name}:`, error instanceof Error ? error : new Error(String(error)))
+            }
+          }
+
+          const finalVectorCount = vectorStoreService.provider.getVectorCount?.() || 0
+          logger.info(`🎉 Embedding regeneration completed`, {
+            totalChunks,
+            finalVectorCount,
+          })
+
+        } else {
+          logger.warn('⚠️ Vector store does not support embedding regeneration')
+        }
+      } else if (vectorCount > 0) {
+        logger.info('✅ Embeddings already exist, regeneration not needed', {
+          totalChunks,
+          vectorCount,
+        })
+      } else {
+        logger.info('📄 No documents found for embedding regeneration')
+      }
+
+    } catch (error) {
+      logger.error('❌ Failed to check/regenerate embeddings:', error instanceof Error ? error : new Error(String(error)))
+      // Don't throw - this is not critical for server startup
+    }
   }
 }

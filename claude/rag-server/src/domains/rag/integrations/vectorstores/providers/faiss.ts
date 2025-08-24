@@ -1,5 +1,5 @@
 /**
- * FAISS Vector Store Provider - Complete Implementation
+ * FAISS Vector Store Provider - Complete Implementation with Real Embeddings
  */
 
 import { VectorStoreProvider, VectorStoreCapabilities } from '../core/interfaces.js'
@@ -10,11 +10,24 @@ import {
   IndexStats,
   FaissConfig,
 } from '../core/types.js'
+import { TransformersEmbeddings } from '../../embeddings/providers/transformers.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
+import { logger } from '@/shared/logger/index.js'
+
+interface StoredVector {
+  id: string
+  embedding: number[]
+  content: string
+  metadata: any
+}
 
 export class FaissProvider implements VectorStoreProvider {
   private documents: Map<string, VectorDocument> = new Map()
+  private vectors: Map<string, StoredVector> = new Map() // id -> vector with embeddings
   private fileIdMap: Map<string, Set<string>> = new Map() // fileId -> docIds
   private indexStats: { total: number; occupied: number } = { total: 0, occupied: 0 }
+  private embeddings: TransformersEmbeddings | null = null
+  private isInitialized = false
 
   public readonly capabilities: VectorStoreCapabilities = {
     supportsMetadataFiltering: true,
@@ -25,10 +38,76 @@ export class FaissProvider implements VectorStoreProvider {
     supportsIndexCompaction: true,
   }
 
-  constructor(private config: FaissConfig = {}) {}
+  constructor(private config: FaissConfig = {}, private serverConfig?: ServerConfig) {
+    // Initialize embeddings service if server config is available
+    if (this.serverConfig) {
+      this.embeddings = new TransformersEmbeddings(this.serverConfig)
+    }
+  }
 
   async addDocuments(documents: VectorDocument[]): Promise<void> {
-    console.log(`Adding ${documents.length} documents to FAISS`)
+    console.log(`🔄 Adding ${documents.length} documents to FAISS with embeddings...`)
+
+    if (!this.embeddings) {
+      console.warn('⚠️ No embeddings service available, using mock implementation')
+      return this.addDocumentsWithoutEmbeddings(documents)
+    }
+
+    try {
+      // Generate embeddings for all document contents
+      const contents = documents.map((doc) => doc.content)
+      console.log(`🧠 Generating embeddings for ${contents.length} documents...`)
+
+      const embeddings = await this.embeddings.embedDocuments(contents)
+      console.log(`✅ Generated ${embeddings.length} embeddings`)
+
+      // Store documents with their embeddings
+      for (let i = 0; i < documents.length; i++) {
+        const doc = documents[i]
+        const embedding = embeddings[i]
+        if (!doc || !embedding) continue
+
+        // Store document
+        this.documents.set(doc.id, doc)
+
+        // Store vector with embedding
+        this.vectors.set(doc.id, {
+          id: doc.id,
+          embedding: embedding,
+          content: doc.content,
+          metadata: doc.metadata,
+        })
+
+        // Track by fileId
+        const fileId = doc.metadata.fileId
+        if (fileId) {
+          if (!this.fileIdMap.has(fileId)) {
+            this.fileIdMap.set(fileId, new Set())
+          }
+          this.fileIdMap.get(fileId)!.add(doc.id)
+        }
+
+        this.indexStats.total++
+        this.indexStats.occupied++
+      }
+
+      logger.info('✅ Successfully added documents with embeddings to FAISS', {
+        documentCount: documents.length,
+        totalVectors: this.vectors.size,
+        embeddingDimensions: embeddings[0]?.length || 0,
+      })
+    } catch (error) {
+      logger.error(
+        '❌ Failed to add documents with embeddings',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      // Fallback to adding without embeddings
+      await this.addDocumentsWithoutEmbeddings(documents)
+    }
+  }
+
+  private async addDocumentsWithoutEmbeddings(documents: VectorDocument[]): Promise<void> {
+    console.log(`📄 Adding ${documents.length} documents to FAISS (metadata only)...`)
 
     for (const doc of documents) {
       this.documents.set(doc.id, doc)
@@ -48,21 +127,105 @@ export class FaissProvider implements VectorStoreProvider {
   }
 
   async search(query: string, options?: VectorSearchOptions): Promise<VectorSearchResult[]> {
-    console.log(`Searching FAISS with query: ${query}`)
+    console.log(`🔍 Searching FAISS with query: "${query.substring(0, 100)}..."`)
+
+    if (!this.embeddings || this.vectors.size === 0) {
+      console.log(`⚠️ No embeddings available, using keyword-based fallback search`)
+      return this.keywordSearch(query, options)
+    }
+
+    try {
+      // Generate query embedding
+      console.log(`🧠 Generating query embedding...`)
+      const queryEmbedding = await this.embeddings.embedQuery(query)
+      console.log(`✅ Query embedding generated (${queryEmbedding.length} dimensions)`)
+
+      const results: VectorSearchResult[] = []
+      const topK = options?.topK || 10
+      const scoreThreshold = options?.scoreThreshold || 0.0
+
+      // Calculate cosine similarity with all stored vectors
+      for (const [id, vector] of this.vectors) {
+        const doc = this.documents.get(id)
+        if (!doc) continue
+
+        // Apply metadata filters
+        if (!this.passesFilters(doc, options)) {
+          continue
+        }
+
+        // Calculate cosine similarity
+        const similarity = this.cosineSimilarity(queryEmbedding, vector.embedding)
+
+        if (similarity >= scoreThreshold) {
+          results.push({
+            id,
+            content: vector.content,
+            metadata: vector.metadata,
+            score: similarity,
+          })
+        }
+      }
+
+      // Sort by similarity score (descending) and take topK
+      const sortedResults = results.sort((a, b) => b.score - a.score).slice(0, topK)
+
+      console.log(`✅ Found ${sortedResults.length} relevant documents (semantic search)`)
+      if (sortedResults.length > 0) {
+        console.log(
+          `   📊 Top score: ${sortedResults[0]?.score?.toFixed(4)}, Bottom score: ${sortedResults[
+            sortedResults.length - 1
+          ]?.score?.toFixed(4)}`
+        )
+      }
+
+      return sortedResults
+    } catch (error) {
+      console.error('❌ Error in semantic search, falling back to keyword search:', error)
+      return this.keywordSearch(query, options)
+    }
+  }
+
+  private keywordSearch(query: string, options?: VectorSearchOptions): VectorSearchResult[] {
+    console.log(`🔤 Performing keyword-based search for: "${query}"`)
 
     const results: VectorSearchResult[] = []
     const topK = options?.topK || 10
     const scoreThreshold = options?.scoreThreshold || 0.0
+    const queryLower = query.toLowerCase()
+    const queryWords = queryLower.split(/\s+/).filter((word) => word.length > 2)
 
-    // Simplified search - in real implementation, this would use FAISS similarity search
     for (const [id, doc] of this.documents) {
       // Apply metadata filters
       if (!this.passesFilters(doc, options)) {
         continue
       }
 
-      // Simplified scoring - in reality, this would be cosine similarity with embeddings
-      const score = Math.random() * 0.9 + 0.1 // Mock score 0.1-1.0
+      // Calculate keyword matching score
+      const contentLower = doc.content.toLowerCase()
+      let score = 0
+      let matches = 0
+
+      for (const word of queryWords) {
+        const wordCount = contentLower.split(word).length - 1
+        if (wordCount > 0) {
+          matches++
+          score += wordCount * 0.1 // Simple TF scoring
+        }
+      }
+
+      // Normalize score by query length and add exact phrase bonus
+      if (matches > 0) {
+        score = (matches / queryWords.length) * 0.5 + score * 0.5
+
+        // Exact phrase bonus
+        if (contentLower.includes(queryLower)) {
+          score += 0.3
+        }
+
+        // Clamp score between 0 and 1
+        score = Math.min(score, 1.0)
+      }
 
       if (score >= scoreThreshold) {
         results.push({
@@ -74,17 +237,45 @@ export class FaissProvider implements VectorStoreProvider {
       }
     }
 
-    // Sort by score and take topK
-    return results.sort((a, b) => b.score - a.score).slice(0, topK)
+    const sortedResults = results.sort((a, b) => b.score - a.score).slice(0, topK)
+    console.log(`✅ Found ${sortedResults.length} relevant documents (keyword search)`)
+
+    return sortedResults
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) {
+      throw new Error(`Vector dimensions don't match: ${a.length} vs ${b.length}`)
+    }
+
+    let dotProduct = 0
+    let normA = 0
+    let normB = 0
+
+    for (let i = 0; i < a.length && i < b.length; i++) {
+      dotProduct += a[i]! * b[i]!
+      normA += a[i]! * a[i]!
+      normB += b[i]! * b[i]!
+    }
+
+    normA = Math.sqrt(normA)
+    normB = Math.sqrt(normB)
+
+    if (normA === 0 || normB === 0) {
+      return 0
+    }
+
+    return dotProduct / (normA * normB)
   }
 
   async deleteDocuments(ids: string[]): Promise<void> {
-    console.log(`Deleting ${ids.length} documents from FAISS`)
+    console.log(`🗑️ Deleting ${ids.length} documents from FAISS`)
 
     for (const id of ids) {
       const doc = this.documents.get(id)
       if (doc) {
         this.documents.delete(id)
+        this.vectors.delete(id) // Also remove vector embedding
 
         // Remove from fileId mapping
         const fileId = doc.metadata.fileId
@@ -110,16 +301,17 @@ export class FaissProvider implements VectorStoreProvider {
   }
 
   async removeAllDocuments(): Promise<void> {
-    console.log('Removing all documents from FAISS')
+    console.log('🗑️ Removing all documents from FAISS')
     this.documents.clear()
+    this.vectors.clear()
     this.fileIdMap.clear()
     this.indexStats = { total: 0, occupied: 0 }
   }
 
   getIndexInfo(): IndexStats {
     return {
-      totalVectors: this.indexStats.occupied,
-      dimensions: this.config.dimensions || 768,
+      totalVectors: this.vectors.size, // Use actual vector count
+      dimensions: this.config.dimensions || 384, // Default to MiniLM dimensions
       indexSize: this.documents.size,
       lastUpdated: new Date(),
     }
@@ -137,6 +329,10 @@ export class FaissProvider implements VectorStoreProvider {
     return this.documents.size
   }
 
+  getVectorCount(): number {
+    return this.vectors.size
+  }
+
   hasDocumentsForFileId(fileId: string): boolean {
     return this.fileIdMap.has(fileId) && this.fileIdMap.get(fileId)!.size > 0
   }
@@ -147,8 +343,19 @@ export class FaissProvider implements VectorStoreProvider {
   }
 
   async initialize(): Promise<void> {
-    console.log('Initializing FAISS store')
-    // Initialize FAISS index if needed
+    console.log('🔄 Initializing FAISS store with embeddings...')
+
+    if (this.embeddings && !this.isInitialized) {
+      try {
+        // Test embeddings service
+        await this.embeddings.embedQuery('test')
+        console.log('✅ Embeddings service initialized successfully')
+        this.isInitialized = true
+      } catch (error) {
+        console.warn('⚠️ Failed to initialize embeddings service:', error)
+        this.embeddings = null
+      }
+    }
   }
 
   async saveIndex(): Promise<void> {
@@ -218,5 +425,55 @@ export class FaissProvider implements VectorStoreProvider {
     }
 
     return true
+  }
+
+  /**
+   * Regenerate embeddings for all existing documents
+   * This is needed when server restarts and embeddings need to be restored from document content
+   */
+  async regenerateEmbeddings(): Promise<void> {
+    if (!this.embeddings) {
+      console.log('⚠️ No embeddings service available for regeneration')
+      return
+    }
+
+    const documentsToRegenerate = Array.from(this.documents.values())
+    if (documentsToRegenerate.length === 0) {
+      console.log('📄 No documents found for embedding regeneration')
+      return
+    }
+
+    console.log(`🔄 Regenerating embeddings for ${documentsToRegenerate.length} existing documents...`)
+    
+    try {
+      // Clear existing vectors since we're regenerating
+      this.vectors.clear()
+
+      // Generate embeddings for all documents
+      const contents = documentsToRegenerate.map(doc => doc.content)
+      const embeddings = await this.embeddings.embedDocuments(contents)
+      
+      console.log(`✅ Generated ${embeddings.length} embeddings for regeneration`)
+
+      // Store the regenerated embeddings
+      for (let i = 0; i < documentsToRegenerate.length; i++) {
+        const doc = documentsToRegenerate[i]!
+        const embedding = embeddings[i]!
+        
+        this.vectors.set(doc.id, {
+          id: doc.id,
+          content: doc.content,
+          metadata: doc.metadata,
+          embedding: Array.from(embedding)
+        })
+      }
+
+      console.log(`✅ Successfully regenerated embeddings for ${this.vectors.size} documents`)
+      console.log(`📊 Total vectors: ${this.vectors.size}, embedding dimensions: ${embeddings[0]?.length || 'unknown'}`)
+      
+    } catch (error) {
+      console.error('❌ Failed to regenerate embeddings:', error)
+      throw error
+    }
   }
 }

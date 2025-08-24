@@ -35,11 +35,13 @@ async function initializeServices(config: any) {
 
   // Initialize vector store and search service
   const { VectorStoreFactory } = await import('@/shared/config/vector-store-factory.js')
-  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore)
-  const vectorStore = VectorStoreFactory.createService(config.vectorStore)
+  
+  // IMPORTANT: Create only ONE provider instance and reuse it everywhere
+  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config)
+  const vectorStore = new (await import('@/domains/rag/integrations/vectorstores/adapter.js')).VectorStoreAdapter(vectorStoreProvider)
 
   const searchService = new SearchService(
-    vectorStoreProvider,
+    vectorStoreProvider, // Use the same provider instance for consistent embeddings
     fileRepository,
     chunkRepository,
     config
