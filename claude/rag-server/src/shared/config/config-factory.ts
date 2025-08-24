@@ -3,108 +3,108 @@
  * Manages environment-specific configurations following 2025 best practices
  */
 
-import { resolve } from 'path';
-import { ServerConfig as BaseServerConfig } from '@/shared/types/index.js';
+import { resolve } from 'path'
+import { ServerConfig as BaseServerConfig } from '@/shared/types/index.js'
 
 export interface ConfigProfile {
-  name: string;
-  description: string;
-  config: Partial<ServerConfig>;
-  extends?: string;
+  name: string
+  description: string
+  config: Partial<ServerConfig>
+  extends?: string
 }
 
 export interface VectorStoreConfig {
-  provider: 'faiss' | 'qdrant' | 'weaviate' | 'chroma';
+  provider: 'faiss' | 'qdrant' | 'weaviate' | 'chroma'
   config: {
     // FAISS specific
-    indexPath?: string;
-    dimensions?: number;
-    
-    // Qdrant specific  
-    url?: string;
-    apiKey?: string;
-    collectionName?: string;
-    vectorSize?: number;
-    distance?: string;
-    
+    indexPath?: string
+    dimensions?: number
+
+    // Qdrant specific
+    url?: string
+    apiKey?: string
+    collectionName?: string
+    vectorSize?: number
+    distance?: string
+
     // Weaviate specific
-    weaviateUrl?: string;
-    weaviateApiKey?: string;
-    weaviateClassName?: string;
-    
+    weaviateUrl?: string
+    weaviateApiKey?: string
+    weaviateClassName?: string
+
     // Chroma specific
-    chromaUrl?: string;
-    chromaCollectionName?: string;
-  };
+    chromaUrl?: string
+    chromaCollectionName?: string
+  }
 }
 
 export interface MCPTransportConfig {
-  type: 'stdio' | 'streamable-http' | 'sse';
-  port?: number;
-  host?: string;
-  enableCors?: boolean;
-  sessionTimeout?: number;
-  allowedOrigins?: string[];
-  enableDnsRebindingProtection?: boolean;
+  type: 'stdio' | 'streamable-http' | 'sse'
+  port?: number
+  host?: string
+  enableCors?: boolean
+  sessionTimeout?: number
+  allowedOrigins?: string[]
+  enableDnsRebindingProtection?: boolean
 }
 
 export interface ServerConfig extends BaseServerConfig {
   // Vector store configuration
-  vectorStore: VectorStoreConfig;
-  
+  vectorStore: VectorStoreConfig
+
   // Pipeline configuration
   pipeline: {
-    maxConcurrentProcessing: number;
-    batchSize: number;
+    maxConcurrentProcessing: number
+    batchSize: number
     retryConfig: {
-      maxRetries: number;
-      baseDelay: number;
-      maxDelay: number;
-    };
-  };
-  
+      maxRetries: number
+      baseDelay: number
+      maxDelay: number
+    }
+  }
+
   // Search configuration
   search: {
-    enableHybridSearch: boolean;
-    enableQueryRewriting: boolean;
-    semanticWeight: number;
-    rerankingEnabled: boolean;
-    compressionEnabled: boolean;
-  };
-  
+    enableHybridSearch: boolean
+    enableQueryRewriting: boolean
+    semanticWeight: number
+    rerankingEnabled: boolean
+    compressionEnabled: boolean
+  }
+
   // Monitoring configuration
   monitoring: {
-    enabled: boolean;
-    port: number;
-    metricsPath: string;
-    healthCheckPath: string;
-  };
-  
+    enabled: boolean
+    port: number
+    metricsPath: string
+    healthCheckPath: string
+  }
+
   // Advanced features
   features: {
-    conversationalRag: boolean;
-    multiStepRetrieval: boolean;
-    contextualCompression: boolean;
-    adaptiveRetrieval: boolean;
-  };
+    conversationalRag: boolean
+    multiStepRetrieval: boolean
+    contextualCompression: boolean
+    adaptiveRetrieval: boolean
+  }
 
   // MCP Transport configuration
-  mcp: MCPTransportConfig;
+  mcp: MCPTransportConfig
 }
 
 export class ConfigFactory {
-  private profiles = new Map<string, ConfigProfile>();
-  
+  private profiles = new Map<string, ConfigProfile>()
+
   constructor() {
-    this.initializeDefaultProfiles();
+    this.initializeDefaultProfiles()
   }
-  
+
   /**
    * Create configuration for development environment
    */
   static createDevelopmentConfig(): ServerConfig {
-    const baseConfig = ConfigFactory.createBaseConfig();
-    
+    const baseConfig = ConfigFactory.createBaseConfig()
+
     return {
       ...baseConfig,
       nodeEnv: 'development',
@@ -113,7 +113,7 @@ export class ConfigFactory {
         provider: 'faiss',
         config: {
           indexPath: resolve('./.data/vectors'),
-        }
+        },
       },
       pipeline: {
         maxConcurrentProcessing: 3,
@@ -122,7 +122,7 @@ export class ConfigFactory {
           maxRetries: 2,
           baseDelay: 1000,
           maxDelay: 5000,
-        }
+        },
       },
       search: {
         enableHybridSearch: true,
@@ -139,7 +139,7 @@ export class ConfigFactory {
       },
       features: {
         conversationalRag: false,
-        multiStepRetrieval: false, 
+        multiStepRetrieval: false,
         contextualCompression: false,
         adaptiveRetrieval: false,
       },
@@ -151,34 +151,34 @@ export class ConfigFactory {
         sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),
         allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],
         enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true',
-      }
-    };
+      },
+    }
   }
-  
+
   /**
    * Create configuration for production environment
    */
   static createProductionConfig(): ServerConfig {
-    const baseConfig = ConfigFactory.createBaseConfig();
-    
+    const baseConfig = ConfigFactory.createBaseConfig()
+
     return {
       ...baseConfig,
       nodeEnv: 'production',
       logLevel: 'info',
       vectorStore: {
-        provider: process.env['VECTOR_STORE_PROVIDER'] as any || 'faiss',
+        provider: (process.env['VECTOR_STORE_PROVIDER'] as any) || 'faiss',
         config: {
           // FAISS config
           indexPath: process.env['FAISS_INDEX_PATH'] || `${baseConfig.dataDir}/vectors`,
           dimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || '384'),
-          
+
           // Qdrant config (if needed)
           url: process.env['QDRANT_URL'] || 'http://localhost:6333',
           apiKey: process.env['QDRANT_API_KEY'],
           collectionName: process.env['QDRANT_COLLECTION'] || 'documents',
           vectorSize: parseInt(process.env['EMBEDDING_DIMENSIONS'] || '384'),
           distance: 'cosine',
-        }
+        },
       },
       pipeline: {
         maxConcurrentProcessing: parseInt(process.env['MAX_CONCURRENT_PROCESSING'] || '10'),
@@ -187,7 +187,7 @@ export class ConfigFactory {
           maxRetries: parseInt(process.env['MAX_RETRIES'] || '3'),
           baseDelay: parseInt(process.env['BASE_DELAY'] || '2000'),
           maxDelay: parseInt(process.env['MAX_DELAY'] || '10000'),
-        }
+        },
       },
       search: {
         enableHybridSearch: process.env['ENABLE_HYBRID_SEARCH'] !== 'false',
@@ -216,16 +216,16 @@ export class ConfigFactory {
         sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),
         allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],
         enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true',
-      }
-    };
+      },
+    }
   }
-  
+
   /**
    * Create configuration for testing environment
    */
   static createTestConfig(): ServerConfig {
-    const baseConfig = ConfigFactory.createBaseConfig();
-    
+    const baseConfig = ConfigFactory.createBaseConfig()
+
     return {
       ...baseConfig,
       nodeEnv: 'test',
@@ -236,7 +236,7 @@ export class ConfigFactory {
         provider: 'faiss',
         config: {
           indexPath: resolve('./tests/.data/vectors'),
-        }
+        },
       },
       pipeline: {
         maxConcurrentProcessing: 1,
@@ -245,7 +245,7 @@ export class ConfigFactory {
           maxRetries: 1,
           baseDelay: 100,
           maxDelay: 1000,
-        }
+        },
       },
       search: {
         enableHybridSearch: true,
@@ -274,101 +274,104 @@ export class ConfigFactory {
         sessionTimeout: 30000,
         allowedOrigins: ['*'],
         enableDnsRebindingProtection: false,
-      }
-    };
+      },
+    }
   }
-  
+
   /**
    * Register a custom configuration profile
    */
   registerProfile(profile: ConfigProfile): void {
-    this.profiles.set(profile.name, profile);
+    this.profiles.set(profile.name, profile)
   }
-  
+
   /**
    * Get configuration by profile name
    */
   getConfig(profileName: string): ServerConfig {
-    const profile = this.profiles.get(profileName);
+    const profile = this.profiles.get(profileName)
     if (!profile) {
-      throw new Error(`Configuration profile '${profileName}' not found`);
+      throw new Error(`Configuration profile '${profileName}' not found`)
     }
-    
-    let config = ConfigFactory.createBaseConfig() as ServerConfig;
-    
+
+    let config = ConfigFactory.createBaseConfig() as ServerConfig
+
     // Apply base configuration from extended profile
     if (profile.extends) {
-      const parentConfig = this.getConfig(profile.extends);
-      config = { ...config, ...parentConfig };
+      const parentConfig = this.getConfig(profile.extends)
+      config = { ...config, ...parentConfig }
     }
-    
+
     // Apply profile-specific configuration
-    return { ...config, ...profile.config } as ServerConfig;
+    return { ...config, ...profile.config } as ServerConfig
   }
-  
+
   /**
    * Get configuration based on current environment
    */
   static getCurrentConfig(): ServerConfig {
-    const env = process.env['NODE_ENV'] || 'development';
-    
+    const env = process.env['NODE_ENV'] || 'development'
+
     switch (env) {
       case 'production':
-        return ConfigFactory.createProductionConfig();
+        return ConfigFactory.createProductionConfig()
       case 'test':
-        return ConfigFactory.createTestConfig();
+        return ConfigFactory.createTestConfig()
       case 'development':
       default:
-        return ConfigFactory.createDevelopmentConfig();
+        return ConfigFactory.createDevelopmentConfig()
     }
   }
-  
+
   /**
    * Validate configuration
    */
   static validateConfig(config: ServerConfig): void {
-    const errors: string[] = [];
-    
+    const errors: string[] = []
+
     // Existing validations from original config.ts
     if (config.chunkSize < 100 || config.chunkSize > 8192) {
-      errors.push('Chunk size must be between 100 and 8192');
+      errors.push('Chunk size must be between 100 and 8192')
     }
-    
+
     if (config.chunkOverlap < 0 || config.chunkOverlap >= config.chunkSize) {
-      errors.push('Chunk overlap must be between 0 and chunk size');
+      errors.push('Chunk overlap must be between 0 and chunk size')
     }
-    
+
     if (config.similarityTopK < 1 || config.similarityTopK > 100) {
-      errors.push('Similarity top K must be between 1 and 100');
+      errors.push('Similarity top K must be between 1 and 100')
     }
-    
+
     // New validations for advanced features
     if (config.pipeline.maxConcurrentProcessing < 1) {
-      errors.push('Max concurrent processing must be at least 1');
+      errors.push('Max concurrent processing must be at least 1')
     }
-    
+
     if (config.search.semanticWeight < 0 || config.search.semanticWeight > 1) {
-      errors.push('Semantic weight must be between 0 and 1');
+      errors.push('Semantic weight must be between 0 and 1')
     }
-    
+
     if (config.vectorStore.provider === 'qdrant' && !config.vectorStore.config.url) {
-      errors.push('Qdrant URL is required when using Qdrant provider');
+      errors.push('Qdrant URL is required when using Qdrant provider')
     }
-    
+
     if (config.vectorStore.provider === 'faiss' && !config.vectorStore.config.indexPath) {
-      errors.push('FAISS index path is required when using FAISS provider');
+      errors.push('FAISS index path is required when using FAISS provider')
     }
-    
+
     if (errors.length > 0) {
-      throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
+      throw new Error(`Configuration validation failed:\n${errors.join('\n')}`)
     }
   }
-  
-  private static createBaseConfig(): Omit<ServerConfig, 'vectorStore' | 'pipeline' | 'search' | 'monitoring' | 'features' | 'mcp'> {
-    const service = process.env['EMBEDDING_SERVICE'] || 'transformers';
-    const dataDir = resolve(process.env['DATA_DIR'] || './.data');
-    const documentsDir = resolve(process.env['DOCUMENTS_DIR'] || './documents');
-    
+
+  private static createBaseConfig(): Omit<
+    ServerConfig,
+    'vectorStore' | 'pipeline' | 'search' | 'monitoring' | 'features' | 'mcp'
+  > {
+    const service = process.env['EMBEDDING_SERVICE'] || 'transformers'
+    const dataDir = resolve(process.env['DATA_DIR'] || './.data')
+    const documentsDir = resolve(process.env['DOCUMENTS_DIR'] || './documents')
+
     return {
       nodeEnv: process.env['NODE_ENV'] || 'development',
       documentsDir,
@@ -376,18 +379,23 @@ export class ConfigFactory {
       chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1024', 10),
       chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '20', 10),
       similarityTopK: parseInt(process.env['SIMILARITY_TOP_K'] || '5', 10),
-      embeddingModel: process.env['EMBEDDING_MODEL'] || ConfigFactory.getDefaultEmbeddingModel(service),
+      embeddingModel:
+        process.env['EMBEDDING_MODEL'] || ConfigFactory.getDefaultEmbeddingModel(service),
       embeddingDevice: process.env['EMBEDDING_DEVICE'] || 'cpu',
       logLevel: process.env['LOG_LEVEL'] || 'info',
       embeddingService: service,
       embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '10', 10),
-      embeddingDimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || ConfigFactory.getDefaultEmbeddingDimensions(service), 10),
+      embeddingDimensions: parseInt(
+        process.env['EMBEDDING_DIMENSIONS'] || ConfigFactory.getDefaultEmbeddingDimensions(service),
+        10
+      ),
       similarityThreshold: parseFloat(process.env['SIMILARITY_THRESHOLD'] || '0.1'),
       ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434',
-      transformersCacheDir: process.env['TRANSFORMERS_CACHE_DIR'] || `${dataDir}/.cache/transformers`,
-    };
+      transformersCacheDir:
+        process.env['TRANSFORMERS_CACHE_DIR'] || `${dataDir}/.cache/transformers`,
+    }
   }
-  
+
   private initializeDefaultProfiles(): void {
     // High performance profile
     this.registerProfile({
@@ -406,10 +414,10 @@ export class ConfigFactory {
           multiStepRetrieval: true,
           contextualCompression: true,
           adaptiveRetrieval: true,
-        }
-      }
-    });
-    
+        },
+      },
+    })
+
     // Memory optimized profile
     this.registerProfile({
       name: 'memory-optimized',
@@ -423,34 +431,34 @@ export class ConfigFactory {
           semanticWeight: 0.5,
           rerankingEnabled: false,
           compressionEnabled: false,
-        }
-      }
-    });
+        },
+      },
+    })
   }
-  
+
   private static getDefaultEmbeddingModel(service: string): string {
     switch (service) {
       case 'ollama':
-        return 'nomic-embed-text';
+        return 'nomic-embed-text'
       case 'transformers':
-        return 'all-MiniLM-L6-v2';
+        return 'all-MiniLM-L6-v2'
       default:
-        return 'all-MiniLM-L6-v2';
+        return 'all-MiniLM-L6-v2'
     }
   }
-  
+
   private static getDefaultEmbeddingDimensions(service: string): string {
     switch (service) {
       case 'ollama':
-        return '768';
+        return '768'
       case 'transformers':
-        return '384';
+        return '384'
       default:
-        return '384';
+        return '384'
     }
   }
 }
 
 // Export factory instance and current config
-export const configFactory = new ConfigFactory();
-export const currentConfig = ConfigFactory.getCurrentConfig();
+export const configFactory = new ConfigFactory()
+export const currentConfig = ConfigFactory.getCurrentConfig()

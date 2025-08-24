@@ -1,10 +1,10 @@
-import { readFileSync } from 'fs';
-import { extname } from 'path';
-import { Document } from '@langchain/core/documents';
-import { extractText, getDocumentProxy } from 'unpdf';
-import mammoth from 'mammoth';
-import csv from 'csv-parser';
-import { Readable } from 'stream';
+import { readFileSync } from 'fs'
+import { extname } from 'path'
+import { Document } from '@langchain/core/documents'
+import { extractText, getDocumentProxy } from 'unpdf'
+import mammoth from 'mammoth'
+import csv from 'csv-parser'
+import { Readable } from 'stream'
 
 /**
  * LangChain 기반 향상된 파일 리더 서비스
@@ -13,55 +13,55 @@ import { Readable } from 'stream';
 export class FileReader {
   async readFileContent(filePath: string): Promise<Document | null> {
     try {
-      const fileType = this.getFileType(filePath);
-      
+      const fileType = this.getFileType(filePath)
+
       switch (fileType) {
         case 'pdf':
-          return await this.readPdf(filePath);
+          return await this.readPdf(filePath)
         case 'docx':
-          return await this.readDocx(filePath);
+          return await this.readDocx(filePath)
         case 'csv':
-          return await this.readCsv(filePath);
+          return await this.readCsv(filePath)
         case 'md':
-          return this.readMarkdown(filePath);
+          return this.readMarkdown(filePath)
         case 'json':
-          return this.readJson(filePath);
+          return this.readJson(filePath)
         case 'html':
-          return this.readHtml(filePath);
+          return this.readHtml(filePath)
         case 'xml':
-          return this.readXml(filePath);
+          return this.readXml(filePath)
         default:
-          return this.readPlainText(filePath);
+          return this.readPlainText(filePath)
       }
     } catch (error) {
-      console.error(`❌ Error reading file ${filePath}:`, error);
-      return null;
+      console.error(`❌ Error reading file ${filePath}:`, error)
+      return null
     }
   }
 
   private getFileType(filePath: string): string {
-    return extname(filePath).slice(1).toLowerCase() || 'txt';
+    return extname(filePath).slice(1).toLowerCase() || 'txt'
   }
 
   private async readPdf(filePath: string): Promise<Document | null> {
     try {
-      const buffer = readFileSync(filePath);
-      
+      const buffer = readFileSync(filePath)
+
       // Get PDF document proxy
-      const pdf = await getDocumentProxy(new Uint8Array(buffer));
-      
+      const pdf = await getDocumentProxy(new Uint8Array(buffer))
+
       // Extract text with merged pages
       const { totalPages, text } = await extractText(pdf, {
-        mergePages: true
-      });
-      
+        mergePages: true,
+      })
+
       // Extract individual pages for more detailed analysis
       const { text: pagesText } = await extractText(pdf, {
-        mergePages: false
-      });
-      
-      const pages = Array.isArray(pagesText) ? pagesText : [pagesText];
-      
+        mergePages: false,
+      })
+
+      const pages = Array.isArray(pagesText) ? pagesText : [pagesText]
+
       return new Document({
         pageContent: text.trim(),
         metadata: {
@@ -73,147 +73,149 @@ export class FileReader {
             numPages: totalPages,
             // unpdf doesn't provide metadata extraction in the same way
             // but it's focused on text extraction which is our main need
-            extractedWith: 'unpdf'
-          }
-        }
-      });
+            extractedWith: 'unpdf',
+          },
+        },
+      })
     } catch (error) {
-      console.error(`❌ Error parsing PDF ${filePath} with unpdf:`, error);
-      return null;
+      console.error(`❌ Error parsing PDF ${filePath} with unpdf:`, error)
+      return null
     }
   }
 
   private async readDocx(filePath: string): Promise<Document | null> {
     try {
-      const buffer = readFileSync(filePath);
-      const result = await mammoth.extractRawText({ buffer });
-      
+      const buffer = readFileSync(filePath)
+      const result = await mammoth.extractRawText({ buffer })
+
       return new Document({
         pageContent: result.value,
         metadata: {
           source: filePath,
           fileType: 'docx',
-          warnings: result.messages
-        }
-      });
+          warnings: result.messages,
+        },
+      })
     } catch (error) {
-      console.error(`❌ Error parsing DOCX ${filePath}:`, error);
-      return null;
+      console.error(`❌ Error parsing DOCX ${filePath}:`, error)
+      return null
     }
   }
 
   private async readCsv(filePath: string): Promise<Document | null> {
     try {
-      const content = readFileSync(filePath, 'utf-8');
-      const rows: any[] = [];
-      
+      const content = readFileSync(filePath, 'utf-8')
+      const rows: any[] = []
+
       return new Promise((resolve, reject) => {
-        const stream = Readable.from(content);
+        const stream = Readable.from(content)
         stream
           .pipe(csv())
           .on('data', (row) => rows.push(row))
           .on('end', () => {
-            const pageContent = this.formatCsvData(rows);
-            resolve(new Document({
-              pageContent,
-              metadata: {
-                source: filePath,
-                fileType: 'csv',
-                rowCount: rows.length,
-                columns: rows.length > 0 ? Object.keys(rows[0]) : []
-              }
-            }));
+            const pageContent = this.formatCsvData(rows)
+            resolve(
+              new Document({
+                pageContent,
+                metadata: {
+                  source: filePath,
+                  fileType: 'csv',
+                  rowCount: rows.length,
+                  columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+                },
+              })
+            )
           })
-          .on('error', reject);
-      });
+          .on('error', reject)
+      })
     } catch (error) {
-      console.error(`❌ Error parsing CSV ${filePath}:`, error);
-      return null;
+      console.error(`❌ Error parsing CSV ${filePath}:`, error)
+      return null
     }
   }
 
   private readMarkdown(filePath: string): Document {
-    const content = readFileSync(filePath, 'utf-8');
-    
+    const content = readFileSync(filePath, 'utf-8')
+
     return new Document({
       pageContent: this.cleanMarkdown(content),
       metadata: {
         source: filePath,
-        fileType: 'md'
-      }
-    });
+        fileType: 'md',
+      },
+    })
   }
 
   private readJson(filePath: string): Document {
-    const content = readFileSync(filePath, 'utf-8');
-    
+    const content = readFileSync(filePath, 'utf-8')
+
     return new Document({
       pageContent: this.formatJson(content),
       metadata: {
         source: filePath,
-        fileType: 'json'
-      }
-    });
+        fileType: 'json',
+      },
+    })
   }
 
   private readHtml(filePath: string): Document {
-    const content = readFileSync(filePath, 'utf-8');
-    
+    const content = readFileSync(filePath, 'utf-8')
+
     return new Document({
       pageContent: this.stripHtml(content),
       metadata: {
         source: filePath,
-        fileType: 'html'
-      }
-    });
+        fileType: 'html',
+      },
+    })
   }
 
   private readXml(filePath: string): Document {
-    const content = readFileSync(filePath, 'utf-8');
-    
+    const content = readFileSync(filePath, 'utf-8')
+
     return new Document({
       pageContent: this.stripXml(content),
       metadata: {
         source: filePath,
-        fileType: 'xml'
-      }
-    });
+        fileType: 'xml',
+      },
+    })
   }
 
   private readPlainText(filePath: string): Document {
-    const content = readFileSync(filePath, 'utf-8');
-    
+    const content = readFileSync(filePath, 'utf-8')
+
     return new Document({
       pageContent: content,
       metadata: {
         source: filePath,
-        fileType: 'txt'
-      }
-    });
+        fileType: 'txt',
+      },
+    })
   }
 
   // Helper methods for content processing
   private formatCsvData(rows: any[]): string {
-    if (rows.length === 0) return '';
-    
-    const headers = Object.keys(rows[0]);
-    let result = `CSV Data with ${rows.length} rows and columns: ${headers.join(', ')}\n\n`;
-    
+    if (rows.length === 0) return ''
+
+    const headers = Object.keys(rows[0])
+    let result = `CSV Data with ${rows.length} rows and columns: ${headers.join(', ')}\n\n`
+
     // Include first few rows as examples
-    const sampleRows = rows.slice(0, Math.min(5, rows.length));
+    const sampleRows = rows.slice(0, Math.min(5, rows.length))
     for (const [index, row] of sampleRows.entries()) {
-      result += `Row ${index + 1}:\n`;
+      result += `Row ${index + 1}:\n`
       for (const [key, value] of Object.entries(row)) {
-        result += `  ${key}: ${value}\n`;
+        result += `  ${key}: ${value}\n`
       }
-      result += '\n';
+      result += '\n'
     }
-    
+
     if (rows.length > 5) {
-      result += `... and ${rows.length - 5} more rows\n`;
+      result += `... and ${rows.length - 5} more rows\n`
     }
-    
-    return result;
+
+    return result
   }
 
   private cleanMarkdown(content: string): string {
@@ -226,15 +228,15 @@ export class FileReader {
       .replace(/[*_]{1,3}([^*_]*)[*_]{1,3}/g, '$1') // Remove emphasis
       .replace(/^\s*[-*+]\s/gm, '') // Remove list markers
       .replace(/^\s*\d+\.\s/gm, '') // Remove numbered list markers
-      .trim();
+      .trim()
   }
 
   private formatJson(content: string): string {
     try {
-      const parsed = JSON.parse(content);
-      return JSON.stringify(parsed, null, 2);
+      const parsed = JSON.parse(content)
+      return JSON.stringify(parsed, null, 2)
     } catch {
-      return content;
+      return content
     }
   }
 
@@ -249,7 +251,7 @@ export class FileReader {
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
-      .trim();
+      .trim()
   }
 
   private stripXml(content: string): string {
@@ -261,6 +263,6 @@ export class FileReader {
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
-      .trim();
+      .trim()
   }
 }

@@ -1,21 +1,21 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { 
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
   ListPromptsRequestSchema,
-  GetPromptRequestSchema
-} from '@modelcontextprotocol/sdk/types.js';
+  GetPromptRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js'
 
-import { SearchHandler } from '../handlers/search.js';
-import { InformationHandler } from '../handlers/information.js';
-import { IFileRepository } from '@/domains/rag/repositories/document.js';
-import { ServerConfig } from '@/shared/config/config-factory.js';
-import { logger } from '@/shared/logger/index.js';
+import { SearchHandler } from '../handlers/search.js'
+import { InformationHandler } from '../handlers/information.js'
+import { IFileRepository } from '@/domains/rag/repositories/document.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
+import { logger } from '@/shared/logger/index.js'
 
 export class MCPServer {
-  private server: Server;
+  private server: Server
 
   constructor(
     private searchHandler: SearchHandler,
@@ -35,62 +35,72 @@ export class MCPServer {
           prompts: {},
         },
       }
-    );
+    )
 
-    this.setupTools();
-    this.setupResources();
-    this.setupPrompts();
+    this.setupTools()
+    this.setupResources()
+    this.setupPrompts()
   }
 
   private setupTools(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
-        tools: [
-          ...this.searchHandler.getTools(),
-          ...this.informationHandler.getTools(),
-        ],
-      };
-    });
+        tools: [...this.searchHandler.getTools(), ...this.informationHandler.getTools()],
+      }
+    })
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
+      const { name, arguments: args } = request.params
 
       try {
-        let result;
+        let result
 
         switch (name) {
           case 'search':
-            result = await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'));
-            break;
+            result = await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'))
+            break
           case 'search_similar':
-            result = await this.searchHandler.handleSearchSimilar(this.validateAndCastArgs(args, 'search_similar'));
-            break;
+            result = await this.searchHandler.handleSearchSimilar(
+              this.validateAndCastArgs(args, 'search_similar')
+            )
+            break
           case 'search_by_question':
-            result = await this.searchHandler.handleSearchByQuestion(this.validateAndCastArgs(args, 'search_by_question'));
-            break;
+            result = await this.searchHandler.handleSearchByQuestion(
+              this.validateAndCastArgs(args, 'search_by_question')
+            )
+            break
           case 'list_sources':
-            result = await this.informationHandler.handleListSources(this.validateAndCastArgs(args, 'list_sources'));
-            break;
+            result = await this.informationHandler.handleListSources(
+              this.validateAndCastArgs(args, 'list_sources')
+            )
+            break
         }
 
         // Graceful handling of unknown tools instead of crashing the service
-        logger.warn('Unknown tool requested', { toolName: name, availableTools: this.getAvailableToolNames() });
-            return {
-              content: [
+        logger.warn('Unknown tool requested', {
+          toolName: name,
+          availableTools: this.getAvailableToolNames(),
+        })
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
                 {
-                  type: 'text',
-                  text: JSON.stringify({
-                    error: 'UnknownTool',
-                    message: `Tool '${name}' is not available`,
-                    availableTools: this.getAvailableToolNames(),
-                    suggestion: 'Use the list_tools endpoint to see all available tools'
-                  }, null, 2)
-                }
-              ],
-              isError: true
-            };
+                  error: 'UnknownTool',
+                  message: `Tool '${name}' is not available`,
+                  availableTools: this.getAvailableToolNames(),
+                  suggestion: 'Use the list_tools endpoint to see all available tools',
+                },
+                null,
+                2
+              ),
+            },
+          ],
+          isError: true,
+        }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = error instanceof Error ? error.message : String(error)
         return {
           content: [
             {
@@ -99,48 +109,48 @@ export class MCPServer {
             },
           ],
           isError: true,
-        };
+        }
       }
-    });
+    })
   }
-    private getAvailableToolNames(): string[] {
+  private getAvailableToolNames(): string[] {
     return [
-      ...this.searchHandler.getTools().map(tool => tool.name),
-      ...this.informationHandler.getTools().map(tool => tool.name)
-    ];
+      ...this.searchHandler.getTools().map((tool) => tool.name),
+      ...this.informationHandler.getTools().map((tool) => tool.name),
+    ]
   }
 
   private setupResources(): void {
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      const files = await this.fileRepository.getAllFiles();
-      
+      const files = await this.fileRepository.getAllFiles()
+
       return {
-        resources: files.map(file => ({
+        resources: files.map((file) => ({
           uri: `file://${file.path}`,
           name: file.name,
           description: `${file.fileType.toUpperCase()} file (${file.size} bytes)`,
           mimeType: this.getMimeType(file.fileType),
         })),
-      };
-    });
+      }
+    })
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      const { uri } = request.params;
-      
+      const { uri } = request.params
+
       if (!uri.startsWith('file://')) {
-        throw new Error('Only file:// URIs are supported');
+        throw new Error('Only file:// URIs are supported')
       }
-      
-      const filePath = uri.replace('file://', '');
-      const file = await this.fileRepository.getFileByPath(filePath);
-      
+
+      const filePath = uri.replace('file://', '')
+      const file = await this.fileRepository.getFileByPath(filePath)
+
       if (!file) {
-        throw new Error('File not found');
+        throw new Error('File not found')
       }
-      
+
       // Get file content from chunks (simplified)
-      const content = `File: ${file.name}\nPath: ${file.path}\nType: ${file.fileType}`;
-      
+      const content = `File: ${file.name}\nPath: ${file.path}\nType: ${file.fileType}`
+
       return {
         contents: [
           {
@@ -149,8 +159,8 @@ export class MCPServer {
             text: content,
           },
         ],
-      };
-    });
+      }
+    })
   }
 
   private setupPrompts(): void {
@@ -166,29 +176,36 @@ export class MCPServer {
             ],
           },
         ],
-      };
-    });
+      }
+    })
 
     this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
+      const { name, arguments: args } = request.params
 
       switch (name) {
         case 'rag_search': {
-          const query = typeof args?.['query'] === 'string' ? args['query'] : undefined;
-          const contextLength = Number(args?.['context_length']) || 3;
+          const query = typeof args?.['query'] === 'string' ? args['query'] : undefined
+          const contextLength = Number(args?.['context_length']) || 3
 
           if (!query) {
-            throw new Error('Query is required for rag_search prompt');
+            throw new Error('Query is required for rag_search prompt')
           }
 
           const results = await this.searchHandler.handleSearch({
             query,
             limit: contextLength,
-          });
-          
-          const contextText = results.results ? results.results.map(result => 
-            `**${result.source.filename}** (Score: ${result.relevance_score.toFixed(4)}):\n${result.content}`
-          ).join('\n\n---\n\n') : 'No results found';
+          })
+
+          const contextText = results.results
+            ? results.results
+                .map(
+                  (result) =>
+                    `**${result.source.filename}** (Score: ${result.relevance_score.toFixed(
+                      4
+                    )}):\n${result.content}`
+                )
+                .join('\n\n---\n\n')
+            : 'No results found'
 
           return {
             messages: [
@@ -200,12 +217,12 @@ export class MCPServer {
                 },
               },
             ],
-          };
+          }
         }
         default:
-          throw new Error(`Unknown prompt: ${name}`);
+          throw new Error(`Unknown prompt: ${name}`)
       }
-    });
+    })
   }
 
   private getMimeType(fileType: string): string {
@@ -217,49 +234,49 @@ export class MCPServer {
       html: 'text/html',
       csv: 'text/csv',
       pdf: 'application/pdf',
-    };
-    return mimeTypes[fileType.toLowerCase()] || 'text/plain';
+    }
+    return mimeTypes[fileType.toLowerCase()] || 'text/plain'
   }
 
   async start(): Promise<void> {
-    const { TransportFactory } = await import('../transport/transport-factory.js');
-    
+    const { TransportFactory } = await import('../transport/transport-factory.js')
+
     // Validate transport configuration
-    TransportFactory.validateConfig(this.config.mcp);
-    
-    console.log(`🔗 Starting MCP server with ${this.config.mcp.type} transport...`);
-    
-    const { transport, context } = await TransportFactory.createTransport(this.config.mcp);
-    
+    TransportFactory.validateConfig(this.config.mcp)
+
+    console.log(`🔗 Starting MCP server with ${this.config.mcp.type} transport...`)
+
+    const { transport, context } = await TransportFactory.createTransport(this.config.mcp)
+
     // Connect MCP server to transport
-    await this.server.connect(transport);
-    
+    await this.server.connect(transport)
+
     // Start HTTP server if needed
     if (context && this.config.mcp.type !== 'stdio') {
-      await TransportFactory.startHTTPServer(context, this.config.mcp);
+      await TransportFactory.startHTTPServer(context, this.config.mcp)
     }
-    
+
     console.log(`🎯 MCP Server started and ready for ${this.config.mcp.type} connections`, {
       transport: this.config.mcp.type,
       port: this.config.mcp.port,
       host: this.config.mcp.host,
-    });
+    })
   }
 
   async shutdown(): Promise<void> {
-    console.log('🔄 Shutting down MCP Server...');
+    console.log('🔄 Shutting down MCP Server...')
     // Add any cleanup logic here if needed
-    console.log('✅ MCP Server shutdown completed');
+    console.log('✅ MCP Server shutdown completed')
   }
 
   private isValidArgs(args: Record<string, unknown> | undefined): args is Record<string, unknown> {
-    return args !== undefined && typeof args === 'object' && args !== null;
+    return args !== undefined && typeof args === 'object' && args !== null
   }
 
   private validateAndCastArgs(args: Record<string, unknown> | undefined, operation: string): any {
     if (!this.isValidArgs(args)) {
-      throw new Error(`Invalid arguments for ${operation}: args must be an object`);
+      throw new Error(`Invalid arguments for ${operation}: args must be an object`)
     }
-    return args;
+    return args
   }
 }

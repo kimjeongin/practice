@@ -3,16 +3,16 @@
  * Wraps the new ConfigFactory for existing code compatibility
  */
 
-import { ConfigFactory, ServerConfig } from './config-factory.js';
-import { ServerConfig as BaseServerConfig } from '@/shared/types/index.js';
+import { ConfigFactory, ServerConfig } from './config-factory.js'
+import { ServerConfig as BaseServerConfig } from '@/shared/types/index.js'
 
 // Load environment variables (handled by ConfigFactory)
 // Export the loaded config with backward compatibility
-export const appConfig = loadConfig();
+export const appConfig = loadConfig()
 
 export function loadConfig(): BaseServerConfig {
-  const advancedConfig = ConfigFactory.getCurrentConfig();
-  
+  const advancedConfig = ConfigFactory.getCurrentConfig()
+
   // Convert ServerConfig to legacy BaseServerConfig format
   return {
     nodeEnv: advancedConfig.nodeEnv,
@@ -30,7 +30,7 @@ export function loadConfig(): BaseServerConfig {
     similarityThreshold: advancedConfig.similarityThreshold,
     ollamaBaseUrl: advancedConfig.ollamaBaseUrl,
     transformersCacheDir: advancedConfig.transformersCacheDir,
-  };
+  }
 }
 
 export function validateConfig(config: BaseServerConfig): void {
@@ -41,8 +41,8 @@ export function validateConfig(config: BaseServerConfig): void {
     vectorStore: {
       provider: 'faiss',
       config: {
-        indexPath: `${config.dataDir}/vectors`
-      }
+        indexPath: `${config.dataDir}/vectors`,
+      },
     },
     pipeline: {
       maxConcurrentProcessing: 3,
@@ -51,7 +51,7 @@ export function validateConfig(config: BaseServerConfig): void {
         maxRetries: 2,
         baseDelay: 1000,
         maxDelay: 5000,
-      }
+      },
     },
     search: {
       enableHybridSearch: true,
@@ -80,12 +80,12 @@ export function validateConfig(config: BaseServerConfig): void {
       sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),
       allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],
       enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true',
-    }
-  };
-  
-  ConfigFactory.validateConfig(advancedConfig);
+    },
+  }
+
+  ConfigFactory.validateConfig(advancedConfig)
 }
 
 // Re-export ConfigFactory for new code
-export { ConfigFactory };
-export type { ServerConfig };
+export { ConfigFactory }
+export type { ServerConfig }

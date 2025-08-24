@@ -8,50 +8,50 @@ export enum ErrorCode {
   FILE_READ_ERROR = 'FILE_READ_ERROR',
   FILE_PARSE_ERROR = 'FILE_PARSE_ERROR',
   FILE_NOT_FOUND = 'FILE_NOT_FOUND',
-  
+
   // Vector Store Errors
   VECTOR_STORE_ERROR = 'VECTOR_STORE_ERROR',
   EMBEDDING_ERROR = 'EMBEDDING_ERROR',
   SEARCH_ERROR = 'SEARCH_ERROR',
-  
+
   // Database Errors
   DATABASE_ERROR = 'DATABASE_ERROR',
   CONNECTION_ERROR = 'CONNECTION_ERROR',
-  
+
   // Network/Service Errors
   TIMEOUT_ERROR = 'TIMEOUT_ERROR',
   RATE_LIMIT_ERROR = 'RATE_LIMIT_ERROR',
   SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
-  
+
   // Configuration Errors
   CONFIG_ERROR = 'CONFIG_ERROR',
   VALIDATION_ERROR = 'VALIDATION_ERROR',
-  
+
   // Generic Errors
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
-  OPERATIONAL_ERROR = 'OPERATIONAL_ERROR'
+  OPERATIONAL_ERROR = 'OPERATIONAL_ERROR',
 }
 
 export interface ErrorContext {
-  operation?: string;
-  fileId?: string;
-  filePath?: string;
-  query?: string;
-  component?: string;
-  timestamp?: Date;
-  stack?: string;
-  [key: string]: any;
+  operation?: string
+  fileId?: string
+  filePath?: string
+  query?: string
+  component?: string
+  timestamp?: Date
+  stack?: string
+  [key: string]: any
 }
 
 /**
  * 기본 구조화된 에러 클래스
  */
 export class StructuredError extends Error {
-  public readonly code: ErrorCode;
-  public readonly statusCode: number;
-  public readonly context: ErrorContext;
-  public readonly isOperational: boolean;
-  public readonly timestamp: Date;
+  public readonly code: ErrorCode
+  public readonly statusCode: number
+  public readonly context: ErrorContext
+  public readonly isOperational: boolean
+  public readonly timestamp: Date
 
   constructor(
     message: string,
@@ -60,17 +60,17 @@ export class StructuredError extends Error {
     context: ErrorContext = {},
     isOperational: boolean = true
   ) {
-    super(message);
-    this.name = 'StructuredError';
-    this.code = code;
-    this.statusCode = statusCode;
-    this.context = { ...context, timestamp: new Date() };
-    this.isOperational = isOperational;
-    this.timestamp = new Date();
+    super(message)
+    this.name = 'StructuredError'
+    this.code = code
+    this.statusCode = statusCode
+    this.context = { ...context, timestamp: new Date() }
+    this.isOperational = isOperational
+    this.timestamp = new Date()
 
     // Maintain proper stack trace for where our error was thrown
     if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, StructuredError);
+      Error.captureStackTrace(this, StructuredError)
     }
   }
 
@@ -83,8 +83,8 @@ export class StructuredError extends Error {
       context: this.context,
       isOperational: this.isOperational,
       timestamp: this.timestamp,
-      stack: this.stack || undefined
-    };
+      stack: this.stack || undefined,
+    }
   }
 }
 
@@ -92,24 +92,14 @@ export class StructuredError extends Error {
  * 파일 처리 관련 에러
  */
 export class FileProcessingError extends StructuredError {
-  constructor(
-    message: string,
-    filePath: string,
-    operation: string,
-    originalError?: Error
-  ) {
-    super(
-      message,
-      ErrorCode.FILE_PARSE_ERROR,
-      500,
-      {
-        filePath,
-        operation,
-        originalError: originalError?.message,
-        stack: originalError?.stack
-      }
-    );
-    this.name = 'FileProcessingError';
+  constructor(message: string, filePath: string, operation: string, originalError?: Error) {
+    super(message, ErrorCode.FILE_PARSE_ERROR, 500, {
+      filePath,
+      operation,
+      originalError: originalError?.message,
+      stack: originalError?.stack,
+    })
+    this.name = 'FileProcessingError'
   }
 }
 
@@ -123,18 +113,13 @@ export class VectorStoreError extends StructuredError {
     context: ErrorContext = {},
     originalError?: Error
   ) {
-    super(
-      message,
-      ErrorCode.VECTOR_STORE_ERROR,
-      500,
-      {
-        ...context,
-        operation,
-        originalError: originalError?.message,
-        stack: originalError?.stack
-      }
-    );
-    this.name = 'VectorStoreError';
+    super(message, ErrorCode.VECTOR_STORE_ERROR, 500, {
+      ...context,
+      operation,
+      originalError: originalError?.message,
+      stack: originalError?.stack,
+    })
+    this.name = 'VectorStoreError'
   }
 }
 
@@ -148,18 +133,13 @@ export class SearchError extends StructuredError {
     searchType: 'semantic' | 'keyword' | 'hybrid',
     originalError?: Error
   ) {
-    super(
-      message,
-      ErrorCode.SEARCH_ERROR,
-      500,
-      {
-        query,
-        searchType,
-        originalError: originalError?.message,
-        stack: originalError?.stack
-      }
-    );
-    this.name = 'SearchError';
+    super(message, ErrorCode.SEARCH_ERROR, 500, {
+      query,
+      searchType,
+      originalError: originalError?.message,
+      stack: originalError?.stack,
+    })
+    this.name = 'SearchError'
   }
 }
 
@@ -167,22 +147,13 @@ export class SearchError extends StructuredError {
  * 타임아웃 에러
  */
 export class TimeoutError extends StructuredError {
-  constructor(
-    operation: string,
-    timeoutMs: number,
-    context: ErrorContext = {}
-  ) {
-    super(
-      `Operation '${operation}' timed out after ${timeoutMs}ms`,
-      ErrorCode.TIMEOUT_ERROR,
-      408,
-      {
-        ...context,
-        operation,
-        timeoutMs
-      }
-    );
-    this.name = 'TimeoutError';
+  constructor(operation: string, timeoutMs: number, context: ErrorContext = {}) {
+    super(`Operation '${operation}' timed out after ${timeoutMs}ms`, ErrorCode.TIMEOUT_ERROR, 408, {
+      ...context,
+      operation,
+      timeoutMs,
+    })
+    this.name = 'TimeoutError'
   }
 }
 
@@ -190,22 +161,13 @@ export class TimeoutError extends StructuredError {
  * 데이터베이스 관련 에러
  */
 export class DatabaseError extends StructuredError {
-  constructor(
-    message: string,
-    operation: string,
-    originalError?: Error
-  ) {
-    super(
-      message,
-      ErrorCode.DATABASE_ERROR,
-      500,
-      {
-        operation,
-        originalError: originalError?.message,
-        stack: originalError?.stack
-      }
-    );
-    this.name = 'DatabaseError';
+  constructor(message: string, operation: string, originalError?: Error) {
+    super(message, ErrorCode.DATABASE_ERROR, 500, {
+      operation,
+      originalError: originalError?.message,
+      stack: originalError?.stack,
+    })
+    this.name = 'DatabaseError'
   }
 }
 
@@ -213,22 +175,13 @@ export class DatabaseError extends StructuredError {
  * 임베딩 관련 에러
  */
 export class EmbeddingError extends StructuredError {
-  constructor(
-    message: string,
-    model: string,
-    originalError?: Error
-  ) {
-    super(
-      message,
-      ErrorCode.EMBEDDING_ERROR,
-      500,
-      {
-        model,
-        originalError: originalError?.message,
-        stack: originalError?.stack
-      }
-    );
-    this.name = 'EmbeddingError';
+  constructor(message: string, model: string, originalError?: Error) {
+    super(message, ErrorCode.EMBEDDING_ERROR, 500, {
+      model,
+      originalError: originalError?.message,
+      stack: originalError?.stack,
+    })
+    this.name = 'EmbeddingError'
   }
 }
 
@@ -236,22 +189,18 @@ export class EmbeddingError extends StructuredError {
  * 구성 관련 에러
  */
 export class ConfigurationError extends StructuredError {
-  constructor(
-    message: string,
-    configKey: string,
-    expectedType?: string
-  ) {
+  constructor(message: string, configKey: string, expectedType?: string) {
     super(
       message,
       ErrorCode.CONFIG_ERROR,
       400,
       {
         configKey,
-        expectedType
+        expectedType,
       },
       false // Configuration errors are not operational
-    );
-    this.name = 'ConfigurationError';
+    )
+    this.name = 'ConfigurationError'
   }
 }
 
@@ -268,22 +217,20 @@ export class ErrorUtils {
         ErrorCode.TIMEOUT_ERROR,
         ErrorCode.RATE_LIMIT_ERROR,
         ErrorCode.SERVICE_UNAVAILABLE,
-        ErrorCode.CONNECTION_ERROR
-      ].includes(error.code);
+        ErrorCode.CONNECTION_ERROR,
+      ].includes(error.code)
     }
-    
+
     // 일반 에러의 경우 메시지 기반 판단
     const retryableMessages = [
       'timeout',
       'rate limit',
       'service unavailable',
       'connection',
-      'network'
-    ];
-    
-    return retryableMessages.some(msg => 
-      error.message.toLowerCase().includes(msg)
-    );
+      'network',
+    ]
+
+    return retryableMessages.some((msg) => error.message.toLowerCase().includes(msg))
   }
 
   /**
@@ -291,25 +238,25 @@ export class ErrorUtils {
    */
   static isOperational(error: Error): boolean {
     if (error instanceof StructuredError) {
-      return error.isOperational;
+      return error.isOperational
     }
-    return true; // 기본적으로 운영상 에러로 간주
+    return true // 기본적으로 운영상 에러로 간주
   }
 
   /**
    * 에러에서 민감한 정보 제거
    */
   static sanitize(error: StructuredError): Partial<StructuredError> {
-    const sanitized = { ...error.toJSON() };
-    
+    const sanitized = { ...error.toJSON() }
+
     // API 키, 비밀번호 등 민감한 정보 제거
     if (sanitized.context) {
-      delete sanitized.context.apiKey;
-      delete sanitized.context.password;
-      delete sanitized.context.token;
-      delete sanitized.context.secret;
+      delete sanitized.context.apiKey
+      delete sanitized.context.password
+      delete sanitized.context.token
+      delete sanitized.context.secret
     }
-    
-    return sanitized;
+
+    return sanitized
   }
 }

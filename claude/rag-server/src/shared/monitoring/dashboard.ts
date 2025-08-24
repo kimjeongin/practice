@@ -3,63 +3,63 @@
  * 에러 통계, 시스템 헬스, 서킷 브레이커 상태를 실시간으로 확인
  */
 
-import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { errorMonitor } from '@/shared/monitoring/error-monitor.js';
-import { logger } from '@/shared/logger/index.js';
-import { CircuitBreakerManager } from '@/shared/utils/resilience.js';
+import { createServer, IncomingMessage, ServerResponse } from 'http'
+import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
+import { logger } from '@/shared/logger/index.js'
+import { CircuitBreakerManager } from '@/shared/utils/resilience.js'
 
 export class MonitoringDashboard {
-  private server: any;
-  private port: number;
+  private server: any
+  private port: number
 
   constructor(port: number = 3001) {
-    this.port = port;
+    this.port = port
   }
 
   start(): void {
     this.server = createServer((req: IncomingMessage, res: ServerResponse) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
       if (req.method === 'OPTIONS') {
-        res.writeHead(200);
-        res.end();
-        return;
+        res.writeHead(200)
+        res.end()
+        return
       }
 
-      const url = req.url || '';
+      const url = req.url || ''
 
       if (url === '/' || url === '/dashboard') {
-        this.serveDashboard(res);
+        this.serveDashboard(res)
       } else if (url === '/api/health') {
-        this.serveHealthData(res);
+        this.serveHealthData(res)
       } else if (url === '/api/errors') {
-        this.serveErrorData(res);
+        this.serveErrorData(res)
       } else if (url === '/api/circuit-breakers') {
-        this.serveCircuitBreakerData(res);
+        this.serveCircuitBreakerData(res)
       } else if (url === '/api/logs') {
-        this.serveLogData(res);
+        this.serveLogData(res)
       } else if (url === '/api/sync-status') {
-        this.serveSyncStatus(res);
+        this.serveSyncStatus(res)
       } else {
-        res.writeHead(404);
-        res.end('Not Found');
+        res.writeHead(404)
+        res.end('Not Found')
       }
-    });
+    })
 
     this.server.listen(this.port, () => {
-      logger.info(`Monitoring dashboard started`, { 
+      logger.info(`Monitoring dashboard started`, {
         port: this.port,
-        url: `http://localhost:${this.port}` 
-      });
-    });
+        url: `http://localhost:${this.port}`,
+      })
+    })
   }
 
   stop(): void {
     if (this.server) {
-      this.server.close();
-      logger.info('Monitoring dashboard stopped');
+      this.server.close()
+      logger.info('Monitoring dashboard stopped')
     }
   }
 
@@ -335,76 +335,76 @@ export class MonitoringDashboard {
     </script>
 </body>
 </html>
-    `;
+    `
 
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.writeHead(200);
-    res.end(html);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.writeHead(200)
+    res.end(html)
   }
 
   private serveHealthData(res: ServerResponse): void {
     try {
-      const health = errorMonitor.getSystemHealth();
-      res.setHeader('Content-Type', 'application/json');
-      res.writeHead(200);
-      res.end(JSON.stringify(health));
+      const health = errorMonitor.getSystemHealth()
+      res.setHeader('Content-Type', 'application/json')
+      res.writeHead(200)
+      res.end(JSON.stringify(health))
     } catch (error) {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'Failed to get health data' }));
+      res.writeHead(500)
+      res.end(JSON.stringify({ error: 'Failed to get health data' }))
     }
   }
 
   private serveErrorData(res: ServerResponse): void {
     try {
-      const stats = errorMonitor.getErrorStatistics();
+      const stats = errorMonitor.getErrorStatistics()
       const response = {
         byCode: Array.from(stats.byCode.entries()),
         byComponent: Array.from(stats.byComponent.entries()),
-        timeline: stats.timeline
-      };
-      res.setHeader('Content-Type', 'application/json');
-      res.writeHead(200);
-      res.end(JSON.stringify(response));
+        timeline: stats.timeline,
+      }
+      res.setHeader('Content-Type', 'application/json')
+      res.writeHead(200)
+      res.end(JSON.stringify(response))
     } catch (error) {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'Failed to get error data' }));
+      res.writeHead(500)
+      res.end(JSON.stringify({ error: 'Failed to get error data' }))
     }
   }
 
   private serveCircuitBreakerData(res: ServerResponse): void {
     try {
-      const status = CircuitBreakerManager.getStatus();
-      res.setHeader('Content-Type', 'application/json');
-      res.writeHead(200);
-      res.end(JSON.stringify(status));
+      const status = CircuitBreakerManager.getStatus()
+      res.setHeader('Content-Type', 'application/json')
+      res.writeHead(200)
+      res.end(JSON.stringify(status))
     } catch (error) {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'Failed to get circuit breaker data' }));
+      res.writeHead(500)
+      res.end(JSON.stringify({ error: 'Failed to get circuit breaker data' }))
     }
   }
 
   private serveLogData(res: ServerResponse): void {
     try {
       // 실제 프로덕션에서는 로그 파일이나 로그 수집 서비스에서 데이터를 가져와야 함
-      const errors = errorMonitor.getErrorHistory(20);
-      const recent: any[] = []; // 실시간 로그는 향후 구현
+      const errors = errorMonitor.getErrorHistory(20)
+      const recent: any[] = [] // 실시간 로그는 향후 구현
 
       const response = {
-        errors: errors.map(error => ({
+        errors: errors.map((error) => ({
           code: error.code,
           message: error.message,
           timestamp: error.timestamp,
-          context: error.context
+          context: error.context,
         })),
-        recent
-      };
+        recent,
+      }
 
-      res.setHeader('Content-Type', 'application/json');
-      res.writeHead(200);
-      res.end(JSON.stringify(response));
+      res.setHeader('Content-Type', 'application/json')
+      res.writeHead(200)
+      res.end(JSON.stringify(response))
     } catch (error) {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'Failed to get log data' }));
+      res.writeHead(500)
+      res.end(JSON.stringify({ error: 'Failed to get log data' }))
     }
   }
 
@@ -420,24 +420,24 @@ export class MonitoringDashboard {
           orphanedVectors: 0,
           hashMismatches: 0,
           newFiles: 0,
-          total: 0
+          total: 0,
         },
         metrics: {
           totalFiles: 0,
           totalVectors: 0,
           totalChunks: 0,
-          syncDuration: 0
-        }
-      };
+          syncDuration: 0,
+        },
+      }
 
-      res.setHeader('Content-Type', 'application/json');
-      res.writeHead(200);
-      res.end(JSON.stringify(syncStatus));
+      res.setHeader('Content-Type', 'application/json')
+      res.writeHead(200)
+      res.end(JSON.stringify(syncStatus))
     } catch (error) {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'Failed to get sync status' }));
+      res.writeHead(500)
+      res.end(JSON.stringify({ error: 'Failed to get sync status' }))
     }
   }
 }
 
-export const monitoringDashboard = new MonitoringDashboard();
+export const monitoringDashboard = new MonitoringDashboard()

@@ -1,28 +1,28 @@
 // Domain models
 export interface FileMetadata {
-  id: string;
-  path: string;
-  name: string;
-  size: number;
-  modifiedAt: Date;
-  createdAt: Date;
-  fileType: string;
-  hash: string;
-  indexedAt?: Date;
+  id: string
+  path: string
+  name: string
+  size: number
+  modifiedAt: Date
+  createdAt: Date
+  fileType: string
+  hash: string
+  indexedAt?: Date
 }
 
 export interface DocumentChunk {
-  id: string;
-  fileId: string;
-  chunkIndex: number;
-  content: string;
-  embeddingId?: string;
+  id: string
+  fileId: string
+  chunkIndex: number
+  content: string
+  embeddingId?: string
 }
 
 export interface CustomMetadata {
-  fileId: string;
-  key: string;
-  value: string;
+  fileId: string
+  key: string
+  value: string
 }
 
 export class FileChangeEvent {

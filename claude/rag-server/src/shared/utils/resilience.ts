@@ -3,33 +3,33 @@
  * 타임아웃, 재시도, 서킷 브레이커 등 안정성 패턴 구현
  */
 
-import pTimeout from 'p-timeout';
-import pRetry, { AbortError, FailedAttemptError } from 'p-retry';
-import CircuitBreaker from 'opossum';
-import { TimeoutError, StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index.js';
-import { logger } from '@/shared/logger/index.js';
+import pTimeout from 'p-timeout'
+import pRetry, { AbortError, FailedAttemptError } from 'p-retry'
+import CircuitBreaker from 'opossum'
+import { TimeoutError, StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index.js'
+import { logger } from '@/shared/logger/index.js'
 
 export interface RetryOptions {
-  retries?: number;
-  factor?: number;
-  minTimeout?: number;
-  maxTimeout?: number;
-  randomize?: boolean;
-  onRetry?: (error: Error, attempt: number) => void;
+  retries?: number
+  factor?: number
+  minTimeout?: number
+  maxTimeout?: number
+  randomize?: boolean
+  onRetry?: (error: Error, attempt: number) => void
 }
 
 export interface TimeoutOptions {
-  timeoutMs: number;
-  operation: string;
-  fallback?: () => Promise<any>;
+  timeoutMs: number
+  operation: string
+  fallback?: () => Promise<any>
 }
 
 export interface CircuitBreakerOptions {
-  timeout?: number;
-  errorThresholdPercentage?: number;
-  resetTimeout?: number;
-  monitoringPeriod?: number;
-  volumeThreshold?: number;
+  timeout?: number
+  errorThresholdPercentage?: number
+  resetTimeout?: number
+  monitoringPeriod?: number
+  volumeThreshold?: number
 }
 
 /**
@@ -39,31 +39,28 @@ export class TimeoutWrapper {
   /**
    * Promise에 타임아웃 적용
    */
-  static async withTimeout<T>(
-    promise: Promise<T>,
-    options: TimeoutOptions
-  ): Promise<T> {
-    const { timeoutMs, operation, fallback } = options;
+  static async withTimeout<T>(promise: Promise<T>, options: TimeoutOptions): Promise<T> {
+    const { timeoutMs, operation, fallback } = options
 
     try {
       return await pTimeout(promise, {
         milliseconds: timeoutMs,
-        message: `Operation '${operation}' timed out after ${timeoutMs}ms`
-      });
+        message: `Operation '${operation}' timed out after ${timeoutMs}ms`,
+      })
     } catch (error) {
       if (error instanceof Error && error.message.includes('timed out')) {
-        const timeoutError = new TimeoutError(operation, timeoutMs);
-        logger.error(`Timeout in ${operation}`, timeoutError);
+        const timeoutError = new TimeoutError(operation, timeoutMs)
+        logger.error(`Timeout in ${operation}`, timeoutError)
 
         // Fallback이 있으면 실행
         if (fallback) {
-          logger.warn(`Executing fallback for ${operation}`);
-          return await fallback();
+          logger.warn(`Executing fallback for ${operation}`)
+          return await fallback()
         }
 
-        throw timeoutError;
+        throw timeoutError
       }
-      throw error;
+      throw error
     }
   }
 
@@ -76,8 +73,8 @@ export class TimeoutWrapper {
     operation: string
   ) {
     return async (...args: T): Promise<R> => {
-      return TimeoutWrapper.withTimeout(fn(...args), { timeoutMs, operation });
-    };
+      return TimeoutWrapper.withTimeout(fn(...args), { timeoutMs, operation })
+    }
   }
 }
 
@@ -94,8 +91,8 @@ export class RetryWrapper {
     minTimeout: 1000,
     maxTimeout: 30000,
     randomize: true,
-    onRetry: () => {}
-  };
+    onRetry: () => {},
+  }
 
   /**
    * Promise에 재시도 로직 적용
@@ -105,20 +102,20 @@ export class RetryWrapper {
     operation: string,
     options: RetryOptions = {}
   ): Promise<T> {
-    const opts = { ...RetryWrapper.defaultOptions, ...options };
+    const opts = { ...RetryWrapper.defaultOptions, ...options }
 
     const wrappedFn = async () => {
       try {
-        return await fn();
+        return await fn()
       } catch (error) {
         // 재시도 가능한 에러인지 확인
         if (!ErrorUtils.isRetryable(error as Error)) {
-          logger.debug(`Error not retryable for ${operation}`, { error });
-          throw new AbortError(error as Error);
+          logger.debug(`Error not retryable for ${operation}`, { error })
+          throw new AbortError(error as Error)
         }
-        throw error;
+        throw error
       }
-    };
+    }
 
     return pRetry(wrappedFn, {
       retries: opts.retries,
@@ -129,16 +126,16 @@ export class RetryWrapper {
       onFailedAttempt: (error: FailedAttemptError) => {
         logger.warn(
           `Retry attempt ${error.attemptNumber}/${opts.retries + 1} failed for ${operation}`,
-          { 
+          {
             operation,
             attempt: error.attemptNumber,
             retriesLeft: error.retriesLeft,
-            error: error.message
+            error: error.message,
           }
-        );
-        opts.onRetry(error, error.attemptNumber);
-      }
-    });
+        )
+        opts.onRetry(error, error.attemptNumber)
+      },
+    })
   }
 
   /**
@@ -150,8 +147,8 @@ export class RetryWrapper {
     options: RetryOptions = {}
   ) {
     return async (...args: T): Promise<R> => {
-      return RetryWrapper.withRetry(() => fn(...args), operation, options);
-    };
+      return RetryWrapper.withRetry(() => fn(...args), operation, options)
+    }
   }
 }
 
@@ -159,7 +156,7 @@ export class RetryWrapper {
  * 서킷 브레이커 관리자
  */
 export class CircuitBreakerManager {
-  private static breakers = new Map<string, CircuitBreaker>();
+  private static breakers = new Map<string, CircuitBreaker>()
 
   /**
    * 서킷 브레이커 생성 또는 조회
@@ -170,11 +167,11 @@ export class CircuitBreakerManager {
     options: CircuitBreakerOptions = {}
   ): CircuitBreaker {
     if (CircuitBreakerManager.breakers.has(name)) {
-      const existingBreaker = CircuitBreakerManager.breakers.get(name);
+      const existingBreaker = CircuitBreakerManager.breakers.get(name)
       if (!existingBreaker) {
-        throw new Error(`Circuit breaker ${name} exists in map but is undefined`);
+        throw new Error(`Circuit breaker ${name} exists in map but is undefined`)
       }
-      return existingBreaker;
+      return existingBreaker
     }
 
     const defaultOptions = {
@@ -182,48 +179,48 @@ export class CircuitBreakerManager {
       errorThresholdPercentage: 50,
       resetTimeout: 30000,
       monitoringPeriod: 10000,
-      volumeThreshold: 10
-    };
+      volumeThreshold: 10,
+    }
 
-    const breakerOptions = { ...defaultOptions, ...options };
-    const breaker = new CircuitBreaker(fn, breakerOptions);
+    const breakerOptions = { ...defaultOptions, ...options }
+    const breaker = new CircuitBreaker(fn, breakerOptions)
 
     // 이벤트 리스너 설정
     breaker.on('open', () => {
-      logger.warn(`Circuit breaker opened for ${name}`, { component: name });
-    });
+      logger.warn(`Circuit breaker opened for ${name}`, { component: name })
+    })
 
     breaker.on('halfOpen', () => {
-      logger.info(`Circuit breaker half-opened for ${name}`, { component: name });
-    });
+      logger.info(`Circuit breaker half-opened for ${name}`, { component: name })
+    })
 
     breaker.on('close', () => {
-      logger.info(`Circuit breaker closed for ${name}`, { component: name });
-    });
+      logger.info(`Circuit breaker closed for ${name}`, { component: name })
+    })
 
     breaker.on('failure', (error) => {
-      logger.error(`Circuit breaker failure in ${name}`, error, { component: name });
-    });
+      logger.error(`Circuit breaker failure in ${name}`, error, { component: name })
+    })
 
-    CircuitBreakerManager.breakers.set(name, breaker);
-    return breaker;
+    CircuitBreakerManager.breakers.set(name, breaker)
+    return breaker
   }
 
   /**
    * 모든 서킷 브레이커 상태 조회
    */
   static getStatus(): { name: string; state: string; stats: any }[] {
-    const status: { name: string; state: string; stats: any }[] = [];
-    
+    const status: { name: string; state: string; stats: any }[] = []
+
     for (const [name, breaker] of CircuitBreakerManager.breakers.entries()) {
       status.push({
         name,
         state: breaker.opened ? 'open' : breaker.halfOpen ? 'half-open' : 'closed',
-        stats: breaker.stats
-      });
+        stats: breaker.stats,
+      })
     }
-    
-    return status;
+
+    return status
   }
 
   /**
@@ -231,16 +228,16 @@ export class CircuitBreakerManager {
    */
   static reset(name?: string) {
     if (name) {
-      const breaker = CircuitBreakerManager.breakers.get(name);
+      const breaker = CircuitBreakerManager.breakers.get(name)
       if (breaker) {
-        breaker.close();
-        logger.info(`Circuit breaker ${name} manually reset`);
+        breaker.close()
+        logger.info(`Circuit breaker ${name} manually reset`)
       }
     } else {
       for (const [name, breaker] of CircuitBreakerManager.breakers.entries()) {
-        breaker.close();
+        breaker.close()
       }
-      logger.info('All circuit breakers manually reset');
+      logger.info('All circuit breakers manually reset')
     }
   }
 }
@@ -257,39 +254,35 @@ export class ResilienceWrapper {
     fn: () => Promise<T>,
     operation: string,
     options: {
-      timeout?: TimeoutOptions;
-      retry?: RetryOptions;
-      circuitBreaker?: CircuitBreakerOptions;
-      useCircuitBreaker?: boolean;
+      timeout?: TimeoutOptions
+      retry?: RetryOptions
+      circuitBreaker?: CircuitBreakerOptions
+      useCircuitBreaker?: boolean
     } = {}
   ): Promise<T> {
-    const { timeout, retry, circuitBreaker, useCircuitBreaker = false } = options;
+    const { timeout, retry, circuitBreaker, useCircuitBreaker = false } = options
 
-    let wrappedFn = fn;
+    let wrappedFn = fn
 
     // 1. 타임아웃 적용
     if (timeout) {
-      const originalFn = wrappedFn;
-      wrappedFn = () => TimeoutWrapper.withTimeout(originalFn(), timeout);
+      const originalFn = wrappedFn
+      wrappedFn = () => TimeoutWrapper.withTimeout(originalFn(), timeout)
     }
 
     // 2. 재시도 적용
     if (retry) {
-      const originalFn = wrappedFn;
-      wrappedFn = () => RetryWrapper.withRetry(originalFn, operation, retry);
+      const originalFn = wrappedFn
+      wrappedFn = () => RetryWrapper.withRetry(originalFn, operation, retry)
     }
 
     // 3. 서킷 브레이커 적용
     if (useCircuitBreaker) {
-      const breaker = CircuitBreakerManager.getBreaker(
-        operation,
-        wrappedFn,
-        circuitBreaker
-      );
-      return breaker.fire() as Promise<T>;
+      const breaker = CircuitBreakerManager.getBreaker(operation, wrappedFn, circuitBreaker)
+      return breaker.fire() as Promise<T>
     }
 
-    return wrappedFn();
+    return wrappedFn()
   }
 }
 
@@ -304,56 +297,56 @@ export class BatchProcessor {
     items: T[],
     processor: (item: T) => Promise<R>,
     options: {
-      batchSize?: number;
-      concurrency?: number;
-      operation?: string;
+      batchSize?: number
+      concurrency?: number
+      operation?: string
     } = {}
   ): Promise<R[]> {
-    const { batchSize = 10, concurrency = 3, operation = 'batch_processing' } = options;
-    
-    const results: R[] = [];
-    const endTiming = logger.startTiming(operation, { 
-      totalItems: items.length, 
-      batchSize, 
-      concurrency 
-    });
+    const { batchSize = 10, concurrency = 3, operation = 'batch_processing' } = options
+
+    const results: R[] = []
+    const endTiming = logger.startTiming(operation, {
+      totalItems: items.length,
+      batchSize,
+      concurrency,
+    })
 
     try {
       for (let i = 0; i < items.length; i += batchSize) {
-        const batch = items.slice(i, i + batchSize);
-        
+        const batch = items.slice(i, i + batchSize)
+
         const batchPromises = batch.map(async (item, index) => {
           try {
-            return await processor(item);
+            return await processor(item)
           } catch (error) {
             logger.error(`Batch item ${i + index} failed`, error as Error, {
               operation,
               itemIndex: i + index,
-              batchStart: i
-            });
-            throw error;
+              batchStart: i,
+            })
+            throw error
           }
-        });
+        })
 
         // 동시성 제한하여 배치 처리
-        const batchResults = await Promise.all(batchPromises);
-        results.push(...batchResults);
+        const batchResults = await Promise.all(batchPromises)
+        results.push(...batchResults)
 
         logger.debug(`Processed batch ${Math.floor(i / batchSize) + 1}`, {
           operation,
           processedItems: Math.min(i + batchSize, items.length),
-          totalItems: items.length
-        });
+          totalItems: items.length,
+        })
       }
 
-      return results;
+      return results
     } finally {
-      endTiming();
+      endTiming()
     }
   }
 }
 
 // 편의 함수들
-export const withTimeout = TimeoutWrapper.withTimeout;
-export const withRetry = RetryWrapper.withRetry;
-export const withResilience = ResilienceWrapper.withResilience;
+export const withTimeout = TimeoutWrapper.withTimeout
+export const withRetry = RetryWrapper.withRetry
+export const withResilience = ResilienceWrapper.withResilience

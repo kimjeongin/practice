@@ -1,9 +1,15 @@
-import { IVectorStoreService, VectorDocument, VectorSearchResult, SearchOptions, IndexInfo } from '@/shared/types/interfaces.js';
-import { VectorStoreProvider } from './core/interfaces.js';
-import { VectorSearchOptions } from './core/types.js';
+import {
+  IVectorStoreService,
+  VectorDocument,
+  VectorSearchResult,
+  SearchOptions,
+  IndexInfo,
+} from '@/shared/types/interfaces.js'
+import { VectorStoreProvider } from './core/interfaces.js'
+import { VectorSearchOptions } from './core/types.js'
 
 // Re-export VectorStoreProvider for use in other modules
-export type { VectorStoreProvider } from './core/interfaces.js';
+export type { VectorStoreProvider } from './core/interfaces.js'
 
 /**
  * Universal Vector Store Adapter
@@ -13,7 +19,7 @@ export class VectorStoreAdapter implements IVectorStoreService {
   constructor(private provider: VectorStoreProvider) {}
 
   async addDocuments(documents: VectorDocument[]): Promise<void> {
-    await this.provider.addDocuments(documents);
+    await this.provider.addDocuments(documents)
   }
 
   async search(query: string, options?: SearchOptions): Promise<VectorSearchResult[]> {
@@ -23,86 +29,91 @@ export class VectorStoreAdapter implements IVectorStoreService {
       scoreThreshold: options?.scoreThreshold,
       fileTypes: options?.fileTypes,
       metadataFilters: options?.metadataFilters,
-    };
+    }
 
-    return await this.provider.search(query, vectorSearchOptions);
+    return await this.provider.search(query, vectorSearchOptions)
   }
 
   async removeDocumentsByFileId(fileId: string): Promise<void> {
-    await this.provider.removeDocumentsByFileId(fileId);
+    await this.provider.removeDocumentsByFileId(fileId)
   }
 
   getIndexInfo(): IndexInfo {
-    const indexStats = this.provider.getIndexInfo();
-    return { 
+    const indexStats = this.provider.getIndexInfo()
+    return {
       documentCount: indexStats.totalVectors,
-      indexPath: `./index.${this.getProviderName()}`
-    };
+      indexPath: `./index.${this.getProviderName()}`,
+    }
   }
 
   isHealthy(): boolean {
-    return this.provider.isHealthy();
+    return this.provider.isHealthy()
   }
 
   // 선택적 메서드들 - provider에서 지원하는 경우에만 호출
   async initialize(): Promise<void> {
     if (this.provider.initialize) {
-      await this.provider.initialize();
+      await this.provider.initialize()
     }
   }
 
   async saveIndex(): Promise<void> {
     if (this.provider.saveIndex) {
-      await this.provider.saveIndex();
+      await this.provider.saveIndex()
     }
   }
 
   async rebuildIndex(): Promise<void> {
     if (this.provider.rebuildIndex) {
-      await this.provider.rebuildIndex();
+      await this.provider.rebuildIndex()
     }
   }
 
   getAllDocumentIds(): string[] {
     if (this.provider.getAllDocumentIds) {
-      return this.provider.getAllDocumentIds();
+      return this.provider.getAllDocumentIds()
     }
-    return [];
+    return []
   }
 
   getDocumentCount(): number {
     if (this.provider.getDocumentCount) {
-      return this.provider.getDocumentCount();
+      return this.provider.getDocumentCount()
     }
-    return 0;
+    return 0
   }
 
   async removeAllDocuments(): Promise<void> {
-    await this.provider.removeAllDocuments();
+    await this.provider.removeAllDocuments()
   }
 
   hasDocumentsForFileId(fileId: string): boolean {
     if (this.provider.hasDocumentsForFileId) {
-      return this.provider.hasDocumentsForFileId(fileId);
+      return this.provider.hasDocumentsForFileId(fileId)
     }
-    return false;
+    return false
   }
 
   async getDocumentMetadata(docId: string): Promise<any | null> {
     if (this.provider.getDocumentMetadata) {
-      return await this.provider.getDocumentMetadata(docId);
+      return await this.provider.getDocumentMetadata(docId)
     }
-    return null;
+    return null
   }
 
   /**
    * 인덱스 통계 조회 (고급 기능)
    */
-  getIndexStats(): { total: number; occupied: number; sparsity: number; needsCompaction: boolean } | null {
+  getIndexStats(): {
+    total: number
+    occupied: number
+    sparsity: number
+    needsCompaction: boolean
+  } | null {
     if (this.provider.getIndexStats) {
-      return this.provider.getIndexStats();
+      return this.provider.getIndexStats()
     }
-    return null;
+    return null
   }
 
   /**
@@ -110,7 +121,7 @@ export class VectorStoreAdapter implements IVectorStoreService {
    */
   async compactIndex(): Promise<void> {
     if (this.provider.compactIndex) {
-      await this.provider.compactIndex();
+      await this.provider.compactIndex()
     }
   }
 
@@ -119,9 +130,9 @@ export class VectorStoreAdapter implements IVectorStoreService {
    */
   async autoCompactIfNeeded(): Promise<boolean> {
     if (this.provider.autoCompactIfNeeded) {
-      return await this.provider.autoCompactIfNeeded();
+      return await this.provider.autoCompactIfNeeded()
     }
-    return false;
+    return false
   }
 
   /**
@@ -131,10 +142,10 @@ export class VectorStoreAdapter implements IVectorStoreService {
     return {
       name: this.getProviderName(),
       capabilities: this.provider.capabilities || {},
-    };
+    }
   }
 
   private getProviderName(): string {
-    return this.provider.constructor.name.toLowerCase().replace('provider', '');
+    return this.provider.constructor.name.toLowerCase().replace('provider', '')
   }
 }

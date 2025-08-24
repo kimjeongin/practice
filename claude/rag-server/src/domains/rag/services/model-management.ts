@@ -1,51 +1,49 @@
-import { IEmbeddingService } from '@/shared/types/interfaces.js';
+import { IEmbeddingService } from '@/shared/types/interfaces.js'
 
 interface IModelManagementService {
-  getAvailableModels(): Promise<Record<string, any>>;
-  getCurrentModelInfo(): Promise<any>;
-  switchEmbeddingModel(modelName: string): Promise<void>;
-  downloadModel(modelName?: string): Promise<any>;
-  getModelCacheInfo(): Promise<any>;
-  getDownloadProgress(): Promise<any>;
+  getAvailableModels(): Promise<Record<string, any>>
+  getCurrentModelInfo(): Promise<any>
+  switchEmbeddingModel(modelName: string): Promise<void>
+  downloadModel(modelName?: string): Promise<any>
+  getModelCacheInfo(): Promise<any>
+  getDownloadProgress(): Promise<any>
 }
 
 export class ModelManagementService implements IModelManagementService {
-  constructor(
-    private embeddingService: IEmbeddingService
-  ) {}
+  constructor(private embeddingService: IEmbeddingService) {}
 
   async getAvailableModels(): Promise<Record<string, any>> {
     try {
       if ('getAvailableModels' in this.embeddingService) {
-        return (this.embeddingService as any).getAvailableModels();
+        return (this.embeddingService as any).getAvailableModels()
       }
-      return {};
+      return {}
     } catch (error) {
-      console.error('Error getting available models:', error);
-      return {};
+      console.error('Error getting available models:', error)
+      return {}
     }
   }
 
   async getCurrentModelInfo(): Promise<any> {
     try {
-      return this.embeddingService.getModelInfo();
+      return this.embeddingService.getModelInfo()
     } catch (error) {
-      console.error('Error getting current model info:', error);
-      return { error: 'Could not get model info' };
+      console.error('Error getting current model info:', error)
+      return { error: 'Could not get model info' }
     }
   }
 
   async switchEmbeddingModel(modelName: string): Promise<void> {
     try {
       if ('switchModel' in this.embeddingService) {
-        await (this.embeddingService as any).switchModel(modelName);
-        console.log(`✅ Successfully switched to model: ${modelName}`);
+        await (this.embeddingService as any).switchModel(modelName)
+        console.log(`✅ Successfully switched to model: ${modelName}`)
       } else {
-        throw new Error('Model switching not supported for current embedding service');
+        throw new Error('Model switching not supported for current embedding service')
       }
     } catch (error) {
-      console.error('Error switching model:', error);
-      throw error;
+      console.error('Error switching model:', error)
+      throw error
     }
   }
 
@@ -53,44 +51,43 @@ export class ModelManagementService implements IModelManagementService {
     try {
       if ('downloadModel' in this.embeddingService) {
         if (modelName && 'switchModel' in this.embeddingService) {
-          await (this.embeddingService as any).switchModel(modelName);
+          await (this.embeddingService as any).switchModel(modelName)
         }
-        await (this.embeddingService as any).downloadModel();
+        await (this.embeddingService as any).downloadModel()
         return {
           message: `Model ${modelName || 'current'} downloaded successfully`,
-          modelName: modelName || 'current'
-        };
+          modelName: modelName || 'current',
+        }
       } else {
-        throw new Error('Model downloading not supported for current embedding service');
+        throw new Error('Model downloading not supported for current embedding service')
       }
     } catch (error) {
-      console.error('Error downloading model:', error);
-      throw error;
+      console.error('Error downloading model:', error)
+      throw error
     }
   }
 
   async getModelCacheInfo(): Promise<any> {
     try {
       if ('getCacheStats' in this.embeddingService) {
-        return await (this.embeddingService as any).getCacheStats();
+        return await (this.embeddingService as any).getCacheStats()
       }
-      return { message: 'Cache info not available for current embedding service' };
+      return { message: 'Cache info not available for current embedding service' }
     } catch (error) {
-      console.error('Error getting cache info:', error);
-      return { error: 'Could not get cache info' };
+      console.error('Error getting cache info:', error)
+      return { error: 'Could not get cache info' }
     }
   }
 
   async getDownloadProgress(): Promise<any> {
     try {
       if ('getDownloadProgress' in this.embeddingService) {
-        return (this.embeddingService as any).getDownloadProgress();
+        return (this.embeddingService as any).getDownloadProgress()
       }
-      return {};
+      return {}
     } catch (error) {
-      console.error('Error getting download progress:', error);
-      return {};
+      console.error('Error getting download progress:', error)
+      return {}
     }
   }
-
 }

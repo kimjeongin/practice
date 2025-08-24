@@ -3,64 +3,60 @@
  * Creates appropriate transport instances based on configuration
  */
 
-import { randomUUID } from 'node:crypto';
-import fastify, { FastifyInstance } from 'fastify';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { MCPTransportConfig } from '@/shared/config/config-factory.js';
-import { logger } from '@/shared/logger/index.js';
+import { randomUUID } from 'node:crypto'
+import fastify, { FastifyInstance } from 'fastify'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
+import { MCPTransportConfig } from '@/shared/config/config-factory.js'
+import { logger } from '@/shared/logger/index.js'
 
-export type TransportInstance = 
-  | StdioServerTransport 
-  | StreamableHTTPServerTransport 
-  | SSEServerTransport;
+export type TransportInstance =
+  | StdioServerTransport
+  | StreamableHTTPServerTransport
+  | SSEServerTransport
 
 export interface HTTPTransportContext {
-  app: FastifyInstance;
-  transports: Map<string, StreamableHTTPServerTransport | SSEServerTransport>;
+  app: FastifyInstance
+  transports: Map<string, StreamableHTTPServerTransport | SSEServerTransport>
 }
 
 export class TransportFactory {
   /**
    * Create transport instance based on configuration
    */
-  static async createTransport(
-    config: MCPTransportConfig
-  ): Promise<{
-    transport: TransportInstance;
-    context?: HTTPTransportContext;
+  static async createTransport(config: MCPTransportConfig): Promise<{
+    transport: TransportInstance
+    context?: HTTPTransportContext
   }> {
     switch (config.type) {
       case 'stdio':
         return {
-          transport: new StdioServerTransport()
-        };
+          transport: new StdioServerTransport(),
+        }
 
       case 'streamable-http':
-        return await TransportFactory.createStreamableHTTPTransport(config);
+        return await TransportFactory.createStreamableHTTPTransport(config)
 
       case 'sse':
-        return await TransportFactory.createSSETransport(config);
+        return await TransportFactory.createSSETransport(config)
 
       default:
-        throw new Error(`Unsupported transport type: ${config.type}`);
+        throw new Error(`Unsupported transport type: ${config.type}`)
     }
   }
 
   /**
    * Create Streamable HTTP transport with Fastify
    */
-  private static async createStreamableHTTPTransport(
-    config: MCPTransportConfig
-  ): Promise<{
-    transport: StreamableHTTPServerTransport;
-    context: HTTPTransportContext;
+  private static async createStreamableHTTPTransport(config: MCPTransportConfig): Promise<{
+    transport: StreamableHTTPServerTransport
+    context: HTTPTransportContext
   }> {
     const app = fastify({
       logger: false, // Use our own logger
       trustProxy: true,
-    });
+    })
 
     // CORS setup
     if (config.enableCors) {
@@ -69,46 +65,49 @@ export class TransportFactory {
         exposedHeaders: ['Mcp-Session-Id'],
         allowedHeaders: ['Content-Type', 'mcp-session-id'],
         credentials: true,
-      });
+      })
     }
 
-    const transports = new Map<string, StreamableHTTPServerTransport>();
+    const transports = new Map<string, StreamableHTTPServerTransport>()
 
     // Handle POST requests for client-to-server communication
     app.post('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined;
-      let transport: StreamableHTTPServerTransport;
+      const sessionId = request.headers['mcp-session-id'] as string | undefined
+      let transport: StreamableHTTPServerTransport
 
       if (sessionId && transports.has(sessionId)) {
         // Reuse existing transport
-        transport = transports.get(sessionId)!;
+        transport = transports.get(sessionId)!
       } else {
         // Create new transport for initialization
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sessionId) => {
-            transports.set(sessionId, transport);
-            logger.debug('MCP session initialized', { sessionId });
+            transports.set(sessionId, transport)
+            logger.debug('MCP session initialized', { sessionId })
           },
           enableDnsRebindingProtection: config.enableDnsRebindingProtection || false,
           allowedHosts: config.host ? [config.host] : undefined,
           allowedOrigins: config.allowedOrigins,
-        });
+        })
 
         // Clean up transport when closed
         transport.onclose = () => {
           if (transport.sessionId) {
-            transports.delete(transport.sessionId);
-            logger.debug('MCP session closed', { sessionId: transport.sessionId });
+            transports.delete(transport.sessionId)
+            logger.debug('MCP session closed', { sessionId: transport.sessionId })
           }
-        };
+        }
       }
 
       // Handle the request
       try {
-        await transport.handleRequest(request.raw, reply.raw, request.body);
+        await transport.handleRequest(request.raw, reply.raw, request.body)
       } catch (error) {
-        logger.error('Error handling MCP request', error instanceof Error ? error : new Error(String(error)));
+        logger.error(
+          'Error handling MCP request',
+          error instanceof Error ? error : new Error(String(error))
+        )
         reply.status(500).send({
           jsonrpc: '2.0',
           error: {
@@ -116,33 +115,33 @@ export class TransportFactory {
             message: 'Internal server error',
           },
           id: null,
-        });
+        })
       }
-    });
+    })
 
     // Handle GET requests for server-to-client notifications via SSE
     app.get('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined;
+      const sessionId = request.headers['mcp-session-id'] as string | undefined
       if (!sessionId || !transports.has(sessionId)) {
-        reply.status(400).send('Invalid or missing session ID');
-        return;
+        reply.status(400).send('Invalid or missing session ID')
+        return
       }
-      
-      const transport = transports.get(sessionId)!;
-      await transport.handleRequest(request.raw, reply.raw);
-    });
+
+      const transport = transports.get(sessionId)!
+      await transport.handleRequest(request.raw, reply.raw)
+    })
 
     // Handle DELETE requests for session termination
     app.delete('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined;
+      const sessionId = request.headers['mcp-session-id'] as string | undefined
       if (!sessionId || !transports.has(sessionId)) {
-        reply.status(400).send('Invalid or missing session ID');
-        return;
+        reply.status(400).send('Invalid or missing session ID')
+        return
       }
-      
-      const transport = transports.get(sessionId)!;
-      await transport.handleRequest(request.raw, reply.raw);
-    });
+
+      const transport = transports.get(sessionId)!
+      await transport.handleRequest(request.raw, reply.raw)
+    })
 
     // Health check endpoint
     app.get('/health', async (request, reply) => {
@@ -151,39 +150,37 @@ export class TransportFactory {
         transport: 'streamable-http',
         activeSessions: transports.size,
         uptime: process.uptime(),
-      });
-    });
+      })
+    })
 
     // Return the first transport created (will be created when first client connects)
     const initialTransport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (sessionId) => {
-        transports.set(sessionId, initialTransport);
+        transports.set(sessionId, initialTransport)
       },
       enableDnsRebindingProtection: config.enableDnsRebindingProtection || false,
       allowedHosts: config.host ? [config.host] : undefined,
       allowedOrigins: config.allowedOrigins,
-    });
+    })
 
     return {
       transport: initialTransport,
-      context: { app, transports }
-    };
+      context: { app, transports },
+    }
   }
 
   /**
    * Create SSE transport with Fastify
    */
-  private static async createSSETransport(
-    config: MCPTransportConfig
-  ): Promise<{
-    transport: SSEServerTransport;
-    context: HTTPTransportContext;
+  private static async createSSETransport(config: MCPTransportConfig): Promise<{
+    transport: SSEServerTransport
+    context: HTTPTransportContext
   }> {
     const app = fastify({
       logger: false,
       trustProxy: true,
-    });
+    })
 
     // CORS setup
     if (config.enableCors) {
@@ -192,33 +189,33 @@ export class TransportFactory {
         exposedHeaders: ['Mcp-Session-Id'],
         allowedHeaders: ['Content-Type', 'mcp-session-id'],
         credentials: true,
-      });
+      })
     }
 
-    const transports = new Map<string, SSEServerTransport>();
+    const transports = new Map<string, SSEServerTransport>()
 
     // SSE endpoint for older clients
     app.get('/sse', async (request, reply) => {
-      const transport = new SSEServerTransport('/messages', reply.raw);
-      transports.set(transport.sessionId, transport);
-      
+      const transport = new SSEServerTransport('/messages', reply.raw)
+      transports.set(transport.sessionId, transport)
+
       reply.raw.on('close', () => {
-        transports.delete(transport.sessionId);
-        logger.debug('SSE session closed', { sessionId: transport.sessionId });
-      });
-    });
+        transports.delete(transport.sessionId)
+        logger.debug('SSE session closed', { sessionId: transport.sessionId })
+      })
+    })
 
     // Message endpoint for older clients
     app.post('/messages', async (request, reply) => {
-      const sessionId = (request.query as any)?.sessionId as string;
-      const transport = transports.get(sessionId);
-      
+      const sessionId = (request.query as any)?.sessionId as string
+      const transport = transports.get(sessionId)
+
       if (transport) {
-        await transport.handlePostMessage(request.raw, reply.raw, request.body);
+        await transport.handlePostMessage(request.raw, reply.raw, request.body)
       } else {
-        reply.status(400).send('No transport found for sessionId');
+        reply.status(400).send('No transport found for sessionId')
       }
-    });
+    })
 
     // Health check endpoint
     app.get('/health', async (request, reply) => {
@@ -227,16 +224,16 @@ export class TransportFactory {
         transport: 'sse',
         activeSessions: transports.size,
         uptime: process.uptime(),
-      });
-    });
+      })
+    })
 
     // Create initial transport (placeholder)
-    const initialTransport = new SSEServerTransport('/messages', {} as any);
+    const initialTransport = new SSEServerTransport('/messages', {} as any)
 
     return {
       transport: initialTransport,
-      context: { app, transports }
-    };
+      context: { app, transports },
+    }
   }
 
   /**
@@ -250,16 +247,19 @@ export class TransportFactory {
       await context.app.listen({
         port: config.port || 3000,
         host: config.host || 'localhost',
-      });
+      })
 
       logger.info(`🚀 MCP ${config.type} server listening`, {
         port: config.port,
         host: config.host,
         cors: config.enableCors,
-      });
+      })
     } catch (error) {
-      logger.error('Failed to start HTTP server', error instanceof Error ? error : new Error(String(error)));
-      throw error;
+      logger.error(
+        'Failed to start HTTP server',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      throw error
     }
   }
 
@@ -267,28 +267,28 @@ export class TransportFactory {
    * Validate transport configuration
    */
   static validateConfig(config: MCPTransportConfig): void {
-    const errors: string[] = [];
+    const errors: string[] = []
 
     if (!['stdio', 'streamable-http', 'sse'].includes(config.type)) {
-      errors.push(`Invalid transport type: ${config.type}`);
+      errors.push(`Invalid transport type: ${config.type}`)
     }
 
     if (config.type !== 'stdio') {
       if (!config.port || config.port < 1 || config.port > 65535) {
-        errors.push('Port must be between 1 and 65535 for HTTP/SSE transports');
+        errors.push('Port must be between 1 and 65535 for HTTP/SSE transports')
       }
 
       if (!config.host) {
-        errors.push('Host is required for HTTP/SSE transports');
+        errors.push('Host is required for HTTP/SSE transports')
       }
     }
 
     if (config.sessionTimeout && config.sessionTimeout < 1000) {
-      errors.push('Session timeout must be at least 1000ms');
+      errors.push('Session timeout must be at least 1000ms')
     }
 
     if (errors.length > 0) {
-      throw new Error(`Transport configuration validation failed:\n${errors.join('\n')}`);
+      throw new Error(`Transport configuration validation failed:\n${errors.join('\n')}`)
     }
   }
 }
