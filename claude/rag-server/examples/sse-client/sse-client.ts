@@ -51,6 +51,7 @@ async function testSSEClient(): Promise<void> {
     try {
       const resourcesResult = await client.listResources()
       console.log('📁 Available resources:', resourcesResult.resources?.length || 0)
+      console.log(resourcesResult)
       if (resourcesResult.resources?.length > 0) {
         console.log('📄 First resource:', resourcesResult.resources[0].name)
       }
@@ -70,7 +71,8 @@ async function testSSEClient(): Promise<void> {
             limit: 3
           }
         })
-        
+        console.log(searchResult)
+
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
           console.log('🎯 Search results:', {
@@ -96,17 +98,23 @@ async function testSSEClient(): Promise<void> {
         const similarResult = await client.callTool({
           name: 'search_similar',
           arguments: {
-            text: 'deep learning neural networks',
+            reference_text: 'deep learning neural networks',
             limit: 2
           }
         })
         
-        if (similarResult.content && similarResult.content[0] && 'text' in similarResult.content[0]) {
+        console.log(similarResult)
+
+        if (
+          similarResult.content &&
+          similarResult.content[0] &&
+          'text' in similarResult.content[0]
+        ) {
           const result = JSON.parse((similarResult.content[0] as any).text) as any
           console.log('🎯 Similar search results:', {
-            totalResults: result.results?.length || 0,
-            inputText: result.text,
-            firstResult: result.results?.[0]?.source?.filename || 'No results'
+            totalResults: result.similar_documents?.length || 0,
+            referenceText: result.reference_text,
+            firstResult: result.similar_documents?.[0]?.source?.filename || 'No results',
           })
         }
       } catch (error) {
@@ -115,7 +123,71 @@ async function testSSEClient(): Promise<void> {
       console.log('')
     }
 
-    // 7. Test prompts
+    // 7. Test search_by_question tool
+    if (toolsResult.tools.some((t) => t.name === 'search_by_question')) {
+      console.log('❓ Testing search_by_question tool...')
+      try {
+        const questionResult = await client.callTool({
+          name: 'search_by_question',
+          arguments: {
+            question: 'What are the key components of neural networks?',
+            context_limit: 3,
+          },
+        })
+        console.log(questionResult)
+
+        if (
+          questionResult.content &&
+          questionResult.content[0] &&
+          'text' in questionResult.content[0]
+        ) {
+          const result = JSON.parse((questionResult.content[0] as any).text) as any
+          console.log('🎯 Question-based search results:', {
+            question: result.question,
+            confidence: result.confidence,
+            contextChunks: result.context_chunks?.length || 0,
+            contextFound: result.context_found,
+            firstChunk: result.context_chunks?.[0]?.source?.filename || 'No context',
+          })
+        }
+      } catch (error) {
+        console.log('⚠️  search_by_question test failed:', (error as Error).message)
+      }
+      console.log('')
+    }
+
+    // 8. Test list_sources tool
+    if (toolsResult.tools.some((t) => t.name === 'list_sources')) {
+      console.log('📂 Testing list_sources tool...')
+      try {
+        const sourcesResult = await client.callTool({
+          name: 'list_sources',
+          arguments: {
+            group_by: 'file_type',
+            include_stats: true,
+          },
+        })
+        console.log(sourcesResult)
+
+        if (
+          sourcesResult.content &&
+          sourcesResult.content[0] &&
+          'text' in sourcesResult.content[0]
+        ) {
+          const result = JSON.parse((sourcesResult.content[0] as any).text) as any
+          console.log('🎯 Sources list results:', {
+            totalSources: result.total_sources,
+            fileTypes: Object.keys(result.sources_by_type || {}),
+            firstSource: result.sources?.[0]?.name || 'No sources',
+          })
+        }
+      } catch (error) {
+        console.log('⚠️  list_sources test failed:', (error as Error).message)
+      }
+      console.log('')
+    }
+
+    // 9. Test prompts
     console.log('💬 Testing prompts/list...')
     try {
       const promptsResult = await client.listPrompts()
