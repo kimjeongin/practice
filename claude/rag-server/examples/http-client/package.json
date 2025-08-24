@@ -1,0 +1,17 @@
+{
+  "name": "rag-server-http-client-example",
+  "version": "1.0.0",
+  "description": "streamable-http transport client example for RAG MCP server",
+  "type": "module",
+  "main": "http-client.js",
+  "scripts": {
+    "start": "node http-client.js",
+    "test": "node http-client.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.3"
+  },
+  "keywords": ["mcp", "streamable-http", "client", "rag"],
+  "author": "",
+  "license": "MIT"
+}

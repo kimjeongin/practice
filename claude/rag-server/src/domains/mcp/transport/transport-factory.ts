@@ -70,39 +70,30 @@ export class TransportFactory {
 
     const transports = new Map<string, StreamableHTTPServerTransport>()
 
+    // Create a single transport instance that will handle all requests
+    const sharedTransport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sessionId) => {
+        transports.set(sessionId, sharedTransport)
+        logger.debug('MCP session initialized', { sessionId })
+      },
+      enableDnsRebindingProtection: config.enableDnsRebindingProtection || false,
+      allowedHosts: config.host ? [config.host] : undefined,
+      allowedOrigins: config.allowedOrigins,
+    })
+
+    // Clean up transport when closed
+    sharedTransport.onclose = () => {
+      if (sharedTransport.sessionId) {
+        transports.delete(sharedTransport.sessionId)
+        logger.debug('MCP session closed', { sessionId: sharedTransport.sessionId })
+      }
+    }
+
     // Handle POST requests for client-to-server communication
     app.post('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined
-      let transport: StreamableHTTPServerTransport
-
-      if (sessionId && transports.has(sessionId)) {
-        // Reuse existing transport
-        transport = transports.get(sessionId)!
-      } else {
-        // Create new transport for initialization
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sessionId) => {
-            transports.set(sessionId, transport)
-            logger.debug('MCP session initialized', { sessionId })
-          },
-          enableDnsRebindingProtection: config.enableDnsRebindingProtection || false,
-          allowedHosts: config.host ? [config.host] : undefined,
-          allowedOrigins: config.allowedOrigins,
-        })
-
-        // Clean up transport when closed
-        transport.onclose = () => {
-          if (transport.sessionId) {
-            transports.delete(transport.sessionId)
-            logger.debug('MCP session closed', { sessionId: transport.sessionId })
-          }
-        }
-      }
-
-      // Handle the request
       try {
-        await transport.handleRequest(request.raw, reply.raw, request.body)
+        await sharedTransport.handleRequest(request.raw, reply.raw, request.body)
       } catch (error) {
         logger.error(
           'Error handling MCP request',
@@ -121,26 +112,28 @@ export class TransportFactory {
 
     // Handle GET requests for server-to-client notifications via SSE
     app.get('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined
-      if (!sessionId || !transports.has(sessionId)) {
-        reply.status(400).send('Invalid or missing session ID')
-        return
+      try {
+        await sharedTransport.handleRequest(request.raw, reply.raw)
+      } catch (error) {
+        logger.error(
+          'Error handling MCP GET request',
+          error instanceof Error ? error : new Error(String(error))
+        )
+        reply.status(500).send('Internal server error')
       }
-
-      const transport = transports.get(sessionId)!
-      await transport.handleRequest(request.raw, reply.raw)
     })
 
     // Handle DELETE requests for session termination
     app.delete('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined
-      if (!sessionId || !transports.has(sessionId)) {
-        reply.status(400).send('Invalid or missing session ID')
-        return
+      try {
+        await sharedTransport.handleRequest(request.raw, reply.raw)
+      } catch (error) {
+        logger.error(
+          'Error handling MCP DELETE request',
+          error instanceof Error ? error : new Error(String(error))
+        )
+        reply.status(500).send('Internal server error')
       }
-
-      const transport = transports.get(sessionId)!
-      await transport.handleRequest(request.raw, reply.raw)
     })
 
     // Health check endpoint
@@ -153,19 +146,8 @@ export class TransportFactory {
       })
     })
 
-    // Return the first transport created (will be created when first client connects)
-    const initialTransport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (sessionId) => {
-        transports.set(sessionId, initialTransport)
-      },
-      enableDnsRebindingProtection: config.enableDnsRebindingProtection || false,
-      allowedHosts: config.host ? [config.host] : undefined,
-      allowedOrigins: config.allowedOrigins,
-    })
-
     return {
-      transport: initialTransport,
+      transport: sharedTransport,
       context: { app, transports },
     }
   }

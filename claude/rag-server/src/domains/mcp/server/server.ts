@@ -53,51 +53,45 @@ export class MCPServer {
       const { name, arguments: args } = request.params
 
       try {
-        let result
-
         switch (name) {
           case 'search':
-            result = await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'))
-            break
+            return await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'))
           case 'search_similar':
-            result = await this.searchHandler.handleSearchSimilar(
+            return await this.searchHandler.handleSearchSimilar(
               this.validateAndCastArgs(args, 'search_similar')
             )
-            break
           case 'search_by_question':
-            result = await this.searchHandler.handleSearchByQuestion(
+            return await this.searchHandler.handleSearchByQuestion(
               this.validateAndCastArgs(args, 'search_by_question')
             )
-            break
           case 'list_sources':
-            result = await this.informationHandler.handleListSources(
+            return await this.informationHandler.handleListSources(
               this.validateAndCastArgs(args, 'list_sources')
             )
-            break
-        }
-
-        // Graceful handling of unknown tools instead of crashing the service
-        logger.warn('Unknown tool requested', {
-          toolName: name,
-          availableTools: this.getAvailableToolNames(),
-        })
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
+          default:
+            // Graceful handling of unknown tools instead of crashing the service
+            logger.warn('Unknown tool requested', {
+              toolName: name,
+              availableTools: this.getAvailableToolNames(),
+            })
+            return {
+              content: [
                 {
-                  error: 'UnknownTool',
-                  message: `Tool '${name}' is not available`,
-                  availableTools: this.getAvailableToolNames(),
-                  suggestion: 'Use the list_tools endpoint to see all available tools',
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      error: 'UnknownTool',
+                      message: `Tool '${name}' is not available`,
+                      availableTools: this.getAvailableToolNames(),
+                      suggestion: 'Use the list_tools endpoint to see all available tools',
+                    },
+                    null,
+                    2
+                  ),
                 },
-                null,
-                2
-              ),
-            },
-          ],
-          isError: true,
+              ],
+              isError: true,
+            }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)

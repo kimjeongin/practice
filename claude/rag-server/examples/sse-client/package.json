@@ -1,0 +1,17 @@
+{
+  "name": "rag-server-sse-client-example",
+  "version": "1.0.0",
+  "description": "SSE transport client example for RAG MCP server",
+  "type": "module",
+  "main": "sse-client.js",
+  "scripts": {
+    "start": "node sse-client.js",
+    "test": "node sse-client.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.3"
+  },
+  "keywords": ["mcp", "sse", "client", "rag"],
+  "author": "",
+  "license": "MIT"
+}
