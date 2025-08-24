@@ -88,6 +88,11 @@ export interface ServerConfig extends BaseServerConfig {
     adaptiveRetrieval: boolean
   }
 
+  // Document synchronization settings
+  enableAutoSync?: boolean
+  syncOnStartup?: boolean
+  documentsAutoProcess?: boolean
+
   // MCP Transport configuration
   mcp: MCPTransportConfig
 }
@@ -143,6 +148,10 @@ export class ConfigFactory {
         contextualCompression: false,
         adaptiveRetrieval: false,
       },
+      // Document synchronization settings
+      enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
+      syncOnStartup: process.env['SYNC_ON_STARTUP'] !== 'false',
+      documentsAutoProcess: process.env['DOCUMENTS_AUTO_PROCESS'] !== 'false',
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'stdio',
         port: parseInt(process.env['MCP_PORT'] || '3000'),
@@ -208,6 +217,10 @@ export class ConfigFactory {
         contextualCompression: process.env['ENABLE_CONTEXTUAL_COMPRESSION'] === 'true',
         adaptiveRetrieval: process.env['ENABLE_ADAPTIVE_RETRIEVAL'] === 'true',
       },
+      // Document synchronization settings
+      enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
+      syncOnStartup: process.env['SYNC_ON_STARTUP'] !== 'false',
+      documentsAutoProcess: process.env['DOCUMENTS_AUTO_PROCESS'] !== 'false',
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'streamable-http',
         port: parseInt(process.env['MCP_PORT'] || '3000'),
@@ -266,6 +279,10 @@ export class ConfigFactory {
         contextualCompression: false,
         adaptiveRetrieval: false,
       },
+      // Document synchronization settings (disabled for tests by default)
+      enableAutoSync: process.env['ENABLE_AUTO_SYNC'] === 'true',
+      syncOnStartup: process.env['SYNC_ON_STARTUP'] === 'true',
+      documentsAutoProcess: process.env['DOCUMENTS_AUTO_PROCESS'] === 'true',
       mcp: {
         type: 'stdio',
         port: 3002,

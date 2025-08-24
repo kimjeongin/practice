@@ -1,15 +1,15 @@
 {
-  "name": "rag-server-http-client-example",
+  "name": "rag-server-stdio-client-example",
   "version": "1.0.0",
-  "description": "streamable-http transport client example for RAG MCP server",
+  "description": "stdio transport client example for RAG MCP server",
   "type": "module",
-  "main": "dist/http-client.js",
+  "main": "dist/stdio-client.js",
   "scripts": {
     "build": "tsc",
-    "start": "yarn build && node dist/http-client.js",
+    "start": "yarn build && node dist/stdio-client.js",
     "test": "yarn start",
     "clean": "rm -rf dist",
-    "dev": "tsx http-client.ts"
+    "dev": "tsx stdio-client.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.3"
@@ -19,7 +19,7 @@
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   },
-  "keywords": ["mcp", "streamable-http", "client", "rag", "typescript"],
+  "keywords": ["mcp", "stdio", "client", "rag", "typescript"],
   "author": "",
   "license": "MIT"
 }

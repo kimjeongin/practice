@@ -64,6 +64,47 @@ async function initializeServices(config: any) {
     logger.warn('File processing service not available')
   }
 
+  // Initialize sync manager for document synchronization
+  const { SyncManager } = await import('@/domains/rag/workflows/sync-manager.js')
+  const syncManager = new SyncManager(
+    fileRepository,
+    chunkRepository,
+    vectorStore,
+    config,
+    fileProcessingService
+  )
+
+  // Perform startup document synchronization
+  const enableAutoSync = config.enableAutoSync !== false
+  if (enableAutoSync) {
+    logger.info('🔄 Starting document synchronization...', {
+      documentsDir: config.documentsDir,
+      autoFix: true
+    })
+    
+    try {
+      const syncReport = await syncManager.performStartupSync({
+        autoFix: true,
+        deepScan: true,
+        includeNewFiles: true
+      })
+      
+      logger.info('📊 Document synchronization completed', {
+        totalFiles: syncReport.totalFiles,
+        totalVectors: syncReport.totalVectors,
+        totalChunks: syncReport.totalChunks,
+        newFiles: syncReport.fixedIssues.filter(issue => issue.type === 'new_file').length,
+        processingTime: `${Date.now() - syncReport.timestamp.getTime()}ms`
+      })
+    } catch (error) {
+      logger.warn('Document synchronization failed, continuing without sync', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  } else {
+    logger.info('📋 Document auto-sync disabled via configuration')
+  }
+
   // Initialize handlers
   const searchHandler = new SearchHandler(ragWorkflow, fileRepository)
   const informationHandler = new InformationHandler(fileRepository)

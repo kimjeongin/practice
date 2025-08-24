@@ -1,5 +1,5 @@
 import { existsSync, statSync, readdirSync } from 'fs'
-import { join, dirname, extname } from 'path'
+import { join, dirname, extname, basename } from 'path'
 import { createHash } from 'crypto'
 import { IFileRepository } from '../repositories/document.js'
 import { IChunkRepository } from '../repositories/chunk.js'
@@ -210,9 +210,27 @@ export class SyncManager {
    */
   private async checkNewFiles(issues: VectorDbSyncIssue[]): Promise<void> {
     const supportedExtensions = ['.txt', '.md', '.pdf', '.csv', '.json']
+    
+    logger.info('📁 Scanning documents directory for new files', {
+      directory: this.documentsDirectory,
+      supportedExtensions
+    })
 
     try {
+      const initialCount = issues.length
       await this.scanDirectoryForNewFiles(this.documentsDirectory, supportedExtensions, issues)
+      const newFileCount = issues.length - initialCount
+      
+      if (newFileCount > 0) {
+        logger.info('🔍 New files discovered', {
+          count: newFileCount,
+          directory: this.documentsDirectory
+        })
+      } else {
+        logger.info('✅ No new files found', {
+          directory: this.documentsDirectory
+        })
+      }
     } catch (error) {
       logger.warn('Failed to scan directory for new files', {
         error,
@@ -250,10 +268,17 @@ export class SyncManager {
           if (supportedExtensions.includes(fileExt)) {
             // 데이터베이스에 존재하지 않는 파일인지 확인
             if (!(await this.fileRepository.getFileByPath(fullPath))) {
+              const stats = statSync(fullPath)
+              logger.debug('📄 New file discovered', {
+                filePath: fullPath,
+                fileType: fileExt,
+                size: stats.size,
+                modifiedAt: stats.mtime
+              })
               issues.push({
                 type: 'new_file',
                 filePath: fullPath,
-                description: `New file found on filesystem but not in database`,
+                description: `New ${fileExt} file found (${stats.size} bytes)`,
                 severity: 'low',
               })
             }
@@ -414,28 +439,89 @@ export class SyncManager {
    * 새 파일 문제 해결 (인덱싱 추가)
    */
   private async fixNewFile(issue: VectorDbSyncIssue): Promise<void> {
-    logger.info('Fixing new file issue', { filePath: issue.filePath })
+    logger.info('📄 Processing new file', { filePath: issue.filePath })
 
-    // 먼저 파일을 데이터베이스에 등록해야 함
-    // 이는 FileWatcher의 로직을 모방
     try {
-      if (existsSync(issue.filePath)) {
-        const stats = statSync(issue.filePath)
-        const hash = await this.calculateFileHash(issue.filePath)
+      if (!existsSync(issue.filePath)) {
+        logger.warn('File does not exist, skipping', { filePath: issue.filePath })
+        return
+      }
 
-        // 간단한 파일 등록 (실제로는 FileWatcher의 더 복잡한 로직 필요)
-        // 여기서는 FileProcessingService가 있다면 처리하도록 함
-        if (this.fileProcessingService) {
-          // 파일 메타데이터가 먼저 등록되어야 하므로
-          // 이 부분은 실제로는 FileWatcher와 협력해야 함
-          logger.info('New file detected, requires FileWatcher integration for proper registration')
-        }
+      // 1️⃣ Create file metadata
+      const fileMetadata = await this.createFileMetadata(issue.filePath)
+      
+      // 2️⃣ Insert file metadata into database
+      const fileId = await this.fileRepository.insertFile(fileMetadata)
+      logger.debug('File metadata inserted', { 
+        filePath: issue.filePath, 
+        fileId, 
+        fileType: fileMetadata.fileType,
+        size: fileMetadata.size
+      })
+
+      // 3️⃣ Process file for embeddings if FileProcessingService is available
+      if (this.fileProcessingService) {
+        logger.info('🧠 Starting document processing and embedding generation', { 
+          filePath: issue.filePath,
+          fileId 
+        })
+        
+        await this.fileProcessingService.processFile(issue.filePath)
+        
+        // 4️⃣ Validate that processing was successful
+        const chunks = await this.chunkRepository.getChunksByFileId(fileId)
+        logger.info('✅ File processing completed', {
+          filePath: issue.filePath,
+          fileId,
+          chunksCreated: chunks.length
+        })
+      } else {
+        logger.warn('⚠️ FileProcessingService not available, file metadata only', { 
+          filePath: issue.filePath 
+        })
       }
     } catch (error) {
       logger.error(
-        'Failed to fix new file issue',
-        error instanceof Error ? error : new Error(String(error))
+        '❌ Failed to process new file',
+        error instanceof Error ? error : new Error(String(error)),
+        { filePath: issue.filePath }
       )
+      
+      // Attempt to clean up partial state
+      try {
+        const existingFile = await this.fileRepository.getFileByPath(issue.filePath)
+        if (existingFile) {
+          await this.fileRepository.deleteFile(existingFile.id)
+          logger.debug('Cleaned up partial file metadata', { filePath: issue.filePath })
+        }
+      } catch (cleanupError) {
+        logger.warn('Failed to cleanup partial file state', { 
+          filePath: issue.filePath,
+          cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        })
+      }
+      
+      throw error
+    }
+  }
+
+  /**
+   * Create file metadata from file system information
+   */
+  private async createFileMetadata(filePath: string): Promise<Omit<FileMetadata, 'id'>> {
+    const stats = statSync(filePath)
+    const hash = await this.calculateFileHash(filePath)
+    const fileName = basename(filePath)
+    const fileExtension = extname(fileName).toLowerCase().replace('.', '')
+
+    return {
+      path: filePath,
+      name: fileName,
+      size: stats.size,
+      modifiedAt: stats.mtime,
+      createdAt: stats.birthtime || stats.mtime, // fallback for systems without birthtime
+      fileType: fileExtension || 'txt',
+      hash
     }
   }
 
