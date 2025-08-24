@@ -7,7 +7,37 @@ import {
   ExecutionResult,
   ExecutionHistoryEntry,
   IPCResponse
-} from '../shared/types/mcp-types'
+} from '@shared/types/mcp.types'
+
+// Agent types
+interface AgentConfig {
+  type?: 'main' | 'reasoning' | 'fast'
+  model?: string
+  temperature?: number
+  maxTokens?: number
+}
+
+interface AgentExecutionResult {
+  success: boolean
+  response: string
+  toolsUsed: Array<{
+    toolName: string
+    serverId: string
+    parameters: Record<string, any>
+    result: any
+    executionTime: number
+  }>
+  totalExecutionTime: number
+  iterations: number
+  error?: string
+}
+
+interface AgentHealthStatus {
+  ollamaHealthy: boolean
+  availableModels: string[]
+  availableTools: number
+  config?: AgentConfig
+}
 
 interface ClientHostAPI {
   // Server Management
@@ -62,11 +92,40 @@ interface ClientHostAPI {
   importData: (jsonData: string) => Promise<IPCResponse<{ imported: boolean }>>
 }
 
+interface AgentAPI {
+  // Initialize agent system
+  initialize: (config?: AgentConfig) => Promise<IPCResponse<{ initialized: boolean }>>
+  
+  // Process user query
+  processQuery: (
+    query: string,
+    conversationId?: string,
+    options?: { maxIterations?: number; temperature?: number; model?: string }
+  ) => Promise<IPCResponse<AgentExecutionResult>>
+  
+  // Test simple query
+  testQuery: (query: string) => Promise<IPCResponse<AgentExecutionResult>>
+  
+  // Get available tools
+  getAvailableTools: () => Promise<IPCResponse<MCPTool[]>>
+  
+  // Configuration
+  updateConfig: (config: Partial<AgentConfig>) => Promise<IPCResponse<AgentConfig>>
+  getConfig: () => Promise<IPCResponse<AgentConfig>>
+  
+  // Health check
+  healthCheck: () => Promise<IPCResponse<AgentHealthStatus>>
+  
+  // Cleanup
+  cleanup: () => Promise<IPCResponse<{ cleaned: boolean }>>
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
     api: {
       clientHost: ClientHostAPI
+      agent: AgentAPI
     }
   }
 }

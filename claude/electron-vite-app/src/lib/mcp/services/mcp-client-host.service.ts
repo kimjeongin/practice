@@ -36,7 +36,7 @@ export class MCPClientHostService extends EventEmitter {
     this.config = {
       servers: [],
       settings: {
-        autoConnectOnStartup: true,
+        autoConnectOnStartup: false,
         maxConcurrentExecutions: 5,
         executionTimeout: 30000,
         saveExecutionHistory: true,
@@ -413,25 +413,7 @@ export class MCPClientHostService extends EventEmitter {
     return `${baseId}-${timestamp}`
   }
 
-  /**
-   * Add pre-configured RAG server for easy migration
-   */
-  async addRagServer(): Promise<ServerConfig> {
-    const ragServerConfig: Omit<ServerConfig, 'id'> = {
-      name: 'RAG Server',
-      description: 'Local RAG server with document search and upload capabilities',
-      transport: 'stdio',
-      command: 'node',
-      args: ['/Users/jeongin/workspace/practice/claude/rag-server/dist/app/index.js'],
-      cwd: '/Users/jeongin/workspace/practice/claude/rag-server',
-      autoReconnect: true,
-      reconnectDelay: 5000,
-      maxReconnectAttempts: 5,
-      tags: ['rag', 'search', 'documents']
-    }
-
-    return this.addServer(ragServerConfig)
-  }
+  // RAG Server methods removed - now uses independent HTTP server
 
   /**
    * Get system status

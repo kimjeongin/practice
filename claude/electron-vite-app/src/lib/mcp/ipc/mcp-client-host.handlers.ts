@@ -3,9 +3,9 @@ import { getClientHostService } from '../services/mcp-client-host.service'
 import { 
   ServerConfig, 
   ToolFilter, 
-  IPC_CHANNELS,
   IPCResponse 
-} from '../types/mcp-server.types'
+} from '@shared/types/mcp.types'
+import { MCP_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 
 // Error handling wrapper for IPC calls
 async function handleIPCRequest<T>(
@@ -347,10 +347,35 @@ async function handleGetMostUsedTools(
   })
 }
 
-async function handleAddRagServer(_event: IpcMainInvokeEvent) {
-  return handleIPCRequest('Add RAG server', async () => {
-    const service = getClientHostService()
-    return await service.addRagServer()
+// ============================
+// RAG Server HTTP Client Handlers
+// ============================
+
+async function handleGetRagServerStatus(_event: IpcMainInvokeEvent) {
+  return handleIPCRequest('Get RAG server status', async () => {
+    const { getRagServerClient } = await import('../services/rag-server-client.service')
+    const client = getRagServerClient()
+    return client.getStatus()
+  })
+}
+
+async function handleRagServerReconnect(_event: IpcMainInvokeEvent) {
+  return handleIPCRequest('RAG server reconnect', async () => {
+    const { getRagServerClient } = await import('../services/rag-server-client.service')
+    const client = getRagServerClient()
+    const success = await client.reconnect()
+    return { success, status: client.getStatus() }
+  })
+}
+
+async function handleRagServerTest(
+  _event: IpcMainInvokeEvent,
+  query: string
+) {
+  return handleIPCRequest('RAG server test', async () => {
+    const { getRagServerClient } = await import('../services/rag-server-client.service')
+    const client = getRagServerClient()
+    return await client.testSearch(query)
   })
 }
 
@@ -382,7 +407,7 @@ export function registerClientHostHandlers(): void {
 
   // Remove existing handlers to avoid conflicts
   try {
-    Object.values(IPC_CHANNELS).forEach(channel => {
+    Object.values(MCP_IPC_CHANNELS).forEach(channel => {
       ipcMain.removeHandler(channel)
     })
   } catch (error) {
@@ -390,37 +415,37 @@ export function registerClientHostHandlers(): void {
   }
 
   // Server management
-  ipcMain.handle(IPC_CHANNELS.ADD_SERVER, handleAddServer)
-  ipcMain.handle(IPC_CHANNELS.REMOVE_SERVER, handleRemoveServer)
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SERVER, handleUpdateServer)
-  ipcMain.handle(IPC_CHANNELS.LIST_SERVERS, handleListServers)
-  ipcMain.handle(IPC_CHANNELS.CONNECT_SERVER, handleConnectServer)
-  ipcMain.handle(IPC_CHANNELS.DISCONNECT_SERVER, handleDisconnectServer)
+  ipcMain.handle(MCP_IPC_CHANNELS.ADD_SERVER, handleAddServer)
+  ipcMain.handle(MCP_IPC_CHANNELS.REMOVE_SERVER, handleRemoveServer)
+  ipcMain.handle(MCP_IPC_CHANNELS.UPDATE_SERVER, handleUpdateServer)
+  ipcMain.handle(MCP_IPC_CHANNELS.LIST_SERVERS, handleListServers)
+  ipcMain.handle(MCP_IPC_CHANNELS.CONNECT_SERVER, handleConnectServer)
+  ipcMain.handle(MCP_IPC_CHANNELS.DISCONNECT_SERVER, handleDisconnectServer)
 
   // Tool discovery and management
-  ipcMain.handle(IPC_CHANNELS.LIST_TOOLS, handleListTools)
-  ipcMain.handle(IPC_CHANNELS.SEARCH_TOOLS, handleSearchTools)
-  ipcMain.handle(IPC_CHANNELS.GET_TOOL_DETAILS, handleGetToolDetails)
+  ipcMain.handle(MCP_IPC_CHANNELS.LIST_TOOLS, handleListTools)
+  ipcMain.handle(MCP_IPC_CHANNELS.SEARCH_TOOLS, handleSearchTools)
+  ipcMain.handle(MCP_IPC_CHANNELS.GET_TOOL_DETAILS, handleGetToolDetails)
 
   // Tool execution
-  ipcMain.handle(IPC_CHANNELS.EXECUTE_TOOL, handleExecuteTool)
-  ipcMain.handle(IPC_CHANNELS.GET_EXECUTION_HISTORY, handleGetExecutionHistory)
-  ipcMain.handle(IPC_CHANNELS.CLEAR_HISTORY, handleClearHistory)
+  ipcMain.handle(MCP_IPC_CHANNELS.EXECUTE_TOOL, handleExecuteTool)
+  ipcMain.handle(MCP_IPC_CHANNELS.GET_EXECUTION_HISTORY, handleGetExecutionHistory)
+  ipcMain.handle(MCP_IPC_CHANNELS.CLEAR_HISTORY, handleClearHistory)
 
   // Resources and prompts
-  ipcMain.handle(IPC_CHANNELS.LIST_RESOURCES, handleListResources)
-  ipcMain.handle(IPC_CHANNELS.READ_RESOURCE, handleReadResource)
-  ipcMain.handle(IPC_CHANNELS.LIST_PROMPTS, handleListPrompts)
-  ipcMain.handle(IPC_CHANNELS.GET_PROMPT, handleGetPrompt)
+  ipcMain.handle(MCP_IPC_CHANNELS.LIST_RESOURCES, handleListResources)
+  ipcMain.handle(MCP_IPC_CHANNELS.READ_RESOURCE, handleReadResource)
+  ipcMain.handle(MCP_IPC_CHANNELS.LIST_PROMPTS, handleListPrompts)
+  ipcMain.handle(MCP_IPC_CHANNELS.GET_PROMPT, handleGetPrompt)
 
   // Configuration
-  ipcMain.handle(IPC_CHANNELS.GET_CONFIG, handleGetConfig)
-  ipcMain.handle(IPC_CHANNELS.UPDATE_CONFIG, handleUpdateConfig)
+  ipcMain.handle(MCP_IPC_CHANNELS.GET_CONFIG, handleGetConfig)
+  ipcMain.handle(MCP_IPC_CHANNELS.UPDATE_CONFIG, handleUpdateConfig)
 
   // Status and monitoring
-  ipcMain.handle(IPC_CHANNELS.GET_STATUS, handleGetStatus)
-  ipcMain.handle(IPC_CHANNELS.SUBSCRIBE_EVENTS, handleSubscribeEvents)
-  ipcMain.handle(IPC_CHANNELS.UNSUBSCRIBE_EVENTS, handleUnsubscribeEvents)
+  ipcMain.handle(MCP_IPC_CHANNELS.GET_STATUS, handleGetStatus)
+  ipcMain.handle(MCP_IPC_CHANNELS.SUBSCRIBE_EVENTS, handleSubscribeEvents)
+  ipcMain.handle(MCP_IPC_CHANNELS.UNSUBSCRIBE_EVENTS, handleUnsubscribeEvents)
 
   // Additional utility handlers
   ipcMain.handle('client-host:get-categories', handleGetCategories)
@@ -429,7 +454,10 @@ export function registerClientHostHandlers(): void {
   ipcMain.handle('client-host:remove-from-favorites', handleRemoveFromFavorites)
   ipcMain.handle('client-host:get-favorites', handleGetFavorites)
   ipcMain.handle('client-host:get-most-used-tools', handleGetMostUsedTools)
-  ipcMain.handle('client-host:add-rag-server', handleAddRagServer)
+  // RAG Server HTTP client handlers
+  ipcMain.handle(MCP_IPC_CHANNELS.RAG_SERVER_STATUS, handleGetRagServerStatus)
+  ipcMain.handle(MCP_IPC_CHANNELS.RAG_SERVER_RECONNECT, handleRagServerReconnect)
+  ipcMain.handle(MCP_IPC_CHANNELS.RAG_SERVER_TEST, handleRagServerTest)
   ipcMain.handle('client-host:export-data', handleExportData)
   ipcMain.handle('client-host:import-data', handleImportData)
 
@@ -443,7 +471,7 @@ export function unregisterClientHostHandlers(): void {
   console.log('🔌 Unregistering MCP Client Host IPC handlers...')
 
   try {
-    Object.values(IPC_CHANNELS).forEach(channel => {
+    Object.values(MCP_IPC_CHANNELS).forEach(channel => {
       ipcMain.removeHandler(channel)
     })
 
@@ -455,7 +483,9 @@ export function unregisterClientHostHandlers(): void {
       'client-host:remove-from-favorites',
       'client-host:get-favorites',
       'client-host:get-most-used-tools',
-      'client-host:add-rag-server',
+      MCP_IPC_CHANNELS.RAG_SERVER_STATUS,
+      MCP_IPC_CHANNELS.RAG_SERVER_RECONNECT,
+      MCP_IPC_CHANNELS.RAG_SERVER_TEST,
       'client-host:export-data',
       'client-host:import-data'
     ]

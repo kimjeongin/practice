@@ -7,9 +7,9 @@ import {
   ToolFilter, 
   ExecutionResult,
   ExecutionHistoryEntry,
-  IPCResponse,
-  IPC_CHANNELS
-} from '../lib/mcp/types/mcp-server.types'
+  IPCResponse
+} from '@shared/types/mcp.types'
+import { MCP_IPC_CHANNELS, AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 
 // MCP Client Host API implementation
 const clientHostAPI = {
@@ -17,42 +17,42 @@ const clientHostAPI = {
   // Server Management
   // ============================
   addServer: async (serverConfig: Omit<ServerConfig, 'id'>): Promise<IPCResponse<ServerConfig>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.ADD_SERVER, serverConfig)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.ADD_SERVER, serverConfig)
   },
 
   removeServer: async (serverId: string): Promise<IPCResponse<{ serverId: string }>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.REMOVE_SERVER, serverId)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.REMOVE_SERVER, serverId)
   },
 
   updateServer: async (serverId: string, updates: Partial<ServerConfig>): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SERVER, serverId, updates)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.UPDATE_SERVER, serverId, updates)
   },
 
   listServers: async (): Promise<IPCResponse<ServerConnection[]>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.LIST_SERVERS)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_SERVERS)
   },
 
   connectServer: async (serverId: string): Promise<IPCResponse<{ serverId: string, connected: boolean }>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.CONNECT_SERVER, serverId)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.CONNECT_SERVER, serverId)
   },
 
   disconnectServer: async (serverId: string): Promise<IPCResponse<{ serverId: string, connected: boolean }>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.DISCONNECT_SERVER, serverId)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.DISCONNECT_SERVER, serverId)
   },
 
   // ============================
   // Tool Discovery and Management
   // ============================
   listTools: async (serverId?: string): Promise<IPCResponse<MCPTool[]>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.LIST_TOOLS, serverId)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_TOOLS, serverId)
   },
 
   searchTools: async (filter: ToolFilter): Promise<IPCResponse<MCPTool[]>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.SEARCH_TOOLS, filter)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_TOOLS, filter)
   },
 
   getToolDetails: async (serverId: string, toolName: string): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_TOOL_DETAILS, serverId, toolName)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_TOOLS, serverId, toolName)
   },
 
   // ============================
@@ -64,60 +64,60 @@ const clientHostAPI = {
     parameters: Record<string, any>,
     userId?: string
   ): Promise<IPCResponse<ExecutionResult>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.EXECUTE_TOOL, serverId, toolName, parameters, userId)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.EXECUTE_TOOL, serverId, toolName, parameters, userId)
   },
 
   getExecutionHistory: async (limit?: number): Promise<IPCResponse<ExecutionHistoryEntry[]>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_EXECUTION_HISTORY, limit)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_EXECUTION_HISTORY, limit)
   },
 
   clearHistory: async (): Promise<IPCResponse<{ cleared: boolean }>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_HISTORY)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.CLEAR_EXECUTION_HISTORY)
   },
 
   // ============================
   // Resources and Prompts
   // ============================
   listResources: async (serverId?: string): Promise<IPCResponse<any[]>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.LIST_RESOURCES, serverId)
+    return ipcRenderer.invoke('mcp:list-resources', serverId)
   },
 
   readResource: async (serverId: string, uri: string): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.READ_RESOURCE, serverId, uri)
+    return ipcRenderer.invoke('mcp:read-resource', serverId, uri)
   },
 
   listPrompts: async (serverId?: string): Promise<IPCResponse<any[]>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.LIST_PROMPTS, serverId)
+    return ipcRenderer.invoke('mcp:list-prompts', serverId)
   },
 
   getPrompt: async (serverId: string, name: string, args?: Record<string, any>): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_PROMPT, serverId, name, args)
+    return ipcRenderer.invoke('mcp:get-prompt', serverId, name, args)
   },
 
   // ============================
   // Configuration and Status
   // ============================
   getConfig: async (): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_CONFIG)
+    return ipcRenderer.invoke('mcp:get-config')
   },
 
   updateConfig: async (updates: any): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CONFIG, updates)
+    return ipcRenderer.invoke('mcp:update-config', updates)
   },
 
   getStatus: async (): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_STATUS)
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_STATUS)
   },
 
   // ============================
   // Events
   // ============================
   subscribeEvents: async (): Promise<IPCResponse<{ subscribed: boolean }>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.SUBSCRIBE_EVENTS)
+    return ipcRenderer.invoke('mcp:subscribe-events')
   },
 
   unsubscribeEvents: async (): Promise<IPCResponse<{ unsubscribed: boolean }>> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.UNSUBSCRIBE_EVENTS)
+    return ipcRenderer.invoke('mcp:unsubscribe-events')
   },
 
   onEvent: (callback: (event: any, data: any) => void) => {
@@ -168,9 +168,57 @@ const clientHostAPI = {
   }
 }
 
+// Agent API implementation
+const agentAPI = {
+  // Initialize agent system
+  initialize: async (config?: any): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INITIALIZE, config)
+  },
+
+  // Process user query
+  processQuery: async (
+    query: string,
+    conversationId?: string,
+    options?: { maxIterations?: number; temperature?: number; model?: string }
+  ): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.PROCESS_QUERY, query, conversationId, options)
+  },
+
+  // Test simple query
+  testQuery: async (query: string): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.TEST_QUERY, query)
+  },
+
+  // Get available tools
+  getAvailableTools: async (): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_AVAILABLE_TOOLS)
+  },
+
+  // Update agent configuration
+  updateConfig: async (config: any): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UPDATE_CONFIG, config)
+  },
+
+  // Get current configuration
+  getConfig: async (): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_CONFIG)
+  },
+
+  // Health check
+  healthCheck: async (): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.HEALTH_CHECK)
+  },
+
+  // Cleanup
+  cleanup: async (): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CLEANUP)
+  }
+}
+
 // Custom APIs for renderer
 const api = {
-  clientHost: clientHostAPI
+  clientHost: clientHostAPI,
+  agent: agentAPI
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

@@ -6,7 +6,7 @@
 body {
   margin: 0;
   padding: 0;
-  background: #f8f9fa;
+  background: var(--color-background);
   font-family: system-ui, -apple-system, sans-serif;
   overflow-y: auto;
   user-select: none;

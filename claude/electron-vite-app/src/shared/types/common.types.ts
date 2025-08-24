@@ -29,6 +29,7 @@ export interface ServerConfig {
   reconnectDelay?: number
   maxReconnectAttempts?: number
   tags?: string[]
+  enabled: boolean
 }
 
 // IPC Response wrapper
@@ -36,5 +37,5 @@ export interface IPCResponse<T = any> {
   success: boolean
   data?: T
   error?: string
-  timestamp: string
+  timestamp: Date | string
 }
