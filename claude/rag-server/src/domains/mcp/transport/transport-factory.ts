@@ -87,6 +87,20 @@ export class TransportFactory {
       if (sharedTransport.sessionId) {
         transports.delete(sharedTransport.sessionId)
         logger.debug('MCP session closed', { sessionId: sharedTransport.sessionId })
+        
+        // Reset transport state to allow new connections
+        // This fixes the "Server already initialized" error
+        try {
+          if ('_initialized' in sharedTransport) {
+            (sharedTransport as any)._initialized = false
+          }
+          if ('_sessionId' in sharedTransport) {
+            (sharedTransport as any)._sessionId = null
+          }
+          logger.debug('Transport state reset for new connections')
+        } catch (error) {
+          logger.warn('Error resetting transport state', error instanceof Error ? error : new Error(String(error)))
+        }
       }
     }
 
@@ -113,6 +127,21 @@ export class TransportFactory {
     // Handle GET requests for server-to-client notifications via SSE
     app.get('/mcp', async (request, reply) => {
       try {
+        // Monitor connection close to reset transport state
+        request.raw.on('close', () => {
+          logger.debug('Client connection closed, resetting transport state')
+          try {
+            if ('_initialized' in sharedTransport) {
+              (sharedTransport as any)._initialized = false
+            }
+            if ('_sessionId' in sharedTransport) {
+              (sharedTransport as any)._sessionId = null
+            }
+          } catch (error) {
+            logger.warn('Error resetting transport state on connection close', error instanceof Error ? error : new Error(String(error)))
+          }
+        })
+
         await sharedTransport.handleRequest(request.raw, reply.raw)
       } catch (error) {
         logger.error(
@@ -127,6 +156,15 @@ export class TransportFactory {
     app.delete('/mcp', async (request, reply) => {
       try {
         await sharedTransport.handleRequest(request.raw, reply.raw)
+        
+        // Explicitly reset transport state after DELETE
+        logger.debug('DELETE request completed, resetting transport state')
+        if ('_initialized' in sharedTransport) {
+          (sharedTransport as any)._initialized = false
+        }
+        if ('_sessionId' in sharedTransport) {
+          (sharedTransport as any)._sessionId = null
+        }
       } catch (error) {
         logger.error(
           'Error handling MCP DELETE request',

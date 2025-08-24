@@ -51,6 +51,7 @@ async function testStreamableHTTPClient(): Promise<void> {
     try {
       const resourcesResult = await client.listResources()
       console.log('📁 Available resources:', resourcesResult.resources?.length || 0)
+      console.log(resourcesResult)
       if (resourcesResult.resources?.length > 0) {
         console.log('📄 First resource:', resourcesResult.resources[0].name)
       }
@@ -70,6 +71,7 @@ async function testStreamableHTTPClient(): Promise<void> {
             limit: 3,
           },
         })
+        console.log(searchResult)
 
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
@@ -102,6 +104,7 @@ async function testStreamableHTTPClient(): Promise<void> {
             limit: 2,
           },
         })
+        console.log(similarResult)
 
         if (
           similarResult.content &&

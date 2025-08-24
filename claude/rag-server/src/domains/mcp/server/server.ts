@@ -259,8 +259,23 @@ export class MCPServer {
 
   async shutdown(): Promise<void> {
     console.log('🔄 Shutting down MCP Server...')
-    // Add any cleanup logic here if needed
-    console.log('✅ MCP Server shutdown completed')
+    
+    try {
+      // Close MCP server connection
+      if (this.server && 'close' in this.server && typeof this.server.close === 'function') {
+        await this.server.close()
+        logger.debug('MCP server connection closed')
+      }
+      
+      // Additional cleanup logic can be added here
+      logger.info('✅ MCP Server shutdown completed successfully')
+    } catch (error) {
+      logger.error(
+        'Error during MCP server shutdown',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      throw error
+    }
   }
 
   private isValidArgs(args: Record<string, unknown> | undefined): args is Record<string, unknown> {
