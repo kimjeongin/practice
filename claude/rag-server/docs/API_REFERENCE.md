@@ -1,301 +1,320 @@
 # API Reference
 
-## Overview
-
-The RAG MCP Server provides MCP (Model Context Protocol) tools for document management and search operations.
-
 ## MCP Tools
 
-### Document Management
+The RAG MCP Server provides 4 tools for document search and information retrieval.
 
-#### `list_files`
-List all indexed documents with metadata.
+### search
 
-**Parameters:** None
-
-**Response:**
-```json
-{
-  "files": [
-    {
-      "id": "cuid123",
-      "name": "document.txt",
-      "path": "./documents/document.txt",
-      "size": 1024,
-      "fileType": "text/plain",
-      "modifiedAt": "2025-08-22T10:00:00Z",
-      "indexedAt": "2025-08-22T10:01:00Z"
-    }
-  ],
-  "total": 1
-}
-```
-
-### Search Operations
-
-#### `search_documents`
-Search through indexed documents using semantic, keyword, or hybrid search.
+Search documents using semantic, hybrid, or fulltext search methods.
 
 **Parameters:**
 ```json
 {
   "query": "machine learning algorithms",
-  "useSemanticSearch": true,
-  "useKeywordSearch": false,
-  "useHybridSearch": false,
-  "semanticWeight": 0.7,
-  "topK": 5,
-  "threshold": 0.1
+  "search_type": "semantic",
+  "limit": 5,
+  "sources": ["txt", "md"],
+  "metadata_filters": {"author": "john"}
 }
 ```
+
+**Parameter Details:**
+- `query` (required): Search query text
+- `search_type` (optional): `"semantic"` | `"hybrid"` | `"fulltext"` (default: `"semantic"`)
+- `limit` (optional): Max results (1-50, default: 5)
+- `sources` (optional): Filter by file types
+- `metadata_filters` (optional): Key-value metadata filters
 
 **Response:**
 ```json
 {
+  "query": "machine learning algorithms",
+  "search_type": "semantic",
+  "results_count": 3,
   "results": [
     {
-      "fileId": "cuid123",
-      "fileName": "ml-guide.txt",
+      "rank": 1,
       "content": "Machine learning algorithms are...",
-      "score": 0.85,
-      "chunkIndex": 0
+      "relevance_score": 0.85,
+      "source": {
+        "filename": "ml-guide.txt",
+        "filepath": "./documents/ml-guide.txt",
+        "file_type": "text/plain",
+        "chunk_index": 0
+      },
+      "metadata": {}
     }
   ],
-  "query": "machine learning algorithms",
-  "searchType": "semantic",
-  "resultsCount": 1,
-  "processingTime": 45
-}
-```
-
-**Search Types:**
-- `useSemanticSearch`: Vector-based similarity search
-- `useKeywordSearch`: Traditional text matching
-- `useHybridSearch`: Combination of semantic + keyword (best results)
-
-### System Information
-
-#### `get_server_status`
-Get current server status and health metrics.
-
-**Parameters:** None
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "uptime": 3600,
-  "totalDocuments": 15,
-  "totalChunks": 450,
-  "memoryUsage": {
-    "rss": 157286400,
-    "heapTotal": 89653248,
-    "heapUsed": 65432192
-  },
-  "processingQueue": 0,
-  "errorRate": 0.1,
-  "version": "1.0.0"
-}
-```
-
-#### `get_current_model_info`
-Get information about the current embedding model.
-
-**Parameters:** None
-
-**Response:**
-```json
-{
-  "service": "transformers",
-  "model": "all-MiniLM-L6-v2",
-  "dimensions": 384,
-  "maxTokens": 256,
-  "isLoaded": true,
-  "loadTime": 2340,
-  "cacheLocation": "./.data/.transformers-cache"
-}
-```
-
-#### `list_available_models`
-Get list of available embedding models.
-
-**Parameters:** None
-
-**Response:**
-```json
-{
-  "currentModel": {
-    "model": "all-MiniLM-L6-v2",
-    "service": "transformers",
-    "dimensions": 384
-  },
-  "availableModels": {
-    "all-MiniLM-L6-v2": {
-      "modelId": "Xenova/all-MiniLM-L6-v2",
-      "dimensions": 384,
-      "size": "23MB",
-      "description": "Fast and efficient, good for general use"
-    },
-    "all-MiniLM-L12-v2": {
-      "modelId": "Xenova/all-MiniLM-L12-v2", 
-      "dimensions": 384,
-      "size": "45MB",
-      "description": "Better quality, slightly slower"
-    },
-    "bge-small-en": {
-      "modelId": "Xenova/bge-small-en",
-      "dimensions": 384,
-      "size": "67MB",
-      "description": "High quality for English text"
-    },
-    "bge-base-en": {
-      "modelId": "Xenova/bge-base-en",
-      "dimensions": 768,
-      "size": "109MB",
-      "description": "Best quality, larger model"
-    }
+  "search_info": {
+    "total_results": 3,
+    "search_method": "semantic",
+    "max_requested": 5
   }
 }
 ```
 
-## HTTP Endpoints
+### search_similar
 
-### Health Check
+Find documents similar to provided reference text using semantic similarity.
 
-#### `GET /api/health`
-Basic health check endpoint.
-
-**Response:**
+**Parameters:**
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2025-08-22T10:00:00Z",
-  "uptime": 3600,
-  "version": "1.0.0"
+  "reference_text": "Neural networks are computational models...",
+  "limit": 3,
+  "exclude_source": "neural-networks.txt",
+  "similarity_threshold": 0.1
 }
 ```
 
-#### `GET /metrics`
-Prometheus-style metrics endpoint.
+**Parameter Details:**
+- `reference_text` (required): Text to find similar content for
+- `limit` (optional): Max similar documents (1-10, default: 3)
+- `exclude_source` (optional): Exclude specific file by name/path/ID
+- `similarity_threshold` (optional): Min similarity score (0.0-1.0, default: 0.1)
 
 **Response:**
-```
-# HELP rag_server_uptime_seconds Server uptime in seconds
-# TYPE rag_server_uptime_seconds counter
-rag_server_uptime_seconds 3600
-
-# HELP rag_server_documents_total Total number of indexed documents
-# TYPE rag_server_documents_total gauge
-rag_server_documents_total 15
-
-# HELP rag_server_search_requests_total Total search requests
-# TYPE rag_server_search_requests_total counter
-rag_server_search_requests_total 125
-```
-
-## Error Responses
-
-### Standard Error Format
-All errors follow this format:
-
 ```json
 {
-  "error": {
-    "name": "SearchError",
-    "message": "Search operation failed",
-    "code": "SEARCH_ERROR",
-    "statusCode": 500,
-    "context": {
-      "query": "test query",
-      "operation": "semantic_search"
+  "reference_text": "Neural networks are computational models...",
+  "similar_documents": [
+    {
+      "rank": 1,
+      "similarity_score": 0.78,
+      "content_preview": "Deep learning is a subset of machine learning...",
+      "full_content": "Deep learning is a subset of machine learning that uses neural networks...",
+      "source": {
+        "filename": "deep-learning.md",
+        "filepath": "./documents/deep-learning.md",
+        "file_type": "text/markdown",
+        "chunk_index": 1,
+        "file_id": "clk123xyz"
+      },
+      "metadata": {}
     }
+  ],
+  "total_found": 2,
+  "search_info": {
+    "similarity_threshold": 0.1,
+    "excluded_source": "neural-networks.txt",
+    "search_method": "semantic_similarity"
   }
 }
 ```
 
-### Common Error Codes
+### search_by_question
 
-| Code | Description | HTTP Status |
-|------|-------------|-------------|
-| `FILE_PARSE_ERROR` | Document processing failed | 422 |
-| `SEARCH_ERROR` | Search operation failed | 500 |
-| `VECTOR_STORE_ERROR` | Vector store operation failed | 500 |
-| `EMBEDDING_ERROR` | Embedding generation failed | 500 |
-| `DATABASE_ERROR` | Database operation failed | 500 |
-| `VALIDATION_ERROR` | Invalid input parameters | 400 |
-| `NOT_FOUND` | Resource not found | 404 |
-| `RATE_LIMIT_EXCEEDED` | Too many requests | 429 |
+Search for information using natural language questions with context extraction and answer synthesis.
+
+**Parameters:**
+```json
+{
+  "question": "What is machine learning?",
+  "context_limit": 5,
+  "sources": ["txt", "md"],
+  "search_method": "semantic"
+}
+```
+
+**Parameter Details:**
+- `question` (required): Question or information request
+- `context_limit` (optional): Max context chunks to analyze (1-20, default: 5)
+- `sources` (optional): Filter by file types
+- `search_method` (optional): `"semantic"` | `"hybrid"` (default: `"semantic"`)
+
+**Response:**
+```json
+{
+  "question": "What is machine learning?",
+  "extracted_information": {
+    "type": "definition_or_fact",
+    "relevant_excerpts": [
+      "Machine learning is a subset of artificial intelligence...",
+      "ML algorithms learn patterns from data..."
+    ],
+    "definition_candidates": [
+      "Machine learning is a method of data analysis..."
+    ]
+  },
+  "confidence": 85,
+  "context_chunks": [
+    {
+      "rank": 1,
+      "content": "Machine learning is a subset of artificial intelligence...",
+      "relevance_score": 0.92,
+      "source": {
+        "filename": "ml-intro.txt",
+        "filepath": "./documents/ml-intro.txt",
+        "chunk_index": 0
+      }
+    }
+  ],
+  "search_info": {
+    "total_context_chunks": 3,
+    "search_method": "semantic",
+    "sources_searched": "all",
+    "context_limit": 5
+  },
+  "context_found": true,
+  "raw_context": "Machine learning is a subset of artificial intelligence..."
+}
+```
+
+**Information Extraction Types:**
+- `definition_or_fact`: What/define questions
+- `process_or_method`: How questions  
+- `temporal`: When/date questions
+- `location`: Where questions
+- `person_or_entity`: Who questions
+- `explanation_or_reason`: Why questions
+- `general_inquiry`: Other questions
+
+### list_sources
+
+List all indexed documents with metadata, statistics, and filtering options.
+
+**Parameters:**
+```json
+{
+  "include_stats": true,
+  "source_type_filter": ["local_file"],
+  "group_by": "file_type",
+  "limit": 50
+}
+```
+
+**Parameter Details:**
+- `include_stats` (optional): Include collection statistics (default: false)
+- `source_type_filter` (optional): Filter by source types (e.g., `["local_file", "file_upload"]`)
+- `group_by` (optional): `"source_type"` | `"file_type"`
+- `limit` (optional): Max sources to return (1-1000, default: 100)
+
+**Response:**
+```json
+{
+  "total_sources": 15,
+  "returned_sources": 15,
+  "sources": [
+    {
+      "id": "clk123xyz",
+      "name": "machine-learning.txt",
+      "path": "./documents/machine-learning.txt",
+      "file_type": "text/plain",
+      "size": 2048,
+      "source_type": "local_file",
+      "source_method": "file_watcher",
+      "created_at": "2025-08-24T10:00:00Z",
+      "indexed_at": "2025-08-24T10:01:00Z"
+    }
+  ],
+  "grouped_sources": [
+    {
+      "group": "text/plain",
+      "count": 8,
+      "sources": []
+    }
+  ],
+  "statistics": {
+    "total_documents": 15,
+    "total_size_bytes": 1048576,
+    "total_size_mb": 1.0,
+    "file_types": {
+      "text/plain": 8,
+      "text/markdown": 5,
+      "application/json": 2
+    },
+    "source_types": {
+      "local_file": 15
+    },
+    "source_methods": {
+      "file_watcher": 15
+    },
+    "oldest_document": 1692864000000,
+    "newest_document": 1724486400000
+  }
+}
+```
+
+## Error Handling
+
+All tools return errors in this format:
+
+```json
+{
+  "error": "SearchError",
+  "message": "Search operation failed",
+  "suggestion": "Try a different query or check if documents are indexed"
+}
+```
+
+**Common Error Types:**
+- `InvalidQuery`: Missing or invalid query parameter
+- `InvalidReferenceText`: Missing reference text for similarity search
+- `InvalidQuestion`: Missing question for question-based search
+- `SearchFailed`: Search operation failed
+- `SimilaritySearchFailed`: Similarity search failed
+- `QuestionSearchFailed`: Question-based search failed
+- `ListSourcesFailed`: Failed to list sources
 
 ## Usage Examples
 
-### MCP Client Example
-
+### Basic Search
 ```typescript
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-
-const client = new Client({
-  name: "rag-client",
-  version: "1.0.0"
-});
-
-// Search documents
-const searchResult = await client.request({
+const result = await mcpClient.request({
   method: "tools/call",
   params: {
-    name: "search_documents",
+    name: "search",
     arguments: {
-      query: "machine learning",
-      useSemanticSearch: true,
-      topK: 5
+      query: "neural networks",
+      search_type: "semantic",
+      limit: 3
     }
   }
 });
+```
 
-// Get server status
-const status = await client.request({
+### Find Similar Content
+```typescript
+const result = await mcpClient.request({
   method: "tools/call", 
   params: {
-    name: "get_server_status",
-    arguments: {}
+    name: "search_similar",
+    arguments: {
+      reference_text: "Machine learning algorithms use training data",
+      limit: 5,
+      similarity_threshold: 0.2
+    }
   }
 });
 ```
 
-### HTTP Client Example
-
-```bash
-# Health check
-curl -X GET http://localhost:3001/api/health
-
-# Get metrics
-curl -X GET http://localhost:3001/metrics
-
-# Check if server is responding
-curl -f http://localhost:3001/api/health || echo "Server down"
+### Question Answering
+```typescript
+const result = await mcpClient.request({
+  method: "tools/call",
+  params: {
+    name: "search_by_question", 
+    arguments: {
+      question: "How do neural networks learn?",
+      context_limit: 10,
+      search_method: "hybrid"
+    }
+  }
+});
 ```
 
-## Configuration
-
-### Search Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `query` | string | required | Search query text |
-| `useSemanticSearch` | boolean | false | Enable vector similarity search |
-| `useKeywordSearch` | boolean | false | Enable text matching search |
-| `useHybridSearch` | boolean | false | Enable combined search |
-| `semanticWeight` | number | 0.7 | Weight for semantic results (0-1) |
-| `topK` | number | 5 | Maximum results to return |
-| `threshold` | number | 0.1 | Minimum similarity threshold |
-
-### Performance Tuning
-
-For optimal performance:
-- Use `useHybridSearch: true` for best result quality
-- Set `topK` between 3-10 for good performance
-- Adjust `threshold` based on your quality requirements
-- Use `semanticWeight: 0.7` for balanced results
-
----
-
-**Need help?** Check the [Troubleshooting Guide](TROUBLESHOOTING.md) for common issues.
+### List Documents
+```typescript
+const result = await mcpClient.request({
+  method: "tools/call",
+  params: {
+    name: "list_sources",
+    arguments: {
+      include_stats: true,
+      group_by: "file_type",
+      limit: 100
+    }
+  }
+});
+```

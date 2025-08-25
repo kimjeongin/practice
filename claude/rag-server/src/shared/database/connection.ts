@@ -245,7 +245,7 @@ export class DatabaseConnection {
 
   async updateEmbeddingMetadata(id: string, updates: any): Promise<void> {
     const data: any = { lastUsedAt: new Date() }
-    
+
     if (updates.modelName !== undefined) data.modelName = updates.modelName
     if (updates.serviceName !== undefined) data.serviceName = updates.serviceName
     if (updates.dimensions !== undefined) data.dimensions = updates.dimensions

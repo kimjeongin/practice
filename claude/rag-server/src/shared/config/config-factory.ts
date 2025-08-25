@@ -14,7 +14,7 @@ export interface ConfigProfile {
 }
 
 export interface VectorStoreConfig {
-  provider: 'faiss' | 'qdrant' | 'weaviate' | 'chroma'
+  provider: 'faiss' | 'qdrant'
   config: {
     // FAISS specific
     indexPath?: string
@@ -26,20 +26,11 @@ export interface VectorStoreConfig {
     collectionName?: string
     vectorSize?: number
     distance?: string
-
-    // Weaviate specific
-    weaviateUrl?: string
-    weaviateApiKey?: string
-    weaviateClassName?: string
-
-    // Chroma specific
-    chromaUrl?: string
-    chromaCollectionName?: string
   }
 }
 
 export interface MCPTransportConfig {
-  type: 'stdio' | 'streamable-http' | 'sse'
+  type: 'stdio' | 'streamable-http'
   port?: number
   host?: string
   enableCors?: boolean
@@ -69,24 +60,9 @@ export interface ServerConfig extends BaseServerConfig {
     enableQueryRewriting: boolean
     semanticWeight: number
     rerankingEnabled: boolean
-    compressionEnabled: boolean
   }
 
-  // Monitoring configuration
-  monitoring: {
-    enabled: boolean
-    port: number
-    metricsPath: string
-    healthCheckPath: string
-  }
 
-  // Advanced features
-  features: {
-    conversationalRag: boolean
-    multiStepRetrieval: boolean
-    contextualCompression: boolean
-    adaptiveRetrieval: boolean
-  }
 
   // Model migration and compatibility settings
   modelMigration: {
@@ -99,8 +75,6 @@ export interface ServerConfig extends BaseServerConfig {
 
   // Document synchronization settings
   enableAutoSync?: boolean
-  syncOnStartup?: boolean
-  documentsAutoProcess?: boolean
 
   // MCP Transport configuration
   mcp: MCPTransportConfig
@@ -143,19 +117,6 @@ export class ConfigFactory {
         enableQueryRewriting: false, // Disable for faster dev iteration
         semanticWeight: 0.7,
         rerankingEnabled: false,
-        compressionEnabled: false,
-      },
-      monitoring: {
-        enabled: false, // Disabled in development to avoid port conflicts when used as MCP server
-        port: 3001,
-        metricsPath: '/metrics',
-        healthCheckPath: '/health',
-      },
-      features: {
-        conversationalRag: false,
-        multiStepRetrieval: false,
-        contextualCompression: false,
-        adaptiveRetrieval: false,
       },
       modelMigration: {
         enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
@@ -166,8 +127,6 @@ export class ConfigFactory {
       },
       // Document synchronization settings
       enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
-      syncOnStartup: process.env['SYNC_ON_STARTUP'] !== 'false',
-      documentsAutoProcess: process.env['DOCUMENTS_AUTO_PROCESS'] !== 'false',
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'stdio',
         port: parseInt(process.env['MCP_PORT'] || '3000'),
@@ -219,19 +178,6 @@ export class ConfigFactory {
         enableQueryRewriting: process.env['ENABLE_QUERY_REWRITING'] !== 'false',
         semanticWeight: parseFloat(process.env['SEMANTIC_WEIGHT'] || '0.7'),
         rerankingEnabled: process.env['ENABLE_RERANKING'] !== 'false',
-        compressionEnabled: process.env['ENABLE_COMPRESSION'] !== 'false',
-      },
-      monitoring: {
-        enabled: process.env['ENABLE_MONITORING'] !== 'false',
-        port: parseInt(process.env['MONITORING_PORT'] || '3001'),
-        metricsPath: process.env['METRICS_PATH'] || '/metrics',
-        healthCheckPath: process.env['HEALTH_CHECK_PATH'] || '/health',
-      },
-      features: {
-        conversationalRag: process.env['ENABLE_CONVERSATIONAL_RAG'] === 'true',
-        multiStepRetrieval: process.env['ENABLE_MULTI_STEP_RETRIEVAL'] === 'true',
-        contextualCompression: process.env['ENABLE_CONTEXTUAL_COMPRESSION'] === 'true',
-        adaptiveRetrieval: process.env['ENABLE_ADAPTIVE_RETRIEVAL'] === 'true',
       },
       modelMigration: {
         enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
@@ -242,8 +188,6 @@ export class ConfigFactory {
       },
       // Document synchronization settings
       enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
-      syncOnStartup: process.env['SYNC_ON_STARTUP'] !== 'false',
-      documentsAutoProcess: process.env['DOCUMENTS_AUTO_PROCESS'] !== 'false',
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'streamable-http',
         port: parseInt(process.env['MCP_PORT'] || '3000'),
@@ -288,19 +232,6 @@ export class ConfigFactory {
         enableQueryRewriting: false,
         semanticWeight: 0.7,
         rerankingEnabled: false,
-        compressionEnabled: false,
-      },
-      monitoring: {
-        enabled: false,
-        port: 3002,
-        metricsPath: '/metrics',
-        healthCheckPath: '/health',
-      },
-      features: {
-        conversationalRag: false,
-        multiStepRetrieval: false,
-        contextualCompression: false,
-        adaptiveRetrieval: false,
       },
       modelMigration: {
         enableAutoMigration: false, // Disabled in tests to avoid interference
@@ -311,8 +242,6 @@ export class ConfigFactory {
       },
       // Document synchronization settings (disabled for tests by default)
       enableAutoSync: process.env['ENABLE_AUTO_SYNC'] === 'true',
-      syncOnStartup: process.env['SYNC_ON_STARTUP'] === 'true',
-      documentsAutoProcess: process.env['DOCUMENTS_AUTO_PROCESS'] === 'true',
       mcp: {
         type: 'stdio',
         port: 3002,
@@ -413,7 +342,7 @@ export class ConfigFactory {
 
   private static createBaseConfig(): Omit<
     ServerConfig,
-    'vectorStore' | 'pipeline' | 'search' | 'monitoring' | 'features' | 'modelMigration' | 'mcp'
+    'vectorStore' | 'pipeline' | 'search' | 'modelMigration' | 'mcp'
   > {
     const service = process.env['EMBEDDING_SERVICE'] || 'transformers'
     const dataDir = resolve(process.env['DATA_DIR'] || './.data')
@@ -454,13 +383,6 @@ export class ConfigFactory {
           enableQueryRewriting: true,
           semanticWeight: 0.8,
           rerankingEnabled: true,
-          compressionEnabled: true,
-        },
-        features: {
-          conversationalRag: true,
-          multiStepRetrieval: true,
-          contextualCompression: true,
-          adaptiveRetrieval: true,
         },
       },
     })
@@ -477,7 +399,6 @@ export class ConfigFactory {
           enableQueryRewriting: false,
           semanticWeight: 0.5,
           rerankingEnabled: false,
-          compressionEnabled: false,
         },
       },
     })

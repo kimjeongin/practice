@@ -1,343 +1,195 @@
 # RAG MCP Server
 
-> **Local RAG Solution with Model Context Protocol**
+Local RAG (Retrieval Augmented Generation) server implementing Model Context Protocol (MCP) with document indexing and semantic search capabilities.
 
-A TypeScript-based Model Context Protocol (MCP) server that provides Retrieval Augmented Generation (RAG) capabilities using FAISS vector search, Transformers.js embeddings, and SQLite metadata storage. Completely local with no cloud dependencies.
+## Features
 
-📊 **Status**: ✅ **VERIFIED** - All 68 tests passing, full functionality confirmed
+- **Local vector search** using FAISS or Qdrant
+- **Document processing** for text, markdown, JSON, XML, HTML, CSV files
+- **Embedding providers** supporting Transformers.js and Ollama
+- **MCP tools** for document search and information retrieval
+- **Automatic indexing** with file system monitoring
+- **SQLite storage** for document metadata
 
-## Key Features
-
-### Core Capabilities
-- **100% Local**: No cloud dependencies, complete privacy
-- **MCP Integration**: Full Model Context Protocol support for Claude
-- **Vector Search**: FAISS-based semantic search with embeddings
-- **Multi-format Support**: Text, Markdown, JSON, XML, HTML, CSV documents
-- **Real-time Processing**: Automatic file detection and indexing
-- **Hybrid Search**: Semantic + keyword search combination
-
-### AI Models
-- **Transformers.js**: Built-in local embeddings (23MB-109MB models)
-- **Ollama Support**: Local high-quality inference integration
-- **Hot-swappable**: Change models without restart
-
-### Technical Stack
-- **TypeScript**: Full type safety with comprehensive coverage
-- **SQLite + Prisma**: Reliable metadata storage
-- **FAISS**: High-performance vector similarity search
-- **Chokidar**: Real-time file system monitoring
-
-## Quick Start
-
-### Prerequisites
-- Node.js 22+
-- yarn package manager
-
-### Installation
-
-```bash
-# 1. Clone and install dependencies
-git clone <repository-url>
-cd rag-server
-yarn install
-
-# 2. Setup database
-yarn db:setup
-
-# 3. Build the project
-yarn build
-
-# 4. Start the server
-yarn start
-```
-
-The server will:
-- Start with monitoring at http://localhost:3001
-- Download AI models automatically when first used
-- Process files from the `./documents` directory
-- Provide MCP tools for Claude integration
-
-### Using with Ollama (Optional)
-
-```bash
-# 1. Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull nomic-embed-text
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env: set EMBEDDING_SERVICE=ollama
-
-# 3. Restart server
-yarn start
-```
-
-
-## Usage
-
-### 1. Add Documents
-
-Place files in the `documents/` directory:
-
-```bash
-# Supported formats: .txt, .md, .json, .xml, .html, .csv
-echo "Machine learning content..." > documents/ml-guide.txt
-echo "# Deep Learning\nContent here..." > documents/dl-guide.md
-```
-
-Files are automatically processed and indexed.
-
-### 2. MCP Tools
-
-The server provides MCP tools for Claude:
-
-- `search_documents` - Semantic/keyword/hybrid search
-- `list_files` - Browse indexed documents
-- `get_server_status` - System health and metrics
-- `get_current_model_info` - Current AI model info
-- `list_available_models` - Available embedding models
-
-### 3. Search Examples
-
-**Semantic Search:**
-```json
-{
-  "name": "search_documents",
-  "arguments": {
-    "query": "machine learning algorithms",
-    "useSemanticSearch": true,
-    "topK": 5
-  }
-}
-```
-
-**Hybrid Search:**
-```json
-{
-  "name": "search_documents", 
-  "arguments": {
-    "query": "neural networks",
-    "useHybridSearch": true,
-    "semanticWeight": 0.7,
-    "topK": 5
-  }
-}
-```
-
-## Configuration
-
-Create `.env` from `.env.example`:
-
-```env
-# Database
-DATABASE_URL="file:./database.db"
-
-# Directories
-DATA_DIR=./.data
-DOCUMENTS_DIR=./documents
-
-# Embedding Service
-EMBEDDING_SERVICE=transformers  # or 'ollama'
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-
-# Processing
-CHUNK_SIZE=1024
-CHUNK_OVERLAP=50
-SIMILARITY_TOP_K=5
-```
-
-### Available Models
-
-**Transformers.js (Local)**
-- `all-MiniLM-L6-v2` - 23MB, fast (default)
-- `all-MiniLM-L12-v2` - 45MB, better quality
-- `bge-small-en` - 67MB, high quality
-- `bge-base-en` - 109MB, best quality
-
-**Ollama (External)**
-- `nomic-embed-text` - High quality, requires Ollama
-
-
-## Architecture
-
-### Project Structure
-
-```
-src/
-├── app/                    # Application entry point
-│   ├── app.ts             # Main RAG application
-│   ├── index.ts           # Server startup
-│   ├── factories/         # Component factories
-│   └── orchestrator/      # Application orchestrator
-├── domains/
-│   ├── mcp/              # Model Context Protocol
-│   │   ├── handlers/     # MCP tool handlers
-│   │   └── server/       # MCP server implementation
-│   └── rag/              # RAG domain logic
-│       ├── services/     # Core business logic
-│       ├── repositories/ # Data access layer
-│       ├── workflows/    # RAG orchestration
-│       └── integrations/ # External integrations
-└── shared/               # Shared utilities
-    ├── config/           # Configuration management
-    ├── database/         # Database connection
-    ├── logger/           # Structured logging
-    ├── monitoring/       # System monitoring
-    └── types/            # TypeScript definitions
-```
-
-### Data Flow
-
-```
-Documents → File Watcher → Processing → Chunking → Embedding
-     ↓
-Vector Store (FAISS) + Metadata (SQLite)
-     ↓
-Search Request → Hybrid Search → Results → MCP Response
-```
-
-### Key Components
-
-- **File Watcher**: Real-time document processing with Chokidar
-- **Vector Store**: FAISS-based similarity search
-- **Embeddings**: Transformers.js or Ollama integration
-- **Database**: SQLite with Prisma ORM
-- **MCP Server**: Model Context Protocol implementation
-
-## Testing
-
-### Test Suite
-
-✅ **68 tests passing** - Comprehensive validation across all components.
-
-```bash
-# Run all tests
-yarn test:all
-
-# Individual test categories
-yarn test:unit         # Unit tests
-yarn test:integration  # Integration tests
-yarn test:e2e         # End-to-end tests
-
-# Additional options
-yarn test:coverage    # Coverage report
-yarn test:verbose     # Detailed output
-yarn test:watch      # Watch mode
-```
-
-### Verified Results
-- ✅ **Unit Tests** - Core functionality
-- ✅ **Integration Tests** - Component interaction
-- ✅ **E2E Tests** - Full workflow validation
-- ✅ **TypeScript** - Zero compilation errors
-- ✅ **Performance** - <100ms search response
-
-### Monitoring
-
-```bash
-# System health
-curl http://localhost:3001/api/health
-
-# View logs
-tail -f logs/rag-server.log
-```
-
-## Documentation
-
-- **[Model Management](docs/MODEL_MANAGEMENT.md)** - AI model configuration
-- **[Monitoring](docs/MONITORING.md)** - System monitoring and logging
-- **[Production Config](docs/PRODUCTION_CONFIG.md)** - Environment variables
-- **[Production Deployment](docs/PRODUCTION_DEPLOYMENT.md)** - Docker and scaling
-- **[Test Guide](docs/TEST_GUIDE.md)** - Testing framework
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-
-## Development
+## Installation
 
 ```bash
 # Install dependencies
 yarn install
 
-# Development mode with hot reload
-yarn dev
+# Setup database
+yarn db:setup
 
-# Type checking
-yarn typecheck
-
-# Linting
-yarn lint
-
-# Build for production
+# Build project
 yarn build
 ```
 
-### Available Scripts
+## Configuration
 
-- `yarn start` - Start production server
-- `yarn dev` - Development with hot reload
+Copy `.env.example` to `.env` and configure as needed:
+
+```bash
+cp .env.example .env
+```
+
+### Key Settings
+
+- `EMBEDDING_SERVICE`: `transformers` (local) or `ollama` (external)
+- `VECTOR_STORE_PROVIDER`: `faiss` (local) or `qdrant` (external)
+- `MCP_TRANSPORT`: `stdio` (for MCP) or `streamable-http` (for HTTP)
+- `DOCUMENTS_DIR`: Directory containing documents to index
+
+### Embedding Services
+
+**Transformers.js (Default)**
+```env
+EMBEDDING_SERVICE=transformers
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+```
+
+**Ollama**
+```env
+EMBEDDING_SERVICE=ollama
+EMBEDDING_MODEL=nomic-embed-text
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+## Usage
+
+### Start Server
+
+```bash
+# Development
+yarn dev
+
+# Production
+yarn start
+```
+
+### MCP Tools
+
+The server provides 4 MCP tools:
+
+- `search` - Search documents with semantic/hybrid/fulltext options
+- `search_similar` - Find documents similar to reference text
+- `search_by_question` - Question-answering with context extraction
+- `list_sources` - List indexed documents with metadata
+
+See [API_REFERENCE.md](docs/API_REFERENCE.md) for detailed tool specifications.
+
+### Add Documents
+
+Place files in the configured documents directory (default: `./documents`):
+
+```bash
+echo "Machine learning content..." > documents/ml-guide.txt
+echo "# Deep Learning Guide" > documents/dl-guide.md
+```
+
+Files are automatically indexed when added or modified.
+
+## Development
+
+### Scripts
+
+- `yarn dev` - Development mode with hot reload
 - `yarn build` - Build TypeScript
 - `yarn test` - Run all tests
-- `yarn db:setup` - Initialize database
-- `yarn db:reset` - Reset database
+- `yarn typecheck` - Type checking
+- `yarn lint` - Code linting
 
-### Extension Points
+### Database
 
-- **Embedding Providers**: Extend `EmbeddingAdapter`
-- **Vector Stores**: Implement `VectorStoreAdapter`
-- **File Processors**: Add to document processing
-- **MCP Tools**: Add new tool handlers
+```bash
+yarn db:setup    # Initialize database
+yarn db:reset    # Reset database
+yarn db:studio   # Open Prisma Studio
+```
 
-## Performance
+### Testing
 
-### Benchmarks (Verified)
+```bash
+yarn test:unit         # Unit tests
+yarn test:integration  # Integration tests
+yarn test:e2e          # End-to-end tests
+```
 
-**Startup & Processing:**
-- Cold start: 2-3 seconds
-- Model download: 5-10 seconds (first time, 23MB)
-- Memory usage: ~150MB baseline
-- Search latency: <100ms average
-- Document processing: Real-time indexing
+## Architecture
 
-**Search Performance:**
+```
+src/
+├── app/               # Application entry point
+├── domains/
+│   ├── mcp/          # MCP protocol implementation
+│   │   ├── handlers/ # Tool handlers (search, information)
+│   │   └── server/   # MCP server
+│   └── rag/          # RAG domain logic
+│       ├── services/ # Search, document processing
+│       ├── repositories/ # Data access
+│       ├── workflows/ # RAG workflows
+│       └── integrations/ # Vector stores, embeddings
+└── shared/           # Shared utilities
+    ├── config/       # Configuration management
+    ├── database/     # Database connection
+    └── types/        # TypeScript definitions
+```
 
-| Type | Latency | Use Case |
-|------|---------|----------|
-| Keyword | <10ms | Exact terms |
-| Semantic | <50ms | Concepts |
-| Hybrid | <100ms | Best results |
+### Database Schema
 
-**Scalability:**
-- Documents: 10,000+ tested
-- Concurrent searches: 50+ supported
-- File size: Up to 100MB per file
-- Storage: ~1MB per 1000 documents
+- **File** - Document metadata and indexing status
+- **DocumentChunk** - Text chunks for vector search
+- **FileMetadata** - Custom metadata key-value pairs
+- **EmbeddingMetadata** - Model and embedding configuration tracking
+
+## Deployment
+
+### Docker
+
+```bash
+# Build
+docker build -t rag-server .
+
+# Run
+docker run -p 3000:3000 -v ./documents:/app/documents rag-server
+```
+
+### Standalone Binary
+
+```bash
+yarn build:executable
+```
+
+Generates platform-specific binaries in `deploy/dist/`.
+
+## Troubleshooting
+
+### Common Issues
+
+**Embedding model not loading**
+- Check `EMBEDDING_SERVICE` configuration
+- For Ollama: verify service is running at `OLLAMA_BASE_URL`
+- For Transformers: check disk space for model downloads
+
+**Documents not indexing**
+- Verify `DOCUMENTS_DIR` path exists
+- Check file permissions
+- Enable debug logging: `LOG_LEVEL=debug`
+
+**MCP connection issues**
+- Verify `MCP_TRANSPORT` setting
+- For stdio: check Claude configuration
+- For HTTP: verify port is available
+
+### Logs
+
+```bash
+# View application logs
+tail -f logs/rag-server.log
+
+# View error logs  
+tail -f logs/rag-server-error.log
+```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Key Benefits
-
-- **Zero Configuration**: Works out of the box
-- **Local-First**: Complete privacy, no cloud dependencies
-- **Production Ready**: Comprehensive testing and monitoring
-- **Extensible**: Clean architecture for customization
-- **Modern Stack**: TypeScript, ESM, latest dependencies
-- **MCP Integration**: Seamless Claude integration
-
----
-
-**Ready to start?** Run `yarn install && yarn build && yarn start` for a complete local RAG system!
-
----
-
-## Status
-
-✅ **Verified & Working** - All 68 tests passing, production ready
-
-- **TypeScript**: Zero compilation errors
-- **Tests**: Complete unit, integration, and E2E coverage
-- **MCP Tools**: All handlers fully functional
-- **Performance**: <100ms search, 2-3s startup
-- **Architecture**: Clean domain separation
-
-**Last Verified**: August 2025
+MIT License

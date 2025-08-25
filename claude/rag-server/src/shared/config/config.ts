@@ -58,19 +58,6 @@ export function validateConfig(config: BaseServerConfig): void {
       enableQueryRewriting: false,
       semanticWeight: 0.7,
       rerankingEnabled: false,
-      compressionEnabled: false,
-    },
-    monitoring: {
-      enabled: process.env['ENABLE_MONITORING'] !== 'false',
-      port: 3001,
-      metricsPath: '/metrics',
-      healthCheckPath: '/health',
-    },
-    features: {
-      conversationalRag: false,
-      multiStepRetrieval: false,
-      contextualCompression: false,
-      adaptiveRetrieval: false,
     },
     modelMigration: {
       enableAutoMigration: true,
