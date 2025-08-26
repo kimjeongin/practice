@@ -8,10 +8,10 @@ export type TransportType = 'stdio' | 'http' | 'sse'
 // Server status enumeration
 export enum ServerStatus {
   DISCONNECTED = 'disconnected',
-  CONNECTING = 'connecting', 
+  CONNECTING = 'connecting',
   CONNECTED = 'connected',
   ERROR = 'error',
-  RECONNECTING = 'reconnecting'
+  RECONNECTING = 'reconnecting',
 }
 
 // Basic server configuration

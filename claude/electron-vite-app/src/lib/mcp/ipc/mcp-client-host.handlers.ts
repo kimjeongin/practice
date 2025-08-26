@@ -1,10 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron'
 import { getClientHostService } from '../services/mcp-client-host.service'
-import { 
-  ServerConfig, 
-  ToolFilter, 
-  IPCResponse 
-} from '@shared/types/mcp.types'
+import { ServerConfig, ToolFilter, IPCResponse } from '@shared/types/mcp.types'
 import { MCP_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 
 // Error handling wrapper for IPC calls
@@ -14,17 +10,17 @@ async function handleIPCRequest<T>(
 ): Promise<IPCResponse<T>> {
   try {
     const data = await handler()
-    return { 
-      success: true, 
-      data, 
-      timestamp: new Date() 
+    return {
+      success: true,
+      data,
+      timestamp: new Date(),
     }
   } catch (error) {
     console.error(`${operation} failed:`, error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
-      timestamp: new Date()
+      timestamp: new Date(),
     }
   }
 }
@@ -33,20 +29,14 @@ async function handleIPCRequest<T>(
 // Server Management Handlers
 // ============================
 
-async function handleAddServer(
-  _event: IpcMainInvokeEvent,
-  serverConfig: Omit<ServerConfig, 'id'>
-) {
+async function handleAddServer(_event: IpcMainInvokeEvent, serverConfig: Omit<ServerConfig, 'id'>) {
   return handleIPCRequest('Add server', async () => {
     const service = getClientHostService()
     return await service.addServer(serverConfig)
   })
 }
 
-async function handleRemoveServer(
-  _event: IpcMainInvokeEvent,
-  serverId: string
-) {
+async function handleRemoveServer(_event: IpcMainInvokeEvent, serverId: string) {
   return handleIPCRequest('Remove server', async () => {
     const service = getClientHostService()
     await service.removeServer(serverId)
@@ -73,10 +63,7 @@ async function handleListServers(_event: IpcMainInvokeEvent) {
   })
 }
 
-async function handleConnectServer(
-  _event: IpcMainInvokeEvent,
-  serverId: string
-) {
+async function handleConnectServer(_event: IpcMainInvokeEvent, serverId: string) {
   return handleIPCRequest('Connect server', async () => {
     const service = getClientHostService()
     await service.connectServer(serverId)
@@ -84,10 +71,7 @@ async function handleConnectServer(
   })
 }
 
-async function handleDisconnectServer(
-  _event: IpcMainInvokeEvent,
-  serverId: string
-) {
+async function handleDisconnectServer(_event: IpcMainInvokeEvent, serverId: string) {
   return handleIPCRequest('Disconnect server', async () => {
     const service = getClientHostService()
     await service.disconnectServer(serverId)
@@ -99,10 +83,7 @@ async function handleDisconnectServer(
 // Tool Discovery Handlers
 // ============================
 
-async function handleListTools(
-  _event: IpcMainInvokeEvent,
-  serverId?: string
-) {
+async function handleListTools(_event: IpcMainInvokeEvent, serverId?: string) {
   return handleIPCRequest('List tools', async () => {
     const service = getClientHostService()
     if (serverId) {
@@ -113,10 +94,7 @@ async function handleListTools(
   })
 }
 
-async function handleSearchTools(
-  _event: IpcMainInvokeEvent,
-  filter: ToolFilter
-) {
+async function handleSearchTools(_event: IpcMainInvokeEvent, filter: ToolFilter) {
   return handleIPCRequest('Search tools', async () => {
     const service = getClientHostService()
     return service.searchTools(filter)
@@ -151,10 +129,7 @@ async function handleExecuteTool(
   })
 }
 
-async function handleGetExecutionHistory(
-  _event: IpcMainInvokeEvent,
-  limit?: number
-) {
+async function handleGetExecutionHistory(_event: IpcMainInvokeEvent, limit?: number) {
   return handleIPCRequest('Get execution history', async () => {
     const service = getClientHostService()
     return service.getExecutionHistory(limit)
@@ -173,10 +148,7 @@ async function handleClearHistory(_event: IpcMainInvokeEvent) {
 // Resource and Prompt Handlers
 // ============================
 
-async function handleListResources(
-  _event: IpcMainInvokeEvent,
-  serverId?: string
-) {
+async function handleListResources(_event: IpcMainInvokeEvent, serverId?: string) {
   return handleIPCRequest('List resources', async () => {
     const service = getClientHostService()
     if (serverId) {
@@ -184,31 +156,24 @@ async function handleListResources(
       return connection?.resources || []
     } else {
       const connections = service.getServerConnections()
-      return connections.flatMap(c => c.resources)
+      return connections.flatMap((c) => c.resources)
     }
   })
 }
 
-async function handleReadResource(
-  _event: IpcMainInvokeEvent,
-  serverId: string,
-  uri: string
-) {
+async function handleReadResource(_event: IpcMainInvokeEvent, serverId: string, uri: string) {
   return handleIPCRequest('Read resource', async () => {
     const service = getClientHostService()
     const connection = service.getServerConnection(serverId)
     if (!connection?.client) {
       throw new Error(`Server ${serverId} is not connected`)
     }
-    
+
     return await connection.client.readResource({ uri })
   })
 }
 
-async function handleListPrompts(
-  _event: IpcMainInvokeEvent,
-  serverId?: string
-) {
+async function handleListPrompts(_event: IpcMainInvokeEvent, serverId?: string) {
   return handleIPCRequest('List prompts', async () => {
     const service = getClientHostService()
     if (serverId) {
@@ -216,7 +181,7 @@ async function handleListPrompts(
       return connection?.prompts || []
     } else {
       const connections = service.getServerConnections()
-      return connections.flatMap(c => c.prompts)
+      return connections.flatMap((c) => c.prompts)
     }
   })
 }
@@ -233,7 +198,7 @@ async function handleGetPrompt(
     if (!connection?.client) {
       throw new Error(`Server ${serverId} is not connected`)
     }
-    
+
     return await connection.client.getPrompt({ name, arguments: args })
   })
 }
@@ -249,10 +214,7 @@ async function handleGetConfig(_event: IpcMainInvokeEvent) {
   })
 }
 
-async function handleUpdateConfig(
-  _event: IpcMainInvokeEvent,
-  updates: any
-) {
+async function handleUpdateConfig(_event: IpcMainInvokeEvent, updates: any) {
   return handleIPCRequest('Update config', async () => {
     const service = getClientHostService()
     await service.updateConfiguration(updates)
@@ -337,10 +299,7 @@ async function handleGetFavorites(_event: IpcMainInvokeEvent) {
   })
 }
 
-async function handleGetMostUsedTools(
-  _event: IpcMainInvokeEvent,
-  limit = 10
-) {
+async function handleGetMostUsedTools(_event: IpcMainInvokeEvent, limit = 10) {
   return handleIPCRequest('Get most used tools', async () => {
     const service = getClientHostService()
     return service.getMostUsedTools(limit)
@@ -348,34 +307,56 @@ async function handleGetMostUsedTools(
 }
 
 // ============================
-// RAG Server HTTP Client Handlers
-// ============================
+// Configuration Management Handlers
+// =================================
 
-async function handleGetRagServerStatus(_event: IpcMainInvokeEvent) {
-  return handleIPCRequest('Get RAG server status', async () => {
-    const { getRagServerClient } = await import('../services/rag-server-client.service')
-    const client = getRagServerClient()
-    return client.getStatus()
+async function handleGetServerConfig(_event: IpcMainInvokeEvent) {
+  return handleIPCRequest('Get server configuration', async () => {
+    const service = getClientHostService()
+    const connectionManager = service.getConnectionManager()
+    const configService = connectionManager.getConfigService()
+    return await configService.getConfig()
   })
 }
 
-async function handleRagServerReconnect(_event: IpcMainInvokeEvent) {
-  return handleIPCRequest('RAG server reconnect', async () => {
-    const { getRagServerClient } = await import('../services/rag-server-client.service')
-    const client = getRagServerClient()
-    const success = await client.reconnect()
-    return { success, status: client.getStatus() }
+async function handleUpdateServerConfig(_event: IpcMainInvokeEvent, config: any) {
+  return handleIPCRequest('Update server configuration', async () => {
+    const service = getClientHostService()
+    const connectionManager = service.getConnectionManager()
+    const configService = connectionManager.getConfigService()
+    await configService.saveConfig(config)
+    await connectionManager.reloadConfig()
+    return { success: true }
   })
 }
 
-async function handleRagServerTest(
-  _event: IpcMainInvokeEvent,
-  query: string
-) {
-  return handleIPCRequest('RAG server test', async () => {
-    const { getRagServerClient } = await import('../services/rag-server-client.service')
-    const client = getRagServerClient()
-    return await client.testSearch(query)
+async function handleReloadConfig(_event: IpcMainInvokeEvent) {
+  return handleIPCRequest('Reload configuration', async () => {
+    const service = getClientHostService()
+    const connectionManager = service.getConnectionManager()
+    await connectionManager.reloadConfig()
+    return { success: true }
+  })
+}
+
+async function handleExportConfig(_event: IpcMainInvokeEvent) {
+  return handleIPCRequest('Export configuration', async () => {
+    const service = getClientHostService()
+    const connectionManager = service.getConnectionManager()
+    const configService = connectionManager.getConfigService()
+    const configJson = await configService.exportConfig()
+    return { data: configJson }
+  })
+}
+
+async function handleImportConfig(_event: IpcMainInvokeEvent, configJson: string) {
+  return handleIPCRequest('Import configuration', async () => {
+    const service = getClientHostService()
+    const connectionManager = service.getConnectionManager()
+    const configService = connectionManager.getConfigService()
+    await configService.importConfig(configJson)
+    await connectionManager.reloadConfig()
+    return { success: true }
   })
 }
 
@@ -387,10 +368,7 @@ async function handleExportData(_event: IpcMainInvokeEvent) {
   })
 }
 
-async function handleImportData(
-  _event: IpcMainInvokeEvent,
-  jsonData: string
-) {
+async function handleImportData(_event: IpcMainInvokeEvent, jsonData: string) {
   return handleIPCRequest('Import data', async () => {
     const service = getClientHostService()
     await service.importData(jsonData)
@@ -407,7 +385,7 @@ export function registerClientHostHandlers(): void {
 
   // Remove existing handlers to avoid conflicts
   try {
-    Object.values(MCP_IPC_CHANNELS).forEach(channel => {
+    Object.values(MCP_IPC_CHANNELS).forEach((channel) => {
       ipcMain.removeHandler(channel)
     })
   } catch (error) {
@@ -454,10 +432,12 @@ export function registerClientHostHandlers(): void {
   ipcMain.handle('client-host:remove-from-favorites', handleRemoveFromFavorites)
   ipcMain.handle('client-host:get-favorites', handleGetFavorites)
   ipcMain.handle('client-host:get-most-used-tools', handleGetMostUsedTools)
-  // RAG Server HTTP client handlers
-  ipcMain.handle(MCP_IPC_CHANNELS.RAG_SERVER_STATUS, handleGetRagServerStatus)
-  ipcMain.handle(MCP_IPC_CHANNELS.RAG_SERVER_RECONNECT, handleRagServerReconnect)
-  ipcMain.handle(MCP_IPC_CHANNELS.RAG_SERVER_TEST, handleRagServerTest)
+  // Configuration management handlers
+  ipcMain.handle(MCP_IPC_CHANNELS.GET_SERVER_CONFIG, handleGetServerConfig)
+  ipcMain.handle(MCP_IPC_CHANNELS.UPDATE_SERVER_CONFIG, handleUpdateServerConfig)
+  ipcMain.handle(MCP_IPC_CHANNELS.RELOAD_CONFIG, handleReloadConfig)
+  ipcMain.handle(MCP_IPC_CHANNELS.EXPORT_CONFIG, handleExportConfig)
+  ipcMain.handle(MCP_IPC_CHANNELS.IMPORT_CONFIG, handleImportConfig)
   ipcMain.handle('client-host:export-data', handleExportData)
   ipcMain.handle('client-host:import-data', handleImportData)
 
@@ -471,26 +451,28 @@ export function unregisterClientHostHandlers(): void {
   console.log('🔌 Unregistering MCP Client Host IPC handlers...')
 
   try {
-    Object.values(MCP_IPC_CHANNELS).forEach(channel => {
+    Object.values(MCP_IPC_CHANNELS).forEach((channel) => {
       ipcMain.removeHandler(channel)
     })
 
     // Remove additional handlers
     const additionalChannels = [
       'client-host:get-categories',
-      'client-host:get-tags', 
+      'client-host:get-tags',
       'client-host:add-to-favorites',
       'client-host:remove-from-favorites',
       'client-host:get-favorites',
       'client-host:get-most-used-tools',
-      MCP_IPC_CHANNELS.RAG_SERVER_STATUS,
-      MCP_IPC_CHANNELS.RAG_SERVER_RECONNECT,
-      MCP_IPC_CHANNELS.RAG_SERVER_TEST,
+      MCP_IPC_CHANNELS.GET_SERVER_CONFIG,
+      MCP_IPC_CHANNELS.UPDATE_SERVER_CONFIG,
+      MCP_IPC_CHANNELS.RELOAD_CONFIG,
+      MCP_IPC_CHANNELS.EXPORT_CONFIG,
+      MCP_IPC_CHANNELS.IMPORT_CONFIG,
       'client-host:export-data',
-      'client-host:import-data'
+      'client-host:import-data',
     ]
 
-    additionalChannels.forEach(channel => {
+    additionalChannels.forEach((channel) => {
       ipcMain.removeHandler(channel)
     })
 
@@ -505,7 +487,7 @@ function setupEventForwarding(): void {
 
   // Forward service events to subscribed renderers
   const forwardEvent = (eventName: string, data: any) => {
-    eventSubscriptions.forEach(sender => {
+    eventSubscriptions.forEach((sender) => {
       if (!sender.isDestroyed()) {
         sender.send('client-host-event', { eventName, data })
       }

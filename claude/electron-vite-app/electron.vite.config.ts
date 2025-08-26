@@ -6,26 +6,26 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
-        '@shared': resolve('src/shared')
-      }
+        '@shared': resolve('src/shared'),
+      },
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
   },
   preload: {
     resolve: {
       alias: {
-        '@shared': resolve('src/shared')
-      }
+        '@shared': resolve('src/shared'),
+      },
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
   },
   renderer: {
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),
-        '@shared': resolve('src/shared')
-      }
+        '@shared': resolve('src/shared'),
+      },
     },
-    plugins: [react()]
-  }
+    plugins: [react()],
+  },
 })

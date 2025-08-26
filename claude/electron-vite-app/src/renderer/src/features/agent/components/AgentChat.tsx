@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAgent } from '../hooks/useAgent'
-import { useRagServerStatus } from '../../../hooks/useRagServerStatus'
-import RagServerStatus from '../../../components/rag-server/RagServerStatus'
+import { useMCPServers } from '../../../hooks/useMCPServers'
+import { MCPServerStatus } from '../../../components/mcp-servers/MCPServerStatus'
 
 interface Message {
   id: string
@@ -32,10 +32,10 @@ export function AgentChat() {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [currentThinking, setCurrentThinking] = useState<ThinkingStatus | null>(null)
   const [isAgentWorking, setIsAgentWorking] = useState(false)
-  const [showRagStatus, setShowRagStatus] = useState(false)
-  
+  const [showMCPStatus, setShowMCPStatus] = useState(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { isConnected: ragConnected, hasSearchTools } = useRagServerStatus()
+  const { servers: mcpServers } = useMCPServers()
   const {
     isInitialized,
     isLoading,
@@ -44,7 +44,7 @@ export function AgentChat() {
     initialize,
     processQuery,
     // testQuery, // Not used
-    clearError
+    clearError,
   } = useAgent()
 
   useEffect(() => {
@@ -62,35 +62,78 @@ export function AgentChat() {
   const initializeSystem = async () => {
     try {
       console.log('🚀 Initializing Agent System...')
-      
+
       await initialize({
         type: 'main',
         model: 'llama3.1:8b',
         temperature: 0.7,
-        maxTokens: 1024
+        maxTokens: 1024,
       })
 
-      // Add welcome message
-      const welcomeMessage: Message = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `Hello! I'm your AI agent powered by Llama 3.1 8B. I can help you with various tasks and use tools when needed.
+      if (!error && isInitialized) {
+        // Add welcome message with current status
+        const toolCount = healthStatus?.availableTools || 0
+        const welcomeMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Hello! I'm your AI agent powered by Llama 3.1 8B. I'm ready to help you with various tasks.
 
-Available capabilities:
+**Current Status:**
+- 🧠 Model: Llama 3.1 8B (${healthStatus?.ollamaHealthy ? 'Ready' : 'Checking...'})
+- 🔧 Available Tools: ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}
+- 🔗 MCP Servers: ${mcpServers?.servers ? mcpServers.servers.filter((s: any) => s.status === 'connected').length : 0} connected
+
+**Available Capabilities:**
 - Natural language understanding and generation
 - Tool selection and execution (when MCP servers are connected)
-- Multi-step reasoning
-- Conversation memory
+- Multi-step reasoning with tool usage
+- Conversation memory and context
 
-Type your message below to get started!`,
-        timestamp: new Date()
+Type your message below to get started! I can help with research, analysis, and tasks using available tools.`,
+          timestamp: new Date(),
+        }
+
+        setMessages([welcomeMessage])
+        console.log('✅ Agent System initialized successfully')
+      } else {
+        // Show initialization failure message
+        const failureMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `❌ **Initialization Failed**
+
+I encountered an issue while starting up. This might be due to:
+- Ollama server not running
+- Models not available
+- Configuration issues
+
+**Troubleshooting Steps:**
+1. Make sure Ollama is running: \`ollama serve\`
+2. Check available models: \`ollama list\`
+3. Pull required models if missing: \`ollama pull llama3.1:8b\`
+
+Please resolve these issues and refresh the application.`,
+          timestamp: new Date(),
+        }
+
+        setMessages([failureMessage])
+        console.error('❌ Agent System initialization failed')
       }
-
-      setMessages([welcomeMessage])
-      console.log('✅ Agent System initialized successfully')
-      
     } catch (error) {
       console.error('❌ Failed to initialize Agent System:', error)
+
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `❌ **Critical Initialization Error**
+
+${error instanceof Error ? error.message : 'Unknown error occurred'}
+
+Please check the console for more details and ensure all required services are running.`,
+        timestamp: new Date(),
+      }
+
+      setMessages([errorMessage])
     }
   }
 
@@ -108,13 +151,15 @@ Type your message below to get started!`,
     const interval = setInterval(() => {
       if (wordIndex < words.length) {
         const partialContent = words.slice(0, wordIndex + 1).join(' ')
-        
-        setMessages(prev => prev.map(msg => 
-          msg.id === messageId 
-            ? { ...msg, content: partialContent, isStreaming: wordIndex < words.length - 1 }
-            : msg
-        ))
-        
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId
+              ? { ...msg, content: partialContent, isStreaming: wordIndex < words.length - 1 }
+              : msg
+          )
+        )
+
         wordIndex++
       } else {
         clearInterval(interval)
@@ -131,49 +176,56 @@ Type your message below to get started!`,
       id: Date.now().toString(),
       role: 'user',
       content: inputValue.trim(),
-      timestamp: new Date()
+      timestamp: new Date(),
     }
 
-    setMessages(prev => [...prev, userMessage])
+    setMessages((prev) => [...prev, userMessage])
     setInputValue('')
     setIsAgentWorking(true)
 
-    // Simulate thinking phases
-    const thinkingPhases = [
-      { phase: 'analyzing', message: '🤔 Analyzing your request...', duration: 1000 },
-      { phase: 'selecting_tool', message: '🔍 Selecting appropriate tools...', duration: 1500 },
-      { phase: 'executing_tool', message: '⚡ Executing selected tools...', duration: 2000 },
-      { phase: 'responding', message: '✍️ Generating response...', duration: 800 }
-    ]
+    // Show initial thinking state
+    handleAgentThinking({
+      phase: 'analyzing',
+      message: '🤔 Analyzing your request...',
+    })
 
-    let phaseIndex = 0
-    const showNextPhase = () => {
-      if (phaseIndex < thinkingPhases.length) {
-        const phase = thinkingPhases[phaseIndex]
-        handleAgentThinking(phase)
-        phaseIndex++
-        setTimeout(showNextPhase, phase.duration)
-      } else {
-        // Start actual processing
-        processActualQuery(userMessage.content)
+    try {
+      await processActualQuery(userMessage.content)
+    } catch (error) {
+      console.error('Failed to process message:', error)
+      setCurrentThinking(null)
+      setIsAgentWorking(false)
+
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
       }
+      setMessages((prev) => [...prev, errorMessage])
     }
-
-    showNextPhase()
   }
 
   const processActualQuery = async (query: string) => {
     try {
-      const result = await processQuery(
-        query,
-        conversationId || undefined,
-        { maxIterations: 5 }
-      )
+      // Update thinking state for tool selection
+      handleAgentThinking({
+        phase: 'selecting_tools',
+        message: '🔍 Selecting appropriate tools...',
+      })
 
-      if (result) {
+      const result = await processQuery(query, conversationId || undefined, { maxIterations: 5 })
+
+      if (result && result.success) {
         if (!conversationId) {
-          setConversationId('current-session')
+          setConversationId(result.conversationId)
         }
+
+        // Update thinking state for response generation
+        handleAgentThinking({
+          phase: 'responding',
+          message: '✍️ Generating response...',
+        })
 
         const assistantMessageId = (Date.now() + 1).toString()
         const assistantMessage: Message = {
@@ -184,36 +236,37 @@ Type your message below to get started!`,
           toolsUsed: result.toolsUsed,
           executionTime: result.totalExecutionTime,
           iterations: result.iterations,
-          isStreaming: true
+          isStreaming: true,
         }
 
-        setMessages(prev => [...prev, assistantMessage])
-        
+        setMessages((prev) => [...prev, assistantMessage])
+
         // Start streaming the response
         streamResponse(result.response, assistantMessageId)
       } else {
         setCurrentThinking(null)
         setIsAgentWorking(false)
-        
+
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'I apologize, but I encountered an error processing your request.',
-          timestamp: new Date()
+          content:
+            result?.error || 'I apologize, but I encountered an error processing your request.',
+          timestamp: new Date(),
         }
-        setMessages(prev => [...prev, errorMessage])
+        setMessages((prev) => [...prev, errorMessage])
       }
     } catch (error) {
       setCurrentThinking(null)
       setIsAgentWorking(false)
-      
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date()
+        timestamp: new Date(),
       }
-      setMessages(prev => [...prev, errorMessage])
+      setMessages((prev) => [...prev, errorMessage])
     }
   }
 
@@ -240,7 +293,9 @@ Type your message below to get started!`,
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Initializing Agent System...</p>
-          <p className="text-sm text-gray-500 mt-2">Starting Ollama connection and loading models</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Starting Ollama connection and loading models
+          </p>
         </div>
       </div>
     )
@@ -256,9 +311,18 @@ Type your message below to get started!`,
           <div className="text-sm text-gray-600 bg-gray-100 p-3 rounded-lg">
             <p className="font-semibold mb-2">Troubleshooting:</p>
             <ul className="text-left space-y-1">
-              <li>• Ensure Ollama is running: <code className="bg-gray-200 px-1 rounded">ollama serve</code></li>
-              <li>• Check if models are available: <code className="bg-gray-200 px-1 rounded">ollama list</code></li>
-              <li>• Pull required models if missing: <code className="bg-gray-200 px-1 rounded">ollama pull llama3.1:8b</code></li>
+              <li>
+                • Ensure Ollama is running:{' '}
+                <code className="bg-gray-200 px-1 rounded">ollama serve</code>
+              </li>
+              <li>
+                • Check if models are available:{' '}
+                <code className="bg-gray-200 px-1 rounded">ollama list</code>
+              </li>
+              <li>
+                • Pull required models if missing:{' '}
+                <code className="bg-gray-200 px-1 rounded">ollama pull llama3.1:8b</code>
+              </li>
             </ul>
           </div>
           <button
@@ -281,21 +345,23 @@ Type your message below to get started!`,
             <h2 className="text-lg font-semibold text-gray-800">🤖 AI Agent Chat</h2>
             <div className="flex items-center space-x-4">
               <p className="text-sm text-gray-600">
-                Powered by Llama 3.1 8B • {healthStatus?.availableTools || 0} tools available
+                Powered by Llama 3.1 8B • {mcpServers.totalTools} tools available
               </p>
               <div className="flex items-center space-x-2">
-                <span className={`w-2 h-2 rounded-full ${ragConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                <span
+                  className={`w-2 h-2 rounded-full ${mcpServers.connectedServers > 0 ? 'bg-green-500' : 'bg-red-500'}`}
+                ></span>
                 <span className="text-xs text-gray-600">
-                  RAG {ragConnected ? 'Connected' : 'Disconnected'}
-                  {hasSearchTools && ' (Search Ready)'}
+                  MCP Servers: {mcpServers.connectedServers}/{mcpServers.totalServers}
                 </span>
                 <button
-                  onClick={() => setShowRagStatus(!showRagStatus)}
+                  onClick={() => setShowMCPStatus(!showMCPStatus)}
                   className="text-xs text-blue-600 hover:text-blue-800 underline"
                 >
-                  {showRagStatus ? 'Hide Details' : 'Show Details'}
+                  {showMCPStatus ? 'Hide MCP Details' : 'Show MCP Details'}
                 </button>
               </div>
+              {/* RAG status display removed - now part of unified MCP server management */}
             </div>
           </div>
           <button
@@ -305,13 +371,15 @@ Type your message below to get started!`,
             Clear Chat
           </button>
         </div>
-        
-        {/* RAG Server Status Panel */}
-        {showRagStatus && (
+
+        {/* MCP Server Status Panel */}
+        {showMCPStatus && (
           <div className="mt-4">
-            <RagServerStatus />
+            <MCPServerStatus />
           </div>
         )}
+
+        {/* Server status panels removed - now handled by unified MCP server management */}
       </div>
 
       {/* Messages */}
@@ -328,7 +396,27 @@ Type your message below to get started!`,
               </div>
               {currentThinking.toolName && (
                 <div className="text-xs text-gray-500 mt-1">
-                  Using tool: {currentThinking.toolName}
+                  <div className="flex items-center space-x-2">
+                    <span>Using tool:</span>
+                    <span className="font-medium">{currentThinking.toolName}</span>
+                    {/* Try to find server info */}
+                    {(() => {
+                      const tool = mcpServers.servers
+                        .flatMap(server => 
+                          Array(server.toolCount).fill(null).map(() => ({ serverId: server.id, serverName: server.name }))
+                        )
+                        .find(t => t.serverId);
+                      
+                      return tool && (
+                        <>
+                          <span>from</span>
+                          <span className="bg-blue-100 text-blue-800 px-1 py-0.5 rounded text-xs">
+                            MCP Server
+                          </span>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
             </div>
@@ -341,23 +429,44 @@ Type your message below to get started!`,
           >
             <div
               className={`max-w-[70%] rounded-lg p-3 ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-800'
+                message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
               }`}
             >
               <div className="whitespace-pre-wrap">{message.content}</div>
-              
+
               {/* Tool usage info */}
               {message.toolsUsed && message.toolsUsed.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-gray-300 text-xs">
-                  <p className="font-semibold mb-1">Tools used:</p>
-                  {message.toolsUsed.map((tool, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>{tool.toolName}</span>
-                      <span>{tool.executionTime}ms</span>
-                    </div>
-                  ))}
+                  <p className="font-semibold mb-1">🔧 Tools used:</p>
+                  {message.toolsUsed.map((tool, idx) => {
+                    // Find server name from MCP servers data
+                    const server = mcpServers.servers.find(s => s.id === tool.serverId)
+                    const serverName = server ? server.name : tool.serverId
+                    
+                    return (
+                      <div key={idx} className="bg-gray-50 p-2 rounded mb-1">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium">{tool.toolName}</span>
+                            <span className="text-gray-500">from</span>
+                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
+                              {serverName}
+                            </span>
+                          </div>
+                          <span className="text-gray-500">{tool.executionTime}ms</span>
+                        </div>
+                        {/* Show server connection status */}
+                        {server && (
+                          <div className="flex items-center space-x-1 mt-1">
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              server.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
+                            }`}></span>
+                            <span className="text-gray-400 text-xs">{server.status}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -371,13 +480,15 @@ Type your message below to get started!`,
                 </div>
               )}
 
-              <div className={`text-xs mt-1 ${message.role === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
+              <div
+                className={`text-xs mt-1 ${message.role === 'user' ? 'text-blue-200' : 'text-gray-500'}`}
+              >
                 {formatTimestamp(message.timestamp)}
               </div>
             </div>
           </div>
         ))}
-        
+
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-lg p-3">
@@ -388,7 +499,7 @@ Type your message below to get started!`,
             </div>
           </div>
         )}
-        
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -399,7 +510,7 @@ Type your message below to get started!`,
             ⚠️ {error}
           </div>
         )}
-        
+
         <div className="flex space-x-2">
           <textarea
             value={inputValue}
@@ -423,7 +534,7 @@ Type your message below to get started!`,
             Send
           </button>
         </div>
-        
+
         <div className="mt-2 text-xs text-gray-500">
           Tip: Ask me to search documents, analyze data, or help with various tasks!
         </div>

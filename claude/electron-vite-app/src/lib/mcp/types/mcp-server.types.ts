@@ -1,6 +1,6 @@
 /**
  * Core MCP Client Host Type Definitions
- * 
+ *
  * This file contains all the shared types and interfaces for the generic MCP Client Host
  */
 
@@ -13,7 +13,7 @@ export enum ServerStatus {
   CONNECTING = 'connecting',
   CONNECTED = 'connected',
   ERROR = 'error',
-  RECONNECTING = 'reconnecting'
+  RECONNECTING = 'reconnecting',
 }
 
 // Server configuration interface
@@ -22,24 +22,26 @@ export interface ServerConfig {
   name: string
   description?: string
   transport: TransportType
-  command?: string  // For stdio transport
-  args?: string[]   // For stdio transport
-  url?: string      // For HTTP/SSE transport
-  cwd?: string      // Working directory for stdio
-  env?: Record<string, string>  // Environment variables
+  command?: string // For stdio transport
+  args?: string[] // For stdio transport
+  url?: string // For HTTP/SSE transport
+  cwd?: string // Working directory for stdio
+  env?: Record<string, string> // Environment variables
+  headers?: Record<string, string> // HTTP headers for HTTP/SSE transport
+  timeout?: number // Connection timeout in milliseconds
   autoReconnect?: boolean
   reconnectDelay?: number // milliseconds
   maxReconnectAttempts?: number
   enabled: boolean
-  tags?: string[]   // For categorization
+  tags?: string[] // For categorization
 }
 
 // Connection state information
 export interface ServerConnection {
   config: ServerConfig
   status: ServerStatus
-  client?: any  // MCP Client instance
-  transport?: any  // Transport instance
+  client?: any // MCP Client instance
+  transport?: any // Transport instance
   connectedAt?: Date
   lastError?: string
   reconnectAttempts: number
@@ -81,7 +83,7 @@ export interface MCPResource {
   serverName: string
 }
 
-// MCP Prompt interface  
+// MCP Prompt interface
 export interface MCPPrompt {
   name: string
   description: string
@@ -138,11 +140,11 @@ export interface ClientHostConfig {
 // Events emitted by the Client Host
 export interface ClientHostEvents {
   'server-connected': { serverId: string }
-  'server-disconnected': { serverId: string, reason?: string }
-  'server-error': { serverId: string, error: string }
-  'tool-discovered': { serverId: string, tool: MCPTool }
+  'server-disconnected': { serverId: string; reason?: string }
+  'server-error': { serverId: string; error: string }
+  'tool-discovered': { serverId: string; tool: MCPTool }
   'tool-executed': { execution: ExecutionHistoryEntry }
-  'tools-updated': { serverId: string, tools: MCPTool[] }
+  'tools-updated': { serverId: string; tools: MCPTool[] }
 }
 
 // Tool filter and search criteria
@@ -174,36 +176,36 @@ export interface UIState {
 export const IPC_CHANNELS = {
   // Server management
   ADD_SERVER: 'client-host:add-server',
-  REMOVE_SERVER: 'client-host:remove-server', 
+  REMOVE_SERVER: 'client-host:remove-server',
   UPDATE_SERVER: 'client-host:update-server',
   LIST_SERVERS: 'client-host:list-servers',
   CONNECT_SERVER: 'client-host:connect-server',
   DISCONNECT_SERVER: 'client-host:disconnect-server',
-  
+
   // Tool discovery and management
   LIST_TOOLS: 'client-host:list-tools',
   SEARCH_TOOLS: 'client-host:search-tools',
   GET_TOOL_DETAILS: 'client-host:get-tool-details',
-  
+
   // Tool execution
   EXECUTE_TOOL: 'client-host:execute-tool',
   GET_EXECUTION_HISTORY: 'client-host:get-execution-history',
   CLEAR_HISTORY: 'client-host:clear-history',
-  
+
   // Resources and prompts
   LIST_RESOURCES: 'client-host:list-resources',
   READ_RESOURCE: 'client-host:read-resource',
   LIST_PROMPTS: 'client-host:list-prompts',
   GET_PROMPT: 'client-host:get-prompt',
-  
+
   // Settings and configuration
   GET_CONFIG: 'client-host:get-config',
   UPDATE_CONFIG: 'client-host:update-config',
-  
+
   // Status and monitoring
   GET_STATUS: 'client-host:get-status',
   SUBSCRIBE_EVENTS: 'client-host:subscribe-events',
-  UNSUBSCRIBE_EVENTS: 'client-host:unsubscribe-events'
+  UNSUBSCRIBE_EVENTS: 'client-host:unsubscribe-events',
 } as const
 
 // Type for IPC response wrapper

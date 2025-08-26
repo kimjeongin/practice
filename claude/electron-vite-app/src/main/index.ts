@@ -2,9 +2,16 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { startClientHostService, stopClientHostService } from '../lib/mcp/services/mcp-client-host.service'
-import { registerClientHostHandlers, unregisterClientHostHandlers } from '../lib/mcp/ipc/mcp-client-host.handlers'
+import {
+  startClientHostService,
+  stopClientHostService,
+} from '../lib/mcp/services/mcp-client-host.service'
+import {
+  registerClientHostHandlers,
+  unregisterClientHostHandlers,
+} from '../lib/mcp/ipc/mcp-client-host.handlers'
 import { DatabaseSetup } from '../lib/database/database-setup'
+import { performStartupMigration } from '../lib/mcp/services/mcp-migration.service'
 // Import agent IPC handlers (this will automatically register them)
 import '../lib/agent/ipc/agent-ipc.handlers'
 
@@ -19,8 +26,8 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
+      sandbox: false,
+    },
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -44,12 +51,12 @@ function createWindow(): void {
     console.log(`📄 Loading HTML file: ${htmlPath}`)
     mainWindow.loadFile(htmlPath)
   }
-  
+
   // Add error handling for loading failures
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('❌ Failed to load renderer:', errorCode, errorDescription)
   })
-  
+
   // Log when page finishes loading
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('✅ Renderer finished loading')
@@ -60,22 +67,25 @@ function createWindow(): void {
 async function initializeServices(): Promise<void> {
   try {
     console.log('🚀 Initializing application services...')
-    
+
+    // 0. Perform configuration migration if needed
+    console.log('🔄 Checking for configuration migration...')
+    await performStartupMigration()
+
     // 1. Initialize database first
     console.log('🗄️ Setting up database...')
     await DatabaseSetup.initialize()
-    
+
     // 2. Register IPC handlers
     registerClientHostHandlers()
-    
+
     // 3. Start MCP client host service
     await startClientHostService()
-    
-    
+
     console.log('✅ All services initialized successfully')
   } catch (error) {
     console.error('❌ Failed to initialize services:', error)
-    
+
     // Show error dialog to user
     dialog.showErrorBox(
       'Service Initialization Error',
@@ -117,40 +127,44 @@ app.whenReady().then(async () => {
 async function cleanupServices(): Promise<void> {
   try {
     console.log('🧹 Starting comprehensive service cleanup...')
-    
+
     // Show cleanup progress to user
     const cleanupNotification = new Promise<void>((resolve) => {
       // Create a simple notification window or use existing main window
       const windows = BrowserWindow.getAllWindows()
       if (windows.length > 0) {
-        windows[0].webContents.executeJavaScript(`
+        windows[0].webContents
+          .executeJavaScript(
+            `
           console.log('Application services are shutting down...')
-        `).catch(() => {})
+        `
+          )
+          .catch(() => {})
       }
-      
+
       // Add a small delay to show the message
       setTimeout(resolve, 500)
     })
-    
+
     await cleanupNotification
-    
+
     // Step 1: Unregister IPC handlers first to prevent new requests
     console.log('🔌 Unregistering IPC handlers...')
     unregisterClientHostHandlers()
-    
+
     // Step 2: Stop Client Host service (this will disconnect all MCP servers)
     console.log('🛑 Stopping MCP Client Host service...')
     await stopClientHostService()
-    
+
     // Step 3: Close database connections
     console.log('🗄️ Closing database connections...')
     await DatabaseSetup.close()
-    
+
     // Step 4: Force cleanup any remaining processes
     console.log('🧹 Performing final cleanup...')
     // Give a moment for all connections to properly close
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
     console.log('✅ All services have been successfully terminated')
   } catch (error) {
     console.warn('⚠️ Warning during service cleanup:', error)
@@ -173,16 +187,16 @@ app.on('window-all-closed', async () => {
 app.on('before-quit', async (event) => {
   // Prevent default quit to allow proper cleanup
   event.preventDefault()
-  
+
   console.log('🚀 Application shutdown initiated - cleaning up MCP services...')
-  
+
   try {
     // Perform comprehensive cleanup
     await cleanupServices()
-    
+
     // Additional safety measures
     const windows = BrowserWindow.getAllWindows()
-    windows.forEach(window => {
+    windows.forEach((window) => {
       try {
         if (!window.isDestroyed()) {
           window.destroy()
@@ -191,7 +205,7 @@ app.on('before-quit', async (event) => {
         console.warn('Warning closing window:', error)
       }
     })
-    
+
     console.log('✅ Shutdown sequence completed successfully')
   } catch (error) {
     console.warn('⚠️ Warning during shutdown cleanup:', error)

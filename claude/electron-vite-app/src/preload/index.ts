@@ -1,13 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { 
-  ServerConfig, 
-  ServerConnection, 
-  MCPTool, 
-  ToolFilter, 
+import {
+  ServerConfig,
+  ServerConnection,
+  MCPTool,
+  ToolFilter,
   ExecutionResult,
   ExecutionHistoryEntry,
-  IPCResponse
+  IPCResponse,
 } from '@shared/types/mcp.types'
 import { MCP_IPC_CHANNELS, AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 
@@ -24,7 +24,10 @@ const clientHostAPI = {
     return ipcRenderer.invoke(MCP_IPC_CHANNELS.REMOVE_SERVER, serverId)
   },
 
-  updateServer: async (serverId: string, updates: Partial<ServerConfig>): Promise<IPCResponse<any>> => {
+  updateServer: async (
+    serverId: string,
+    updates: Partial<ServerConfig>
+  ): Promise<IPCResponse<any>> => {
     return ipcRenderer.invoke(MCP_IPC_CHANNELS.UPDATE_SERVER, serverId, updates)
   },
 
@@ -32,11 +35,15 @@ const clientHostAPI = {
     return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_SERVERS)
   },
 
-  connectServer: async (serverId: string): Promise<IPCResponse<{ serverId: string, connected: boolean }>> => {
+  connectServer: async (
+    serverId: string
+  ): Promise<IPCResponse<{ serverId: string; connected: boolean }>> => {
     return ipcRenderer.invoke(MCP_IPC_CHANNELS.CONNECT_SERVER, serverId)
   },
 
-  disconnectServer: async (serverId: string): Promise<IPCResponse<{ serverId: string, connected: boolean }>> => {
+  disconnectServer: async (
+    serverId: string
+  ): Promise<IPCResponse<{ serverId: string; connected: boolean }>> => {
     return ipcRenderer.invoke(MCP_IPC_CHANNELS.DISCONNECT_SERVER, serverId)
   },
 
@@ -59,8 +66,8 @@ const clientHostAPI = {
   // Tool Execution
   // ============================
   executeTool: async (
-    serverId: string, 
-    toolName: string, 
+    serverId: string,
+    toolName: string,
     parameters: Record<string, any>,
     userId?: string
   ): Promise<IPCResponse<ExecutionResult>> => {
@@ -90,7 +97,11 @@ const clientHostAPI = {
     return ipcRenderer.invoke('mcp:list-prompts', serverId)
   },
 
-  getPrompt: async (serverId: string, name: string, args?: Record<string, any>): Promise<IPCResponse<any>> => {
+  getPrompt: async (
+    serverId: string,
+    name: string,
+    args?: Record<string, any>
+  ): Promise<IPCResponse<any>> => {
     return ipcRenderer.invoke('mcp:get-prompt', serverId, name, args)
   },
 
@@ -151,12 +162,30 @@ const clientHostAPI = {
     return ipcRenderer.invoke('client-host:get-favorites')
   },
 
-  getMostUsedTools: async (limit = 10): Promise<IPCResponse<Array<{ tool: MCPTool, count: number }>>> => {
+  getMostUsedTools: async (
+    limit = 10
+  ): Promise<IPCResponse<Array<{ tool: MCPTool; count: number }>>> => {
     return ipcRenderer.invoke('client-host:get-most-used-tools', limit)
   },
 
-  addRagServer: async (): Promise<IPCResponse<ServerConfig>> => {
-    return ipcRenderer.invoke('client-host:add-rag-server')
+  getServerConfig: async (): Promise<IPCResponse<any>> => {
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_SERVER_CONFIG)
+  },
+
+  updateServerConfig: async (config: any): Promise<IPCResponse<{ success: boolean }>> => {
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.UPDATE_SERVER_CONFIG, config)
+  },
+
+  reloadConfig: async (): Promise<IPCResponse<{ success: boolean }>> => {
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.RELOAD_CONFIG)
+  },
+
+  exportConfig: async (): Promise<IPCResponse<{ data: string }>> => {
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.EXPORT_CONFIG)
+  },
+
+  importConfig: async (configJson: string): Promise<IPCResponse<{ success: boolean }>> => {
+    return ipcRenderer.invoke(MCP_IPC_CHANNELS.IMPORT_CONFIG, configJson)
   },
 
   exportData: async (): Promise<IPCResponse<{ data: string }>> => {
@@ -165,7 +194,7 @@ const clientHostAPI = {
 
   importData: async (jsonData: string): Promise<IPCResponse<{ imported: boolean }>> => {
     return ipcRenderer.invoke('client-host:import-data', jsonData)
-  }
+  },
 }
 
 // Agent API implementation
@@ -209,16 +238,21 @@ const agentAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.HEALTH_CHECK)
   },
 
+  // Get MCP server connections status
+  getMCPServers: async (): Promise<any> => {
+    return ipcRenderer.invoke('agent:get-mcp-servers')
+  },
+
   // Cleanup
   cleanup: async (): Promise<any> => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CLEANUP)
-  }
+  },
 }
 
 // Custom APIs for renderer
 const api = {
   clientHost: clientHostAPI,
-  agent: agentAPI
+  agent: agentAPI,
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

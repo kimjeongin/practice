@@ -5,7 +5,7 @@
 
 import type { ServerStatus, ServerConfig as BaseServerConfig } from './common.types'
 
-// Re-export common types  
+// Re-export common types
 export type { TransportType, ServerStatus, IPCResponse } from './common.types'
 export type ServerConfig = BaseServerConfig
 
@@ -42,7 +42,7 @@ export interface MCPResource {
   serverName: string
 }
 
-// MCP Prompt interface  
+// MCP Prompt interface
 export interface MCPPrompt {
   name: string
   description: string

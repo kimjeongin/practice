@@ -1,11 +1,11 @@
 import { EventEmitter } from 'events'
 import { ConnectionManager } from './mcp-connection-manager.service'
-import { 
-  MCPTool, 
-  ToolFilter, 
+import {
+  MCPTool,
+  ToolFilter,
   ExecutionContext,
   ExecutionResult,
-  ExecutionHistoryEntry
+  ExecutionHistoryEntry,
 } from '../types/mcp-server.types'
 
 export class ToolDiscoveryService extends EventEmitter {
@@ -58,40 +58,37 @@ export class ToolDiscoveryService extends EventEmitter {
 
     // Filter by server IDs
     if (filter.serverIds && filter.serverIds.length > 0) {
-      tools = tools.filter(tool => filter.serverIds!.includes(tool.serverId))
+      tools = tools.filter((tool) => filter.serverIds!.includes(tool.serverId))
     }
 
     // Filter by search term
     if (filter.search) {
       const searchTerm = filter.search.toLowerCase()
-      tools = tools.filter(tool => 
-        tool.name.toLowerCase().includes(searchTerm) ||
-        tool.description.toLowerCase().includes(searchTerm) ||
-        tool.serverName.toLowerCase().includes(searchTerm) ||
-        tool.category?.toLowerCase().includes(searchTerm) ||
-        tool.tags?.some(tag => tag.toLowerCase().includes(searchTerm))
+      tools = tools.filter(
+        (tool) =>
+          tool.name.toLowerCase().includes(searchTerm) ||
+          tool.description.toLowerCase().includes(searchTerm) ||
+          tool.serverName.toLowerCase().includes(searchTerm) ||
+          tool.category?.toLowerCase().includes(searchTerm) ||
+          tool.tags?.some((tag) => tag.toLowerCase().includes(searchTerm))
       )
     }
 
     // Filter by categories
     if (filter.categories && filter.categories.length > 0) {
-      tools = tools.filter(tool => 
-        tool.category && filter.categories!.includes(tool.category)
-      )
+      tools = tools.filter((tool) => tool.category && filter.categories!.includes(tool.category))
     }
 
     // Filter by tags
     if (filter.tags && filter.tags.length > 0) {
-      tools = tools.filter(tool =>
-        tool.tags && tool.tags.some(tag => filter.tags!.includes(tag))
+      tools = tools.filter(
+        (tool) => tool.tags && tool.tags.some((tag) => filter.tags!.includes(tag))
       )
     }
 
     // Filter by has examples
     if (filter.hasExamples) {
-      tools = tools.filter(tool => 
-        tool.examples && tool.examples.length > 0
-      )
+      tools = tools.filter((tool) => tool.examples && tool.examples.length > 0)
     }
 
     return tools
@@ -109,7 +106,7 @@ export class ToolDiscoveryService extends EventEmitter {
    */
   getTool(serverId: string, toolName: string): MCPTool | undefined {
     const serverTools = this.toolCache.get(serverId)
-    return serverTools?.find(tool => tool.name === toolName)
+    return serverTools?.find((tool) => tool.name === toolName)
   }
 
   /**
@@ -135,7 +132,7 @@ export class ToolDiscoveryService extends EventEmitter {
     for (const tools of this.toolCache.values()) {
       for (const tool of tools) {
         if (tool.tags) {
-          tool.tags.forEach(tag => tags.add(tag))
+          tool.tags.forEach((tag) => tags.add(tag))
         }
       }
     }
@@ -146,34 +143,34 @@ export class ToolDiscoveryService extends EventEmitter {
    * Execute a tool and record the execution
    */
   async executeTool(
-    serverId: string, 
-    toolName: string, 
+    serverId: string,
+    toolName: string,
     parameters: Record<string, any>,
     userId?: string
   ): Promise<ExecutionResult> {
     const startTime = Date.now()
     const requestId = this.generateRequestId()
-    
+
     const context: ExecutionContext = {
       toolName,
       serverId,
       parameters,
       requestId,
       timestamp: new Date(),
-      userId
+      userId,
     }
 
     try {
       // Execute the tool via connection manager
       const result = await this.connectionManager.executeTool(serverId, toolName, parameters)
-      
+
       const executionTime = Date.now() - startTime
       const executionResult: ExecutionResult = {
         requestId,
         success: true,
         result,
         executionTime,
-        timestamp: new Date()
+        timestamp: new Date(),
       }
 
       // Record in history
@@ -181,11 +178,11 @@ export class ToolDiscoveryService extends EventEmitter {
         id: requestId,
         context,
         result: executionResult,
-        favorite: this.isFavorite(serverId, toolName)
+        favorite: this.isFavorite(serverId, toolName),
       }
 
       this.executionHistory.unshift(historyEntry) // Add to beginning
-      
+
       // Keep only last 1000 executions
       if (this.executionHistory.length > 1000) {
         this.executionHistory = this.executionHistory.slice(0, 1000)
@@ -193,7 +190,6 @@ export class ToolDiscoveryService extends EventEmitter {
 
       this.emit('tool-executed', { execution: historyEntry })
       return executionResult
-
     } catch (error) {
       const executionTime = Date.now() - startTime
       const executionResult: ExecutionResult = {
@@ -201,7 +197,7 @@ export class ToolDiscoveryService extends EventEmitter {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         executionTime,
-        timestamp: new Date()
+        timestamp: new Date(),
       }
 
       // Record failed execution in history
@@ -209,11 +205,11 @@ export class ToolDiscoveryService extends EventEmitter {
         id: requestId,
         context,
         result: executionResult,
-        favorite: this.isFavorite(serverId, toolName)
+        favorite: this.isFavorite(serverId, toolName),
       }
 
       this.executionHistory.unshift(historyEntry)
-      
+
       if (this.executionHistory.length > 1000) {
         this.executionHistory = this.executionHistory.slice(0, 1000)
       }
@@ -245,9 +241,8 @@ export class ToolDiscoveryService extends EventEmitter {
    * Get execution history for a specific tool
    */
   getToolExecutionHistory(serverId: string, toolName: string): ExecutionHistoryEntry[] {
-    return this.executionHistory.filter(entry => 
-      entry.context.serverId === serverId && 
-      entry.context.toolName === toolName
+    return this.executionHistory.filter(
+      (entry) => entry.context.serverId === serverId && entry.context.toolName === toolName
     )
   }
 
@@ -282,7 +277,7 @@ export class ToolDiscoveryService extends EventEmitter {
    */
   getFavoriteTools(): MCPTool[] {
     const favoriteTools: MCPTool[] = []
-    
+
     for (const favoriteKey of this.favorites) {
       const [serverId, toolName] = favoriteKey.split(':')
       const tool = this.getTool(serverId, toolName)
@@ -290,7 +285,7 @@ export class ToolDiscoveryService extends EventEmitter {
         favoriteTools.push(tool)
       }
     }
-    
+
     return favoriteTools
   }
 
@@ -299,26 +294,26 @@ export class ToolDiscoveryService extends EventEmitter {
    */
   getToolStats(serverId?: string): { [key: string]: number } {
     const stats: { [key: string]: number } = {}
-    
+
     for (const entry of this.executionHistory) {
       if (serverId && entry.context.serverId !== serverId) {
         continue
       }
-      
+
       const key = `${entry.context.serverId}:${entry.context.toolName}`
       stats[key] = (stats[key] || 0) + 1
     }
-    
+
     return stats
   }
 
   /**
    * Get most used tools
    */
-  getMostUsedTools(limit = 10): Array<{ tool: MCPTool, count: number }> {
+  getMostUsedTools(limit = 10): Array<{ tool: MCPTool; count: number }> {
     const stats = this.getToolStats()
-    const toolCounts: Array<{ tool: MCPTool, count: number }> = []
-    
+    const toolCounts: Array<{ tool: MCPTool; count: number }> = []
+
     for (const [key, count] of Object.entries(stats)) {
       const [serverId, toolName] = key.split(':')
       const tool = this.getTool(serverId, toolName)
@@ -326,10 +321,8 @@ export class ToolDiscoveryService extends EventEmitter {
         toolCounts.push({ tool, count })
       }
     }
-    
-    return toolCounts
-      .sort((a, b) => b.count - a.count)
-      .slice(0, limit)
+
+    return toolCounts.sort((a, b) => b.count - a.count).slice(0, limit)
   }
 
   /**
@@ -353,7 +346,10 @@ export class ToolDiscoveryService extends EventEmitter {
   /**
    * Get detailed tool information including execution history
    */
-  getToolDetails(serverId: string, toolName: string): {
+  getToolDetails(
+    serverId: string,
+    toolName: string
+  ): {
     tool: MCPTool | undefined
     isFavorite: boolean
     executionCount: number
@@ -362,13 +358,13 @@ export class ToolDiscoveryService extends EventEmitter {
   } {
     const tool = this.getTool(serverId, toolName)
     const history = this.getToolExecutionHistory(serverId, toolName)
-    
+
     return {
       tool,
       isFavorite: this.isFavorite(serverId, toolName),
       executionCount: history.length,
       lastExecuted: history.length > 0 ? history[0].context.timestamp : undefined,
-      recentExecutions: history.slice(0, 5) // Last 5 executions
+      recentExecutions: history.slice(0, 5), // Last 5 executions
     }
   }
 
@@ -376,11 +372,15 @@ export class ToolDiscoveryService extends EventEmitter {
    * Export execution history to JSON
    */
   exportExecutionHistory(): string {
-    return JSON.stringify({
-      exportedAt: new Date().toISOString(),
-      totalExecutions: this.executionHistory.length,
-      executions: this.executionHistory
-    }, null, 2)
+    return JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        totalExecutions: this.executionHistory.length,
+        executions: this.executionHistory,
+      },
+      null,
+      2
+    )
   }
 
   /**

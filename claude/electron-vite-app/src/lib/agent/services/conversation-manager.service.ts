@@ -14,7 +14,7 @@ export class ConversationManager extends EventEmitter {
   constructor() {
     super()
     this.setMaxListeners(100)
-    
+
     // Use centralized database setup
     this.prisma = DatabaseSetup.getPrismaClient()
   }
@@ -27,17 +27,16 @@ export class ConversationManager extends EventEmitter {
 
     try {
       console.log('🗄️ Initializing Conversation Manager...')
-      
+
       // Database setup is handled by DatabaseSetup utility
       // Just test that connection works
       const isConnected = await DatabaseSetup.testConnection()
       if (!isConnected) {
         throw new Error('Database connection failed')
       }
-      
+
       this.initialized = true
       console.log('✅ Conversation Manager initialized successfully')
-      
     } catch (error) {
       console.error('❌ Failed to initialize Conversation Manager:', error)
       throw error
@@ -51,25 +50,26 @@ export class ConversationManager extends EventEmitter {
     try {
       const conversation = await this.prisma.conversation.create({
         data: {
-          title: title || `Conversation ${new Date().toLocaleString()}`
-        }
+          title: title || `Conversation ${new Date().toLocaleString()}`,
+        },
       })
 
       const context: AgentContext = {
         conversationId: conversation.id,
         messages: [],
-        availableTools: [],
         maxIterations: 10,
-        currentIteration: 0
+        currentIteration: 0,
       }
 
       this.activeConversations.set(conversation.id, context)
-      
-      this.emit('conversation-created', { conversationId: conversation.id, title: conversation.title })
-      
+
+      this.emit('conversation-created', {
+        conversationId: conversation.id,
+        title: conversation.title,
+      })
+
       console.log(`📝 Created new conversation: ${conversation.id}`)
       return conversation.id
-      
     } catch (error) {
       console.error('Failed to create conversation:', error)
       throw error
@@ -92,11 +92,11 @@ export class ConversationManager extends EventEmitter {
         include: {
           messages: {
             include: {
-              tool_calls: true
+              tool_calls: true,
             },
-            orderBy: { created_at: 'asc' }
-          }
-        }
+            orderBy: { created_at: 'asc' },
+          },
+        },
       })
 
       if (!conversation) {
@@ -104,11 +104,13 @@ export class ConversationManager extends EventEmitter {
       }
 
       // Convert database messages to AgentMessage format
-      const messages: AgentMessage[] = conversation.messages.map(dbMessage => {
+      const messages: AgentMessage[] = conversation.messages.map((dbMessage) => {
         const agentMessage: AgentMessage = {
-          role: dbMessage.role as 'user' | 'assistant' | 'system' | 'tool',
+          id: dbMessage.id,
+          role: dbMessage.role as 'user' | 'assistant' | 'system',
           content: dbMessage.content,
-          timestamp: dbMessage.created_at
+          timestamp: dbMessage.created_at,
+          conversationId: conversationId,
         }
 
         // Add tool call information if present
@@ -117,15 +119,15 @@ export class ConversationManager extends EventEmitter {
           agentMessage.toolCall = {
             toolName: toolCall.tool_name,
             parameters: toolCall.parameters as Record<string, any>,
-            serverId: toolCall.server_id
+            serverId: toolCall.server_id,
           }
-          
+
           if (toolCall.result) {
             agentMessage.toolResult = {
               success: toolCall.status === 'success',
               result: toolCall.result,
               error: toolCall.error_message || undefined,
-              executionTime: toolCall.execution_time || undefined
+              executionTime: toolCall.execution_time || undefined,
             }
           }
         }
@@ -136,14 +138,12 @@ export class ConversationManager extends EventEmitter {
       const context: AgentContext = {
         conversationId,
         messages,
-        availableTools: [], // Will be populated by agent orchestrator
         maxIterations: 10,
-        currentIteration: 0
+        currentIteration: 0,
       }
 
       this.activeConversations.set(conversationId, context)
       return context
-
     } catch (error) {
       console.error(`Failed to get conversation ${conversationId}:`, error)
       throw error
@@ -154,13 +154,13 @@ export class ConversationManager extends EventEmitter {
    * Add message to conversation
    */
   async addMessage(
-    conversationId: string, 
+    conversationId: string,
     message: Omit<AgentMessage, 'timestamp'>
   ): Promise<void> {
     try {
       const agentMessage: AgentMessage = {
         ...message,
-        timestamp: new Date()
+        timestamp: new Date(),
       }
 
       // Update in-memory context
@@ -175,11 +175,14 @@ export class ConversationManager extends EventEmitter {
           conversation_id: conversationId,
           role: message.role,
           content: message.content,
-          metadata: message.toolCall || message.toolResult ? {
-            toolCall: message.toolCall,
-            toolResult: message.toolResult
-          } : undefined
-        }
+          metadata:
+            message.toolCall || message.toolResult
+              ? {
+                  toolCall: message.toolCall,
+                  toolResult: message.toolResult,
+                }
+              : undefined,
+        },
       })
 
       // Save tool call if present
@@ -193,15 +196,18 @@ export class ConversationManager extends EventEmitter {
             parameters: message.toolCall.parameters,
             result: message.toolResult?.result || null,
             execution_time: message.toolResult?.executionTime || null,
-            status: message.toolResult?.success === false ? 'error' : 
-                   message.toolResult ? 'success' : 'pending',
-            error_message: message.toolResult?.error || null
-          }
+            status:
+              message.toolResult?.success === false
+                ? 'error'
+                : message.toolResult
+                  ? 'success'
+                  : 'pending',
+            error_message: message.toolResult?.error || null,
+          },
         })
       }
 
       this.emit('message-added', { conversationId, message: agentMessage })
-      
     } catch (error) {
       console.error('Failed to add message:', error)
       throw error
@@ -226,8 +232,8 @@ export class ConversationManager extends EventEmitter {
           result,
           execution_time: executionTime,
           status: success ? 'success' : 'error',
-          error_message: error
-        }
+          error_message: error,
+        },
       })
 
       // Update in-memory context
@@ -239,13 +245,12 @@ export class ConversationManager extends EventEmitter {
             success,
             result,
             error,
-            executionTime
+            executionTime,
           }
         }
       }
 
       this.emit('tool-call-updated', { conversationId, toolCallId, success })
-
     } catch (error) {
       console.error('Failed to update tool call result:', error)
       throw error
@@ -264,14 +269,16 @@ export class ConversationManager extends EventEmitter {
     if (limit) {
       return context.messages.slice(-limit)
     }
-    
+
     return context.messages
   }
 
   /**
    * Get all conversations
    */
-  async getAllConversations(): Promise<Array<{ id: string; title: string; created_at: Date; updated_at: Date }>> {
+  async getAllConversations(): Promise<
+    Array<{ id: string; title: string; created_at: Date; updated_at: Date }>
+  > {
     try {
       const conversations = await this.prisma.conversation.findMany({
         orderBy: { updated_at: 'desc' },
@@ -279,13 +286,13 @@ export class ConversationManager extends EventEmitter {
           id: true,
           title: true,
           created_at: true,
-          updated_at: true
-        }
+          updated_at: true,
+        },
       })
 
-      return conversations.map(conv => ({
+      return conversations.map((conv) => ({
         ...conv,
-        title: conv.title || 'Untitled'
+        title: conv.title || 'Untitled',
       }))
     } catch (error) {
       console.error('Failed to get all conversations:', error)
@@ -300,11 +307,10 @@ export class ConversationManager extends EventEmitter {
     try {
       await this.prisma.conversation.update({
         where: { id: conversationId },
-        data: { title }
+        data: { title },
       })
 
       this.emit('conversation-updated', { conversationId, title })
-      
     } catch (error) {
       console.error('Failed to update conversation title:', error)
       throw error
@@ -321,12 +327,11 @@ export class ConversationManager extends EventEmitter {
 
       // Delete from database (cascade will handle related records)
       await this.prisma.conversation.delete({
-        where: { id: conversationId }
+        where: { id: conversationId },
       })
 
       this.emit('conversation-deleted', { conversationId })
       console.log(`🗑️ Deleted conversation: ${conversationId}`)
-      
     } catch (error) {
       console.error('Failed to delete conversation:', error)
       throw error
@@ -339,7 +344,7 @@ export class ConversationManager extends EventEmitter {
   async clearConversationMessages(conversationId: string): Promise<void> {
     try {
       await this.prisma.message.deleteMany({
-        where: { conversation_id: conversationId }
+        where: { conversation_id: conversationId },
       })
 
       // Update in-memory context
@@ -350,7 +355,6 @@ export class ConversationManager extends EventEmitter {
       }
 
       this.emit('conversation-cleared', { conversationId })
-      
     } catch (error) {
       console.error('Failed to clear conversation messages:', error)
       throw error
@@ -373,34 +377,35 @@ export class ConversationManager extends EventEmitter {
         include: {
           messages: {
             include: {
-              tool_calls: true
-            }
-          }
-        }
+              tool_calls: true,
+            },
+          },
+        },
       })
 
       if (!stats) {
         throw new Error(`Conversation ${conversationId} not found`)
       }
 
-      const allToolCalls = stats.messages.flatMap(m => m.tool_calls)
-      const successfulCalls = allToolCalls.filter(tc => tc.status === 'success')
-      const errorCalls = allToolCalls.filter(tc => tc.status === 'error')
-      
+      const allToolCalls = stats.messages.flatMap((m) => m.tool_calls)
+      const successfulCalls = allToolCalls.filter((tc) => tc.status === 'success')
+      const errorCalls = allToolCalls.filter((tc) => tc.status === 'error')
+
       const executionTimes = allToolCalls
-        .filter(tc => tc.execution_time !== null)
-        .map(tc => tc.execution_time!)
-      
-      const avgExecutionTime = executionTimes.length > 0 
-        ? executionTimes.reduce((sum, time) => sum + time, 0) / executionTimes.length
-        : 0
+        .filter((tc) => tc.execution_time !== null)
+        .map((tc) => tc.execution_time!)
+
+      const avgExecutionTime =
+        executionTimes.length > 0
+          ? executionTimes.reduce((sum, time) => sum + time, 0) / executionTimes.length
+          : 0
 
       return {
         messageCount: stats.messages.length,
         toolCallCount: allToolCalls.length,
         avgExecutionTime,
         successfulToolCalls: successfulCalls.length,
-        errorToolCalls: errorCalls.length
+        errorToolCalls: errorCalls.length,
       }
     } catch (error) {
       console.error('Failed to get conversation stats:', error)
@@ -411,12 +416,14 @@ export class ConversationManager extends EventEmitter {
   /**
    * Search conversations
    */
-  async searchConversations(query: string): Promise<Array<{
-    id: string
-    title: string
-    created_at: Date
-    snippet: string
-  }>> {
+  async searchConversations(query: string): Promise<
+    Array<{
+      id: string
+      title: string
+      created_at: Date
+      snippet: string
+    }>
+  > {
     try {
       // Simple text search in conversation titles and message content
       const conversations = await this.prisma.conversation.findMany({
@@ -426,31 +433,30 @@ export class ConversationManager extends EventEmitter {
             {
               messages: {
                 some: {
-                  content: { contains: query }
-                }
-              }
-            }
-          ]
+                  content: { contains: query },
+                },
+              },
+            },
+          ],
         },
         include: {
           messages: {
             where: {
-              content: { contains: query }
+              content: { contains: query },
             },
             take: 1,
-            select: { content: true }
-          }
+            select: { content: true },
+          },
         },
-        orderBy: { updated_at: 'desc' }
+        orderBy: { updated_at: 'desc' },
       })
 
-      return conversations.map(conv => ({
+      return conversations.map((conv) => ({
         id: conv.id,
         title: conv.title || 'Untitled',
         created_at: conv.created_at,
-        snippet: conv.messages[0]?.content.substring(0, 150) + '...' || 'No matching messages'
+        snippet: conv.messages[0]?.content.substring(0, 150) + '...' || 'No matching messages',
       }))
-      
     } catch (error) {
       console.error('Failed to search conversations:', error)
       throw error
@@ -467,30 +473,33 @@ export class ConversationManager extends EventEmitter {
         include: {
           messages: {
             include: {
-              tool_calls: true
+              tool_calls: true,
             },
-            orderBy: { created_at: 'asc' }
-          }
-        }
+            orderBy: { created_at: 'asc' },
+          },
+        },
       })
 
       if (!conversation) {
         throw new Error(`Conversation ${conversationId} not found`)
       }
 
-      return JSON.stringify({
-        id: conversation.id,
-        title: conversation.title,
-        created_at: conversation.created_at,
-        updated_at: conversation.updated_at,
-        messages: conversation.messages.map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          created_at: msg.created_at,
-          tool_calls: msg.tool_calls
-        }))
-      }, null, 2)
-      
+      return JSON.stringify(
+        {
+          id: conversation.id,
+          title: conversation.title,
+          created_at: conversation.created_at,
+          updated_at: conversation.updated_at,
+          messages: conversation.messages.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+            created_at: msg.created_at,
+            tool_calls: msg.tool_calls,
+          })),
+        },
+        null,
+        2
+      )
     } catch (error) {
       console.error('Failed to export conversation:', error)
       throw error
@@ -502,12 +511,12 @@ export class ConversationManager extends EventEmitter {
    */
   async cleanup(): Promise<void> {
     console.log('🧹 Cleaning up Conversation Manager...')
-    
+
     try {
       await this.prisma.$disconnect()
       this.activeConversations.clear()
       this.removeAllListeners()
-      
+
       console.log('✅ Conversation Manager cleanup completed')
     } catch (error) {
       console.error('Error during cleanup:', error)

@@ -10,7 +10,7 @@ const getMCPService = () => ({
   getServerStatus: async () => ({ status: 'disconnected' }),
   forceReindex: async () => ({ success: false, error: 'Not implemented' }),
   getServerInfo: async () => ({ info: 'Mock service' }),
-  testConnection: async () => ({ success: false, error: 'Not implemented' })
+  testConnection: async () => ({ success: false, error: 'Not implemented' }),
 })
 
 // IPC Channel names
@@ -20,7 +20,7 @@ export const MCP_CHANNELS = {
   UPLOAD_DOCUMENT: 'mcp:upload-document',
   GET_SERVER_STATUS: 'mcp:get-server-status',
   FORCE_REINDEX: 'mcp:force-reindex',
-  CHECK_CONNECTION: 'mcp:check-connection'
+  CHECK_CONNECTION: 'mcp:check-connection',
 } as const
 
 // Request/Response types
@@ -59,11 +59,11 @@ async function handleMCPRequest<T>(
 ): Promise<{ success: true; data: T } | { success: false; error: string }> {
   try {
     const service = getMCPService() as any
-    
+
     if (!service.isConnected()) {
       return {
         success: false,
-        error: 'MCP service is not connected. Please wait for the service to start.'
+        error: 'MCP service is not connected. Please wait for the service to start.',
       }
     }
 
@@ -73,36 +73,27 @@ async function handleMCPRequest<T>(
     console.error(`${operation} failed:`, error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
     }
   }
 }
 
 // IPC Handlers
-async function handleSearchDocuments(
-  _event: IpcMainInvokeEvent,
-  request: SearchDocumentsRequest
-) {
+async function handleSearchDocuments(_event: IpcMainInvokeEvent, request: SearchDocumentsRequest) {
   return handleMCPRequest('Search documents', async () => {
     const service = getMCPService() as any
     return await service.searchDocuments(request.query, request.options)
   })
 }
 
-async function handleListFiles(
-  _event: IpcMainInvokeEvent,
-  request: ListFilesRequest
-) {
+async function handleListFiles(_event: IpcMainInvokeEvent, request: ListFilesRequest) {
   return handleMCPRequest('List files', async () => {
     const service = getMCPService() as any
     return await service.listFiles(request.options)
   })
 }
 
-async function handleUploadDocument(
-  _event: IpcMainInvokeEvent,
-  request: UploadDocumentRequest
-) {
+async function handleUploadDocument(_event: IpcMainInvokeEvent, request: UploadDocumentRequest) {
   return handleMCPRequest('Upload document', async () => {
     const service = getMCPService() as any
     return await service.uploadDocument(request.content, request.fileName)
@@ -116,10 +107,7 @@ async function handleGetServerStatus(_event: IpcMainInvokeEvent) {
   })
 }
 
-async function handleForceReindex(
-  _event: IpcMainInvokeEvent,
-  request: ForceReindexRequest
-) {
+async function handleForceReindex(_event: IpcMainInvokeEvent, request: ForceReindexRequest) {
   return handleMCPRequest('Force reindex', async () => {
     const service = getMCPService() as any
     return await service.forceReindex(request.clearCache)
@@ -132,13 +120,13 @@ async function handleCheckConnection(_event: IpcMainInvokeEvent) {
     return {
       success: true,
       data: {
-        connected: service.isConnected()
-      }
+        connected: service.isConnected(),
+      },
     }
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
 }
@@ -189,9 +177,4 @@ export function unregisterMCPHandlers(): void {
 }
 
 // Export types for use in renderer process
-export type {
-  SearchDocumentsRequest,
-  ListFilesRequest,
-  UploadDocumentRequest,
-  ForceReindexRequest
-}
+export type { SearchDocumentsRequest, ListFilesRequest, UploadDocumentRequest, ForceReindexRequest }

@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { getAgentOrchestrator, initializeAgentSystem, cleanupAgentSystem } from '../index'
+import { getLangGraphAgent, initializeAgentSystem, cleanupAgentSystem } from '../index'
 import { AgentConfig } from '../types/agent.types'
 import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 
@@ -11,63 +11,66 @@ import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 ipcMain.handle(AGENT_IPC_CHANNELS.INITIALIZE, async (_event, config?: Partial<AgentConfig>) => {
   try {
     const system = await initializeAgentSystem({
-      agent: config
+      agent: config,
     })
     return {
       success: true,
       data: {
         initialized: true,
-        availableTools: system.orchestrator.getAvailableTools().length
-      }
+        availableTools: system.agent.getAvailableTools().length,
+      },
     }
   } catch (error) {
-    console.error('Agent initialization failed:', error)
+    console.error('LangGraph Agent initialization failed:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
 })
 
 // Process user query
-ipcMain.handle(AGENT_IPC_CHANNELS.PROCESS_QUERY, async (
-  _event, 
-  query: string, 
-  conversationId?: string,
-  options?: { maxIterations?: number; temperature?: number; model?: string }
-) => {
-  try {
-    const orchestrator = getAgentOrchestrator()
-    const result = await orchestrator.processQuery(query, conversationId, options)
-    
-    return {
-      success: true,
-      data: result
-    }
-  } catch (error) {
-    console.error('Agent query processing failed:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+ipcMain.handle(
+  AGENT_IPC_CHANNELS.PROCESS_QUERY,
+  async (
+    _event,
+    query: string,
+    conversationId?: string,
+    options?: { maxIterations?: number; temperature?: number; model?: string }
+  ) => {
+    try {
+      const agent = getLangGraphAgent()
+      const result = await agent.processQuery(query, conversationId, options)
+
+      return {
+        success: true,
+        data: result,
+      }
+    } catch (error) {
+      console.error('LangGraph Agent query processing failed:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
     }
   }
-})
+)
 
 // Get available tools
 ipcMain.handle(AGENT_IPC_CHANNELS.GET_AVAILABLE_TOOLS, async (_event) => {
   try {
-    const orchestrator = getAgentOrchestrator()
-    const tools = orchestrator.getAvailableTools()
-    
+    const agent = getLangGraphAgent()
+    const tools = agent.getAvailableTools()
+
     return {
       success: true,
-      data: tools
+      data: tools,
     }
   } catch (error) {
     console.error('Failed to get available tools:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
 })
@@ -75,18 +78,18 @@ ipcMain.handle(AGENT_IPC_CHANNELS.GET_AVAILABLE_TOOLS, async (_event) => {
 // Update agent configuration
 ipcMain.handle(AGENT_IPC_CHANNELS.UPDATE_CONFIG, async (_event, config: Partial<AgentConfig>) => {
   try {
-    const orchestrator = getAgentOrchestrator()
-    orchestrator.updateConfig(config)
-    
+    const agent = getLangGraphAgent()
+    agent.updateConfig(config)
+
     return {
       success: true,
-      data: orchestrator.getConfig()
+      data: agent.getConfig(),
     }
   } catch (error) {
     console.error('Failed to update agent config:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
 })
@@ -94,18 +97,18 @@ ipcMain.handle(AGENT_IPC_CHANNELS.UPDATE_CONFIG, async (_event, config: Partial<
 // Get agent configuration
 ipcMain.handle(AGENT_IPC_CHANNELS.GET_CONFIG, async (_event) => {
   try {
-    const orchestrator = getAgentOrchestrator()
-    const config = orchestrator.getConfig()
-    
+    const agent = getLangGraphAgent()
+    const config = agent.getConfig()
+
     return {
       success: true,
-      data: config
+      data: config,
     }
   } catch (error) {
     console.error('Failed to get agent config:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
 })
@@ -113,13 +116,13 @@ ipcMain.handle(AGENT_IPC_CHANNELS.GET_CONFIG, async (_event) => {
 // Health check
 ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async (_event) => {
   try {
-    // Simple health check - try to get orchestrator and check if initialized
-    const orchestrator = getAgentOrchestrator()
-    
+    // Simple health check - try to get agent and check if initialized
+    const agent = getLangGraphAgent()
+
     // Test Ollama connection
     const ollamaResponse = await fetch('http://localhost:11434/api/version')
     const ollamaHealthy = ollamaResponse.ok
-    
+
     // Get available models
     let availableModels: string[] = []
     if (ollamaHealthy) {
@@ -129,26 +132,26 @@ ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async (_event) => {
         availableModels = modelsData.models?.map((m: any) => m.name) || []
       }
     }
-    
+
     return {
       success: true,
       data: {
         ollamaHealthy,
         availableModels,
-        availableTools: orchestrator.getAvailableTools().length,
-        config: orchestrator.getConfig()
-      }
+        availableTools: agent.getAvailableTools().length,
+        config: agent.getConfig(),
+      },
     }
   } catch (error) {
-    console.error('Agent health check failed:', error)
+    console.error('LangGraph Agent health check failed:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
       data: {
         ollamaHealthy: false,
         availableModels: [],
-        availableTools: 0
-      }
+        availableTools: 0,
+      },
     }
   }
 })
@@ -158,13 +161,52 @@ ipcMain.handle(AGENT_IPC_CHANNELS.CLEANUP, async (_event) => {
   try {
     await cleanupAgentSystem()
     return {
-      success: true
+      success: true,
     }
   } catch (error) {
     console.error('Agent cleanup failed:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
+// Get MCP servers status
+ipcMain.handle('agent:get-mcp-servers', async (_event) => {
+  try {
+    // Get MCP loader service to access server configurations
+    const { getMCPLoaderService } = await import('../services/mcp-loader.service')
+    const mcpLoader = getMCPLoaderService()
+    
+    const servers = mcpLoader.getServers()
+    const availableTools = mcpLoader.getTools()
+    const toolsStats = mcpLoader.getToolsStats()
+    
+    const serverInfo = servers.map(server => ({
+      id: server.name,
+      name: server.name,
+      status: 'connected', // MCP loader doesn't track individual server status
+      toolCount: toolsStats[server.name] || 0,
+      transport: server.transport || 'stdio',
+      command: server.command,
+      url: server.url
+    }))
+
+    return {
+      success: true,
+      data: {
+        servers: serverInfo,
+        totalServers: servers.length,
+        connectedServers: servers.length, // All configured servers are considered connected
+        totalTools: availableTools.length
+      },
+    }
+  } catch (error) {
+    console.error('Failed to get MCP servers:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
 })
@@ -176,7 +218,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_event, query: string) => {
     const response = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model: 'llama3.1:8b',
@@ -184,9 +226,9 @@ ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_event, query: string) => {
         stream: false,
         options: {
           temperature: 0.7,
-          num_predict: 512
-        }
-      })
+          num_predict: 512,
+        },
+      }),
     })
 
     if (!response.ok) {
@@ -194,7 +236,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_event, query: string) => {
     }
 
     const result = await response.json()
-    
+
     return {
       success: true,
       data: {
@@ -202,16 +244,16 @@ ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_event, query: string) => {
         model: result.model,
         totalDuration: result.total_duration,
         loadDuration: result.load_duration,
-        evalDuration: result.eval_duration
-      }
+        evalDuration: result.eval_duration,
+      },
     }
   } catch (error) {
     console.error('Agent test query failed:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
 })
 
-console.log('🔌 Agent IPC handlers registered')
+console.log('🔌 LangGraph Agent IPC handlers registered')

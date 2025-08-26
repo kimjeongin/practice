@@ -2,16 +2,16 @@ import { EventEmitter } from 'events'
 import { app } from 'electron'
 import { join } from 'path'
 import { promises as fs } from 'fs'
-import { ConnectionManager } from './mcp-connection-manager.service'
+import { ConnectionManager, getConnectionManager } from './mcp-connection-manager.service'
 import { ToolDiscoveryService } from './mcp-tool-discovery.service'
-import { 
+import {
   ServerConfig,
   ServerConnection,
   MCPTool,
   ToolFilter,
   ExecutionResult,
   ExecutionHistoryEntry,
-  ClientHostConfig
+  ClientHostConfig,
 } from '../types/mcp-server.types'
 
 export class MCPClientHostService extends EventEmitter {
@@ -24,14 +24,14 @@ export class MCPClientHostService extends EventEmitter {
   constructor() {
     super()
     this.setMaxListeners(100)
-    
-    // Initialize services
-    this.connectionManager = new ConnectionManager()
+
+    // Get singleton connection manager instance
+    this.connectionManager = getConnectionManager()
     this.toolDiscoveryService = new ToolDiscoveryService(this.connectionManager)
-    
+
     // Set config path
     this.configPath = join(app.getPath('userData'), 'mcp-client-config.json')
-    
+
     // Initialize default config
     this.config = {
       servers: [],
@@ -40,8 +40,8 @@ export class MCPClientHostService extends EventEmitter {
         maxConcurrentExecutions: 5,
         executionTimeout: 30000,
         saveExecutionHistory: true,
-        enableNotifications: true
-      }
+        enableNotifications: true,
+      },
     }
 
     this.setupEventListeners()
@@ -56,17 +56,17 @@ export class MCPClientHostService extends EventEmitter {
     console.log('🚀 Initializing MCP Client Host Service...')
 
     try {
-      // Load configuration
-      await this.loadConfiguration()
+      // Initialize connection manager (this will auto-load servers from config)
+      await this.connectionManager.initialize()
       
-      // Auto-connect enabled servers if configured
-      if (this.config.settings.autoConnectOnStartup) {
-        await this.autoConnectServers()
-      }
+      // Load legacy configuration for migration
+      await this.loadConfiguration()
+
+      // Setup periodic tool discovery
+      // this.toolDiscoveryService.startPeriodicDiscovery() - method doesn't exist
 
       this.initialized = true
       console.log('✅ MCP Client Host Service initialized successfully')
-      
     } catch (error) {
       console.error('❌ Failed to initialize MCP Client Host Service:', error)
       throw error
@@ -115,7 +115,7 @@ export class MCPClientHostService extends EventEmitter {
   async addServer(serverConfig: Omit<ServerConfig, 'id'>): Promise<ServerConfig> {
     const config: ServerConfig = {
       ...serverConfig,
-      id: this.generateServerId(serverConfig.name)
+      id: this.generateServerId(serverConfig.name),
     }
 
     await this.connectionManager.addServer(config)
@@ -131,7 +131,7 @@ export class MCPClientHostService extends EventEmitter {
    */
   async removeServer(serverId: string): Promise<void> {
     await this.connectionManager.removeServer(serverId)
-    this.config.servers = this.config.servers.filter(s => s.id !== serverId)
+    this.config.servers = this.config.servers.filter((s) => s.id !== serverId)
     await this.saveConfiguration()
 
     console.log(`➖ Removed server: ${serverId}`)
@@ -142,8 +142,8 @@ export class MCPClientHostService extends EventEmitter {
    */
   async updateServer(serverId: string, updates: Partial<ServerConfig>): Promise<void> {
     await this.connectionManager.updateServer(serverId, updates)
-    
-    const serverIndex = this.config.servers.findIndex(s => s.id === serverId)
+
+    const serverIndex = this.config.servers.findIndex((s) => s.id === serverId)
     if (serverIndex >= 0) {
       this.config.servers[serverIndex] = { ...this.config.servers[serverIndex], ...updates }
       await this.saveConfiguration()
@@ -248,8 +248,8 @@ export class MCPClientHostService extends EventEmitter {
    * Execute a tool
    */
   async executeTool(
-    serverId: string, 
-    toolName: string, 
+    serverId: string,
+    toolName: string,
     parameters: Record<string, any>,
     userId?: string
   ): Promise<ExecutionResult> {
@@ -280,7 +280,7 @@ export class MCPClientHostService extends EventEmitter {
   /**
    * Get most used tools
    */
-  getMostUsedTools(limit = 10): Array<{ tool: MCPTool, count: number }> {
+  getMostUsedTools(limit = 10): Array<{ tool: MCPTool; count: number }> {
     return this.toolDiscoveryService.getMostUsedTools(limit)
   }
 
@@ -342,11 +342,11 @@ export class MCPClientHostService extends EventEmitter {
     try {
       const configData = await fs.readFile(this.configPath, 'utf-8')
       const loadedConfig = JSON.parse(configData) as ClientHostConfig
-      
+
       // Merge with defaults
       this.config = {
         servers: loadedConfig.servers || [],
-        settings: { ...this.config.settings, ...loadedConfig.settings }
+        settings: { ...this.config.settings, ...loadedConfig.settings },
       }
 
       // Restore server configurations to connection manager
@@ -382,27 +382,7 @@ export class MCPClientHostService extends EventEmitter {
     }
   }
 
-  /**
-   * Auto-connect to enabled servers
-   */
-  private async autoConnectServers(): Promise<void> {
-    const enabledServers = this.config.servers.filter(s => s.enabled)
-    
-    if (enabledServers.length === 0) {
-      console.log('ℹ️ No enabled servers to auto-connect')
-      return
-    }
-
-    console.log(`🔌 Auto-connecting to ${enabledServers.length} enabled servers...`)
-
-    const connectPromises = enabledServers.map(server => 
-      this.connectionManager.connectServer(server.id).catch(error => 
-        console.warn(`Failed to auto-connect to ${server.name}:`, error)
-      )
-    )
-
-    await Promise.allSettled(connectPromises)
-  }
+  // Auto-connect method removed - now handled by ConnectionManager
 
   /**
    * Generate unique server ID
@@ -416,6 +396,13 @@ export class MCPClientHostService extends EventEmitter {
   // RAG Server methods removed - now uses independent HTTP server
 
   /**
+   * Get connection manager instance
+   */
+  getConnectionManager(): ConnectionManager {
+    return this.connectionManager
+  }
+
+  /**
    * Get system status
    */
   getStatus() {
@@ -426,11 +413,11 @@ export class MCPClientHostService extends EventEmitter {
     return {
       initialized: this.initialized,
       totalServers: this.config.servers.length,
-      connectedServers: connections.filter(c => c.status === 'connected').length,
+      connectedServers: connections.filter((c) => c.status === 'connected').length,
       totalTools: tools.length,
       recentExecutions: history.length,
       uptime: process.uptime(),
-      configPath: this.configPath
+      configPath: this.configPath,
     }
   }
 
@@ -438,12 +425,16 @@ export class MCPClientHostService extends EventEmitter {
    * Export configuration and history
    */
   async exportData(): Promise<string> {
-    return JSON.stringify({
-      exportedAt: new Date().toISOString(),
-      config: this.config,
-      executionHistory: this.getExecutionHistory(),
-      favorites: this.getFavoriteTools().map(tool => `${tool.serverId}:${tool.name}`)
-    }, null, 2)
+    return JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        config: this.config,
+        executionHistory: this.getExecutionHistory(),
+        favorites: this.getFavoriteTools().map((tool) => `${tool.serverId}:${tool.name}`),
+      },
+      null,
+      2
+    )
   }
 
   /**
@@ -452,15 +443,17 @@ export class MCPClientHostService extends EventEmitter {
   async importData(jsonData: string): Promise<void> {
     try {
       const data = JSON.parse(jsonData)
-      
+
       if (data.config) {
         await this.updateConfiguration(data.config)
       }
-      
+
       if (data.executionHistory) {
-        this.toolDiscoveryService.importExecutionHistory(JSON.stringify({
-          executions: data.executionHistory
-        }))
+        this.toolDiscoveryService.importExecutionHistory(
+          JSON.stringify({
+            executions: data.executionHistory,
+          })
+        )
       }
 
       console.log('✅ Data import completed')
@@ -477,7 +470,7 @@ export class MCPClientHostService extends EventEmitter {
     console.log('🧹 Cleaning up MCP Client Host Service...')
 
     await this.connectionManager.cleanup()
-    
+
     // Save final configuration
     await this.saveConfiguration()
 

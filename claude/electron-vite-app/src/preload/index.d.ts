@@ -1,12 +1,12 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { 
-  ServerConfig, 
-  ServerConnection, 
-  MCPTool, 
-  ToolFilter, 
+import {
+  ServerConfig,
+  ServerConnection,
+  MCPTool,
+  ToolFilter,
   ExecutionResult,
   ExecutionHistoryEntry,
-  IPCResponse
+  IPCResponse,
 } from '@shared/types/mcp.types'
 
 // Agent types
@@ -20,6 +20,7 @@ interface AgentConfig {
 interface AgentExecutionResult {
   success: boolean
   response: string
+  conversationId: string
   toolsUsed: Array<{
     toolName: string
     serverId: string
@@ -45,8 +46,12 @@ interface ClientHostAPI {
   removeServer: (serverId: string) => Promise<IPCResponse<{ serverId: string }>>
   updateServer: (serverId: string, updates: Partial<ServerConfig>) => Promise<IPCResponse<any>>
   listServers: () => Promise<IPCResponse<ServerConnection[]>>
-  connectServer: (serverId: string) => Promise<IPCResponse<{ serverId: string, connected: boolean }>>
-  disconnectServer: (serverId: string) => Promise<IPCResponse<{ serverId: string, connected: boolean }>>
+  connectServer: (
+    serverId: string
+  ) => Promise<IPCResponse<{ serverId: string; connected: boolean }>>
+  disconnectServer: (
+    serverId: string
+  ) => Promise<IPCResponse<{ serverId: string; connected: boolean }>>
 
   // Tool Discovery and Management
   listTools: (serverId?: string) => Promise<IPCResponse<MCPTool[]>>
@@ -55,8 +60,8 @@ interface ClientHostAPI {
 
   // Tool Execution
   executeTool: (
-    serverId: string, 
-    toolName: string, 
+    serverId: string,
+    toolName: string,
     parameters: Record<string, any>,
     userId?: string
   ) => Promise<IPCResponse<ExecutionResult>>
@@ -67,7 +72,11 @@ interface ClientHostAPI {
   listResources: (serverId?: string) => Promise<IPCResponse<any[]>>
   readResource: (serverId: string, uri: string) => Promise<IPCResponse<any>>
   listPrompts: (serverId?: string) => Promise<IPCResponse<any[]>>
-  getPrompt: (serverId: string, name: string, args?: Record<string, any>) => Promise<IPCResponse<any>>
+  getPrompt: (
+    serverId: string,
+    name: string,
+    args?: Record<string, any>
+  ) => Promise<IPCResponse<any>>
 
   // Configuration and Status
   getConfig: () => Promise<IPCResponse<any>>
@@ -86,8 +95,17 @@ interface ClientHostAPI {
   addToFavorites: (serverId: string, toolName: string) => Promise<IPCResponse<any>>
   removeFromFavorites: (serverId: string, toolName: string) => Promise<IPCResponse<any>>
   getFavorites: () => Promise<IPCResponse<MCPTool[]>>
-  getMostUsedTools: (limit?: number) => Promise<IPCResponse<Array<{ tool: MCPTool, count: number }>>>
-  addRagServer: () => Promise<IPCResponse<ServerConfig>>
+  getMostUsedTools: (
+    limit?: number
+  ) => Promise<IPCResponse<Array<{ tool: MCPTool; count: number }>>>
+  
+  // Configuration Management
+  getServerConfig: () => Promise<IPCResponse<any>>
+  updateServerConfig: (config: any) => Promise<IPCResponse<{ success: boolean }>>
+  reloadConfig: () => Promise<IPCResponse<{ success: boolean }>>
+  exportConfig: () => Promise<IPCResponse<{ data: string }>>
+  importConfig: (configJson: string) => Promise<IPCResponse<{ success: boolean }>>
+  
   exportData: () => Promise<IPCResponse<{ data: string }>>
   importData: (jsonData: string) => Promise<IPCResponse<{ imported: boolean }>>
 }
@@ -95,27 +113,30 @@ interface ClientHostAPI {
 interface AgentAPI {
   // Initialize agent system
   initialize: (config?: AgentConfig) => Promise<IPCResponse<{ initialized: boolean }>>
-  
+
   // Process user query
   processQuery: (
     query: string,
     conversationId?: string,
     options?: { maxIterations?: number; temperature?: number; model?: string }
   ) => Promise<IPCResponse<AgentExecutionResult>>
-  
+
   // Test simple query
   testQuery: (query: string) => Promise<IPCResponse<AgentExecutionResult>>
-  
+
   // Get available tools
   getAvailableTools: () => Promise<IPCResponse<MCPTool[]>>
-  
+
   // Configuration
   updateConfig: (config: Partial<AgentConfig>) => Promise<IPCResponse<AgentConfig>>
   getConfig: () => Promise<IPCResponse<AgentConfig>>
-  
+
   // Health check
   healthCheck: () => Promise<IPCResponse<AgentHealthStatus>>
   
+  // Get MCP server connections status
+  getMCPServers: () => Promise<IPCResponse<any>>
+
   // Cleanup
   cleanup: () => Promise<IPCResponse<{ cleaned: boolean }>>
 }
