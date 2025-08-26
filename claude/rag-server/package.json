@@ -50,6 +50,7 @@
   "license": "MIT",
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "@fastify/static": "^8.2.0",
     "@huggingface/transformers": "^3.7.2",
     "@langchain/community": "^0.3.53",
     "@langchain/core": "^0.3.70",

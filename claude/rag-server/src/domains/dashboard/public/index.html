@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Server Monitoring Dashboard</title>
+    <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 RAG Server Monitoring</h1>
+            <p>실시간 에러 모니터링 및 시스템 헬스 대시보드</p>
+        </div>
+
+        <div class="auto-refresh">
+            <button class="refresh-btn" onclick="refreshAll()">🔄 새로고침</button>
+            <button class="refresh-btn" onclick="toggleAutoRefresh()" id="autoRefreshBtn">▶️ 자동 새로고침 시작</button>
+        </div>
+
+        <div class="grid">
+            <!-- 시스템 헬스 -->
+            <div class="card">
+                <h2>💚 시스템 헬스</h2>
+                <div id="systemHealth">Loading...</div>
+            </div>
+
+            <!-- 에러 통계 -->
+            <div class="card">
+                <h2>📊 에러 통계</h2>
+                <div id="errorStats">Loading...</div>
+            </div>
+
+            <!-- 서킷 브레이커 상태 -->
+            <div class="card">
+                <h2>⚡ 서킷 브레이커</h2>
+                <div id="circuitBreakers">Loading...</div>
+            </div>
+
+            <!-- 최근 에러 로그 -->
+            <div class="card">
+                <h2>🔥 최근 에러</h2>
+                <div id="recentErrors" class="error-list">Loading...</div>
+            </div>
+        </div>
+
+        <!-- 로그 뷰어 -->
+        <div class="card" style="margin-top: 20px;">
+            <h2>📝 실시간 로그</h2>
+            <div id="logViewer" class="logs-container">Loading logs...</div>
+        </div>
+    </div>
+
+    <script src="/dashboard.js"></script>
+</body>
+</html>
