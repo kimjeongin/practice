@@ -50,16 +50,19 @@ export function useMCPServers() {
 
   useEffect(() => {
     fetchServers()
-    
+
     // Refresh every 10 seconds
     const interval = setInterval(fetchServers, 10000)
-    
+
     return () => clearInterval(interval)
   }, [fetchServers])
 
-  const getServerByStatus = useCallback((status: string) => {
-    return servers.servers.filter(server => server.status === status)
-  }, [servers.servers])
+  const getServerByStatus = useCallback(
+    (status: string) => {
+      return servers.servers.filter((server) => server.status === status)
+    },
+    [servers.servers]
+  )
 
   const getConnectedServers = useCallback(() => {
     return getServerByStatus('connected')
@@ -69,9 +72,12 @@ export function useMCPServers() {
     return getServerByStatus('disconnected')
   }, [getServerByStatus])
 
-  const getServerById = useCallback((serverId: string) => {
-    return servers.servers.find(server => server.id === serverId)
-  }, [servers.servers])
+  const getServerById = useCallback(
+    (serverId: string) => {
+      return servers.servers.find((server) => server.id === serverId)
+    },
+    [servers.servers]
+  )
 
   const refresh = useCallback(() => {
     fetchServers()

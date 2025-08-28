@@ -1,28 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
-import {
-  ServerConfig,
-  ServerConnection,
-  MCPTool,
-  ToolFilter,
-  ExecutionHistoryEntry,
-} from '@shared/types/mcp.types'
+import type {
+  MCPServerConfig,
+  MCPServerConnection as ServerConnection,
+} from '../../../../lib/agent/types/agent.types'
 
-interface ClientHostState {
+interface AgentHostState {
   loading: boolean
   error: string | null
   servers: ServerConnection[]
-  tools: MCPTool[]
-  executionHistory: ExecutionHistoryEntry[]
   status: any
 }
 
 export function useClientHost() {
-  const [state, setState] = useState<ClientHostState>({
+  const [state, setState] = useState<AgentHostState>({
     loading: true,
     error: null,
     servers: [],
-    tools: [],
-    executionHistory: [],
     status: null,
   })
 
@@ -46,15 +39,15 @@ export function useClientHost() {
   const loadServers = useCallback(async () => {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }))
-      const response = await window.api.clientHost.listServers()
+      const response = await window.api.agent.getMCPServers()
 
       if (response.success && response.data) {
         setState((prev) => ({
           ...prev,
-          servers: response.data || [],
+          servers: response.data.servers || [],
           loading: false,
         }))
-        return response.data
+        return response.data.servers
       } else {
         handleError(new Error(response.error || 'Unknown error'), 'Load servers')
         return []
@@ -67,10 +60,10 @@ export function useClientHost() {
 
   // Add server
   const addServer = useCallback(
-    async (serverConfig: Omit<ServerConfig, 'id'>) => {
+    async (serverConfig: Omit<MCPServerConfig, 'id'>) => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.addServer(serverConfig)
+        const response = await window.api.agent.addMCPServer(serverConfig)
 
         if (response.success && response.data) {
           // Reload servers to get updated list
@@ -93,7 +86,7 @@ export function useClientHost() {
     async (serverId: string) => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.removeServer(serverId)
+        const response = await window.api.agent.removeMCPServer(serverId)
 
         if (response.success) {
           // Reload servers to get updated list
@@ -113,10 +106,10 @@ export function useClientHost() {
 
   // Update server
   const updateServer = useCallback(
-    async (serverId: string, updates: Partial<ServerConfig>) => {
+    async (serverId: string, updates: Partial<MCPServerConfig>) => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.updateServer(serverId, updates)
+        const response = await window.api.agent.updateMCPServer(serverId, updates)
 
         if (response.success) {
           // Reload servers to get updated list
@@ -139,7 +132,7 @@ export function useClientHost() {
     async (serverId: string) => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.connectServer(serverId)
+        const response = await window.api.agent.connectMCPServer(serverId)
 
         if (response.success) {
           // Reload servers to get updated status
@@ -162,7 +155,7 @@ export function useClientHost() {
     async (serverId: string) => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.disconnectServer(serverId)
+        const response = await window.api.agent.disconnectMCPServer(serverId)
 
         if (response.success) {
           // Reload servers to get updated status
@@ -181,235 +174,13 @@ export function useClientHost() {
   )
 
   // ============================
-  // Tool Management
-  // ============================
-
-  // Load tools
-  const loadTools = useCallback(
-    async (serverId?: string) => {
-      try {
-        setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.listTools(serverId)
-
-        if (response.success && response.data) {
-          setState((prev) => ({
-            ...prev,
-            tools: response.data || [],
-            loading: false,
-          }))
-          return response.data
-        } else {
-          handleError(new Error(response.error || 'Unknown error'), 'Load tools')
-          return []
-        }
-      } catch (error) {
-        handleError(error, 'Load tools')
-        return []
-      }
-    },
-    [handleError]
-  )
-
-  // Search tools
-  const searchTools = useCallback(
-    async (filter: ToolFilter) => {
-      try {
-        setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.searchTools(filter)
-
-        if (response.success && response.data) {
-          setState((prev) => ({
-            ...prev,
-            tools: response.data || [],
-            loading: false,
-          }))
-          return response.data
-        } else {
-          handleError(new Error(response.error || 'Unknown error'), 'Search tools')
-          return []
-        }
-      } catch (error) {
-        handleError(error, 'Search tools')
-        return []
-      }
-    },
-    [handleError]
-  )
-
-  // Get tool details
-  const getToolDetails = useCallback(
-    async (serverId: string, toolName: string) => {
-      try {
-        const response = await window.api.clientHost.getToolDetails(serverId, toolName)
-
-        if (response.success && response.data) {
-          return response.data
-        } else {
-          handleError(new Error(response.error || 'Unknown error'), 'Get tool details')
-          return null
-        }
-      } catch (error) {
-        handleError(error, 'Get tool details')
-        return null
-      }
-    },
-    [handleError]
-  )
-
-  // ============================
-  // Tool Execution
-  // ============================
-
-  // Execute tool
-  const executeTool = useCallback(
-    async (
-      serverId: string,
-      toolName: string,
-      parameters: Record<string, any>,
-      userId?: string
-    ) => {
-      try {
-        setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.clientHost.executeTool(
-          serverId,
-          toolName,
-          parameters,
-          userId
-        )
-
-        setState((prev) => ({ ...prev, loading: false }))
-
-        if (response.success && response.data) {
-          // Reload execution history
-          loadExecutionHistory()
-          return response.data
-        } else {
-          handleError(new Error(response.error || 'Unknown error'), 'Execute tool')
-          return null
-        }
-      } catch (error) {
-        handleError(error, 'Execute tool')
-        return null
-      }
-    },
-    [handleError]
-  )
-
-  // Load execution history
-  const loadExecutionHistory = useCallback(
-    async (limit?: number) => {
-      try {
-        const response = await window.api.clientHost.getExecutionHistory(limit)
-
-        if (response.success && response.data) {
-          setState((prev) => ({
-            ...prev,
-            executionHistory: response.data || [],
-          }))
-          return response.data
-        } else {
-          handleError(new Error(response.error || 'Unknown error'), 'Load execution history')
-          return []
-        }
-      } catch (error) {
-        handleError(error, 'Load execution history')
-        return []
-      }
-    },
-    [handleError]
-  )
-
-  // Clear execution history
-  const clearExecutionHistory = useCallback(async () => {
-    try {
-      const response = await window.api.clientHost.clearHistory()
-
-      if (response.success) {
-        setState((prev) => ({ ...prev, executionHistory: [] }))
-        return true
-      } else {
-        handleError(new Error(response.error || 'Unknown error'), 'Clear execution history')
-        return false
-      }
-    } catch (error) {
-      handleError(error, 'Clear execution history')
-      return false
-    }
-  }, [handleError])
-
-  // ============================
-  // Favorites
-  // ============================
-
-  // Add to favorites
-  const addToFavorites = useCallback(
-    async (serverId: string, toolName: string) => {
-      try {
-        const response = await window.api.clientHost.addToFavorites(serverId, toolName)
-
-        if (response.success) {
-          // Reload tools to update favorite status
-          await loadTools()
-          return true
-        } else {
-          handleError(new Error(response.error || 'Unknown error'), 'Add to favorites')
-          return false
-        }
-      } catch (error) {
-        handleError(error, 'Add to favorites')
-        return false
-      }
-    },
-    [handleError, loadTools]
-  )
-
-  // Remove from favorites
-  const removeFromFavorites = useCallback(
-    async (serverId: string, toolName: string) => {
-      try {
-        const response = await window.api.clientHost.removeFromFavorites(serverId, toolName)
-
-        if (response.success) {
-          // Reload tools to update favorite status
-          await loadTools()
-          return true
-        } else {
-          handleError(new Error(response.error || 'Unknown error'), 'Remove from favorites')
-          return false
-        }
-      } catch (error) {
-        handleError(error, 'Remove from favorites')
-        return false
-      }
-    },
-    [handleError, loadTools]
-  )
-
-  // Get favorites
-  const getFavorites = useCallback(async () => {
-    try {
-      const response = await window.api.clientHost.getFavorites()
-
-      if (response.success && response.data) {
-        return response.data
-      } else {
-        handleError(new Error(response.error || 'Unknown error'), 'Get favorites')
-        return []
-      }
-    } catch (error) {
-      handleError(error, 'Get favorites')
-      return []
-    }
-  }, [handleError])
-
-  // ============================
   // Status and Configuration
   // ============================
 
   // Load status
   const loadStatus = useCallback(async () => {
     try {
-      const response = await window.api.clientHost.getStatus()
+      const response = await window.api.agent.getMCPServers()
 
       if (response.success && response.data) {
         setState((prev) => ({ ...prev, status: response.data }))
@@ -424,54 +195,14 @@ export function useClientHost() {
     }
   }, [handleError])
 
-  // Get categories
-  const getCategories = useCallback(async () => {
-    try {
-      const response = await window.api.clientHost.getCategories()
-
-      if (response.success && response.data) {
-        return response.data
-      } else {
-        handleError(new Error(response.error || 'Unknown error'), 'Get categories')
-        return []
-      }
-    } catch (error) {
-      handleError(error, 'Get categories')
-      return []
-    }
-  }, [handleError])
-
-  // Get tags
-  const getTags = useCallback(async () => {
-    try {
-      const response = await window.api.clientHost.getTags()
-
-      if (response.success && response.data) {
-        return response.data
-      } else {
-        handleError(new Error(response.error || 'Unknown error'), 'Get tags')
-        return []
-      }
-    } catch (error) {
-      handleError(error, 'Get tags')
-      return []
-    }
-  }, [handleError])
-
-  // ============================
-  // Quick Actions
-  // ============================
-
-  // RAG server methods removed - now part of unified MCP server management
-
   // Initialize data on mount
   useEffect(() => {
     const initializeData = async () => {
-      await Promise.all([loadServers(), loadTools(), loadExecutionHistory(10), loadStatus()])
+      await Promise.all([loadServers(), loadStatus()])
     }
 
     initializeData()
-  }, [loadServers, loadTools, loadExecutionHistory, loadStatus])
+  }, [loadServers, loadStatus])
 
   // Refresh data periodically
   useEffect(() => {
@@ -488,8 +219,6 @@ export function useClientHost() {
     loading: state.loading,
     error: state.error,
     servers: state.servers,
-    tools: state.tools,
-    executionHistory: state.executionHistory,
     status: state.status,
 
     // Server management
@@ -500,27 +229,8 @@ export function useClientHost() {
     connectServer,
     disconnectServer,
 
-    // Tool management
-    loadTools,
-    searchTools,
-    getToolDetails,
-
-    // Tool execution
-    executeTool,
-    loadExecutionHistory,
-    clearExecutionHistory,
-
-    // Favorites
-    addToFavorites,
-    removeFromFavorites,
-    getFavorites,
-
     // Status and configuration
     loadStatus,
-    getCategories,
-    getTags,
-
-    // Quick actions removed - now using unified configuration management
 
     // Utility
     clearError,

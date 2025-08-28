@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { getLangGraphAgent, initializeAgentSystem, cleanupAgentSystem } from '../index'
 import { AgentConfig } from '../types/agent.types'
 import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
+import { getMCPLoaderService } from '../services/mcp-loader.service'
 
 /**
  * IPC Handlers for Agent System
@@ -38,19 +39,66 @@ ipcMain.handle(
     conversationId?: string,
     options?: { maxIterations?: number; temperature?: number; model?: string }
   ) => {
+    console.log('🔌 IPC: Processing query request:', {
+      query: query.substring(0, 100),
+      conversationId,
+      options,
+    })
+
     try {
       const agent = getLangGraphAgent()
+
+      // Check agent state before processing
+      if (!agent) {
+        console.error('❌ IPC: Agent instance not available')
+        return {
+          success: false,
+          error: 'Agent system not available. Please restart the application.',
+        }
+      }
+
+      console.log('▶️ IPC: Calling agent.processQuery')
       const result = await agent.processQuery(query, conversationId, options)
+
+      console.log('✅ IPC: Query processing completed:', {
+        success: result.success,
+        hasResponse: !!result.response,
+        toolsUsed: result.toolsUsed?.length || 0,
+        executionTime: result.totalExecutionTime,
+      })
 
       return {
         success: true,
         data: result,
       }
     } catch (error) {
-      console.error('LangGraph Agent query processing failed:', error)
+      console.error('❌ IPC: LangGraph Agent query processing failed:', error)
+
+      // Provide more detailed error information
+      let errorMessage = 'Unknown error occurred during query processing'
+      let shouldReinitialize = false
+
+      if (error instanceof Error) {
+        errorMessage = error.message
+
+        // Check if this is a critical error that requires reinitialization
+        if (
+          error.message.includes('not initialized') ||
+          error.message.includes('Agent not available') ||
+          error.message.includes('connection')
+        ) {
+          shouldReinitialize = true
+        }
+      }
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
+        metadata: {
+          shouldReinitialize,
+          timestamp: new Date().toISOString(),
+          errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
+        },
       }
     }
   }
@@ -115,35 +163,72 @@ ipcMain.handle(AGENT_IPC_CHANNELS.GET_CONFIG, async (_event) => {
 
 // Health check
 ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async (_event) => {
+  console.log('🔌 IPC: Health check requested')
+
   try {
     // Simple health check - try to get agent and check if initialized
     const agent = getLangGraphAgent()
+    console.log('🏥 IPC: Agent instance obtained, checking health...')
 
-    // Test Ollama connection
-    const ollamaResponse = await fetch('http://localhost:11434/api/version')
-    const ollamaHealthy = ollamaResponse.ok
-
-    // Get available models
+    // Test Ollama connection with timeout
+    let ollamaHealthy = false
     let availableModels: string[] = []
-    if (ollamaHealthy) {
-      const modelsResponse = await fetch('http://localhost:11434/api/tags')
-      if (modelsResponse.ok) {
-        const modelsData = await modelsResponse.json()
-        availableModels = modelsData.models?.map((m: any) => m.name) || []
+
+    try {
+      const ollamaResponse = await Promise.race([
+        fetch('http://localhost:11434/api/version'),
+        new Promise<Response>((_, reject) =>
+          setTimeout(() => reject(new Error('Ollama health check timeout')), 5000)
+        ),
+      ])
+      ollamaHealthy = ollamaResponse.ok
+      console.log('🏥 IPC: Ollama health check:', ollamaHealthy ? 'healthy' : 'unhealthy')
+
+      // Get available models
+      if (ollamaHealthy) {
+        try {
+          const modelsResponse = await Promise.race([
+            fetch('http://localhost:11434/api/tags'),
+            new Promise<Response>((_, reject) =>
+              setTimeout(() => reject(new Error('Models fetch timeout')), 5000)
+            ),
+          ])
+          if (modelsResponse.ok) {
+            const modelsData = await modelsResponse.json()
+            availableModels = modelsData.models?.map((m: any) => m.name) || []
+            console.log('🏥 IPC: Available models:', availableModels.length)
+          }
+        } catch (modelsError) {
+          console.warn('⚠️ IPC: Failed to fetch models:', modelsError)
+        }
       }
+    } catch (ollamaError) {
+      console.warn('⚠️ IPC: Ollama health check failed:', ollamaError)
     }
+
+    const availableTools = agent ? agent.getAvailableTools().length : 0
+    const config = agent ? agent.getConfig() : null
+
+    console.log('✅ IPC: Health check completed:', {
+      ollamaHealthy,
+      availableModels: availableModels.length,
+      availableTools,
+      hasConfig: !!config,
+    })
 
     return {
       success: true,
       data: {
         ollamaHealthy,
         availableModels,
-        availableTools: agent.getAvailableTools().length,
-        config: agent.getConfig(),
+        availableTools,
+        config,
+        timestamp: new Date().toISOString(),
+        agentInitialized: !!agent,
       },
     }
   } catch (error) {
-    console.error('LangGraph Agent health check failed:', error)
+    console.error('❌ IPC: LangGraph Agent health check failed:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -151,6 +236,8 @@ ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async (_event) => {
         ollamaHealthy: false,
         availableModels: [],
         availableTools: 0,
+        timestamp: new Date().toISOString(),
+        agentInitialized: false,
       },
     }
   }
@@ -175,35 +262,122 @@ ipcMain.handle(AGENT_IPC_CHANNELS.CLEANUP, async (_event) => {
 // Get MCP servers status
 ipcMain.handle('agent:get-mcp-servers', async (_event) => {
   try {
-    // Get MCP loader service to access server configurations
-    const { getMCPLoaderService } = await import('../services/mcp-loader.service')
     const mcpLoader = getMCPLoaderService()
-    
-    const servers = mcpLoader.getServers()
+
+    const connections = mcpLoader.getConnections()
     const availableTools = mcpLoader.getTools()
-    const toolsStats = mcpLoader.getToolsStats()
-    
-    const serverInfo = servers.map(server => ({
-      id: server.name,
-      name: server.name,
-      status: 'connected', // MCP loader doesn't track individual server status
-      toolCount: toolsStats[server.name] || 0,
-      transport: server.transport || 'stdio',
-      command: server.command,
-      url: server.url
-    }))
+    const status = mcpLoader.getStatus()
 
     return {
       success: true,
       data: {
-        servers: serverInfo,
-        totalServers: servers.length,
-        connectedServers: servers.length, // All configured servers are considered connected
-        totalTools: availableTools.length
+        servers: connections,
+        ...status,
+        totalTools: availableTools.length,
       },
     }
   } catch (error) {
     console.error('Failed to get MCP servers:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
+// Add MCP server
+ipcMain.handle('agent:add-mcp-server', async (_event, serverConfig) => {
+  try {
+    const mcpLoader = getMCPLoaderService()
+
+    mcpLoader.addServer(serverConfig)
+
+    return {
+      success: true,
+      data: serverConfig,
+    }
+  } catch (error) {
+    console.error('Failed to add MCP server:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
+// Remove MCP server
+ipcMain.handle('agent:remove-mcp-server', async (_event, serverId: string) => {
+  try {
+    const mcpLoader = getMCPLoaderService()
+
+    await mcpLoader.removeServer(serverId)
+
+    return {
+      success: true,
+      data: { serverId },
+    }
+  } catch (error) {
+    console.error('Failed to remove MCP server:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
+// Connect to MCP server
+ipcMain.handle('agent:connect-mcp-server', async (_event, serverId: string) => {
+  try {
+    const mcpLoader = getMCPLoaderService()
+
+    await mcpLoader.connectServer(serverId)
+
+    return {
+      success: true,
+      data: { serverId, connected: true },
+    }
+  } catch (error) {
+    console.error('Failed to connect MCP server:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
+// Disconnect from MCP server
+ipcMain.handle('agent:disconnect-mcp-server', async (_event, serverId: string) => {
+  try {
+    const mcpLoader = getMCPLoaderService()
+
+    await mcpLoader.disconnectServer(serverId)
+
+    return {
+      success: true,
+      data: { serverId, connected: false },
+    }
+  } catch (error) {
+    console.error('Failed to disconnect MCP server:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
+// Update MCP server
+ipcMain.handle('agent:update-mcp-server', async (_event, serverId: string, updates) => {
+  try {
+    const mcpLoader = getMCPLoaderService()
+
+    await mcpLoader.updateServer(serverId, updates)
+
+    return {
+      success: true,
+      data: { serverId, updates },
+    }
+  } catch (error) {
+    console.error('Failed to update MCP server:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

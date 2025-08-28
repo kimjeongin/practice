@@ -7,7 +7,7 @@ interface MCPServerStatusProps {
 export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
   const { servers, isLoading, error, refresh } = useMCPServers()
 
-  if (isLoading && servers.servers.length === 0) {
+  if (isLoading && (!servers || servers.servers.length === 0)) {
     return (
       <div className="animate-pulse">
         <div className="h-4 bg-gray-200 rounded w-32"></div>
@@ -18,12 +18,9 @@ export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
   if (error) {
     return (
       <div className="text-red-600 text-sm">
-        <span>⚠️ MCP Status Error</span>
+        <span>⚠️ Agent Status Error</span>
         {!compact && (
-          <button
-            onClick={refresh}
-            className="ml-2 text-blue-600 hover:text-blue-800 underline"
-          >
+          <button onClick={refresh} className="ml-2 text-blue-600 hover:text-blue-800 underline">
             Retry
           </button>
         )}
@@ -67,12 +64,14 @@ export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
   if (compact) {
     return (
       <div className="flex items-center space-x-2 text-sm text-gray-600">
-        <span className={`w-2 h-2 rounded-full ${servers.connectedServers > 0 ? 'bg-green-500' : 'bg-red-500'}`}></span>
+        <span
+          className={`w-2 h-2 rounded-full ${servers?.connectedServers > 0 ? 'bg-green-500' : 'bg-red-500'}`}
+        ></span>
         <span>
-          MCP Servers: {servers.connectedServers}/{servers.totalServers}
+          Agent Servers: {servers?.connectedServers || 0}/{servers?.totalServers || 0}
         </span>
         <span className="text-gray-400">•</span>
-        <span>{servers.totalTools} tools</span>
+        <span>{servers?.totalTools || 0} tools</span>
       </div>
     )
   }
@@ -80,7 +79,7 @@ export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
   return (
     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-lg font-semibold text-gray-800">🔧 MCP Servers</h3>
+        <h3 className="text-lg font-semibold text-gray-800">🤖 Agent System</h3>
         <button
           onClick={refresh}
           className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
@@ -93,22 +92,22 @@ export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
         <div className="bg-white p-3 rounded-lg border">
           <div className="text-sm text-gray-600">Total Servers</div>
-          <div className="text-xl font-bold text-gray-800">{servers.totalServers}</div>
+          <div className="text-xl font-bold text-gray-800">{servers?.totalServers || 0}</div>
         </div>
         <div className="bg-white p-3 rounded-lg border">
           <div className="text-sm text-gray-600">Connected</div>
-          <div className="text-xl font-bold text-green-600">{servers.connectedServers}</div>
+          <div className="text-xl font-bold text-green-600">{servers?.connectedServers || 0}</div>
         </div>
         <div className="bg-white p-3 rounded-lg border">
           <div className="text-sm text-gray-600">Available Tools</div>
-          <div className="text-xl font-bold text-blue-600">{servers.totalTools}</div>
+          <div className="text-xl font-bold text-blue-600">{servers?.totalTools || 0}</div>
         </div>
       </div>
 
       <div className="space-y-2">
         <h4 className="font-medium text-gray-700">Server Details:</h4>
-        {servers.servers.length === 0 ? (
-          <div className="text-gray-500 text-sm italic">No MCP servers configured</div>
+        {!servers?.servers || servers.servers.length === 0 ? (
+          <div className="text-gray-500 text-sm italic">No servers configured</div>
         ) : (
           servers.servers.map((server) => (
             <div
@@ -121,14 +120,12 @@ export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
                   <div className="font-medium text-gray-800">{server.name}</div>
                   <div className="text-sm text-gray-500">
                     {getStatusText(server.status)}
-                    {server.connectedAt && server.status === 'connected' && 
-                      ` • Connected at ${formatConnectionTime(server.connectedAt)}`
-                    }
+                    {server.connectedAt &&
+                      server.status === 'connected' &&
+                      ` • Connected at ${formatConnectionTime(server.connectedAt)}`}
                   </div>
                   {server.lastError && (
-                    <div className="text-xs text-red-600 mt-1">
-                      Error: {server.lastError}
-                    </div>
+                    <div className="text-xs text-red-600 mt-1">Error: {server.lastError}</div>
                   )}
                 </div>
               </div>

@@ -22,7 +22,6 @@ async function runTests() {
     console.log('✅ Agent capabilities demo passed\n')
 
     console.log('🎉 All tests passed! LangGraph Agent system is working correctly.')
-
   } catch (error) {
     console.error('❌ Tests failed:', error)
     process.exit(1)
@@ -31,7 +30,7 @@ async function runTests() {
 
 // Run tests if this file is executed directly
 if (require.main === module) {
-  runTests().catch(error => {
+  runTests().catch((error) => {
     console.error('Test execution failed:', error)
     process.exit(1)
   })

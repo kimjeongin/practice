@@ -143,34 +143,68 @@ Please check the console for more details and ensure all required services are r
     setIsAgentWorking(true)
   }, [])
 
-  // Simulated streaming response handler
+  // Simulated streaming response handler with improved cleanup
   const streamResponse = useCallback((content: string, messageId: string) => {
+    console.log('🎬 Starting response streaming for message:', messageId)
     const words = content.split(' ')
     let wordIndex = 0
+    let isStreamingComplete = false
 
     const interval = setInterval(() => {
-      if (wordIndex < words.length) {
-        const partialContent = words.slice(0, wordIndex + 1).join(' ')
-
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === messageId
-              ? { ...msg, content: partialContent, isStreaming: wordIndex < words.length - 1 }
-              : msg
-          )
-        )
-
-        wordIndex++
-      } else {
+      if (isStreamingComplete || wordIndex >= words.length) {
         clearInterval(interval)
-        setCurrentThinking(null)
-        setIsAgentWorking(false)
+        if (!isStreamingComplete) {
+          console.log('✅ Streaming completed, resetting states')
+          setCurrentThinking(null)
+          setIsAgentWorking(false)
+          isStreamingComplete = true
+        }
+        return
       }
+
+      const partialContent = words.slice(0, wordIndex + 1).join(' ')
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId
+            ? { ...msg, content: partialContent, isStreaming: wordIndex < words.length - 1 }
+            : msg
+        )
+      )
+
+      wordIndex++
     }, 50) // Adjust speed as needed
+
+    // Cleanup function in case component unmounts
+    return () => {
+      console.log('🧹 Cleaning up streaming interval')
+      clearInterval(interval)
+      isStreamingComplete = true
+    }
   }, [])
 
   const sendMessage = async () => {
-    if (!inputValue.trim() || !isInitialized || isLoading) return
+    console.log('🚀 sendMessage called:', {
+      inputValue: inputValue.substring(0, 50),
+      isInitialized,
+      isLoading,
+      isAgentWorking,
+    })
+
+    if (!inputValue.trim()) {
+      console.warn('⚠️ Empty input, ignoring send request')
+      return
+    }
+
+    if (!isInitialized) {
+      console.warn('⚠️ Agent not initialized, cannot send message')
+      return
+    }
+
+    if (isLoading || isAgentWorking) {
+      console.warn('⚠️ Agent is busy, ignoring send request')
+      return
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -179,6 +213,7 @@ Please check the console for more details and ensure all required services are r
       timestamp: new Date(),
     }
 
+    console.log('📝 Adding user message and clearing input')
     setMessages((prev) => [...prev, userMessage])
     setInputValue('')
     setIsAgentWorking(true)
@@ -190,16 +225,19 @@ Please check the console for more details and ensure all required services are r
     })
 
     try {
+      console.log('▶️ Starting processActualQuery')
       await processActualQuery(userMessage.content)
     } catch (error) {
-      console.error('Failed to process message:', error)
+      console.error('❌ Failed to process message:', error)
+      // Comprehensive state reset on error
       setCurrentThinking(null)
       setIsAgentWorking(false)
+      clearError() // Also resets loading state
 
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -207,18 +245,25 @@ Please check the console for more details and ensure all required services are r
   }
 
   const processActualQuery = async (query: string) => {
+    let queryResult: any = null
+
     try {
+      console.log('🔍 Processing query:', query.substring(0, 100))
+
       // Update thinking state for tool selection
       handleAgentThinking({
         phase: 'selecting_tools',
         message: '🔍 Selecting appropriate tools...',
       })
 
-      const result = await processQuery(query, conversationId || undefined, { maxIterations: 5 })
+      queryResult = await processQuery(query, conversationId || undefined, { maxIterations: 5 })
+      console.log('📊 Query result:', { hasResult: !!queryResult, success: queryResult?.success })
 
-      if (result && result.success) {
-        if (!conversationId) {
-          setConversationId(result.conversationId)
+      if (queryResult && queryResult.success) {
+        // Update conversation ID if not set
+        if (!conversationId && queryResult.conversationId) {
+          console.log('🆔 Setting conversation ID:', queryResult.conversationId)
+          setConversationId(queryResult.conversationId)
         }
 
         // Update thinking state for response generation
@@ -233,37 +278,45 @@ Please check the console for more details and ensure all required services are r
           role: 'assistant',
           content: '',
           timestamp: new Date(),
-          toolsUsed: result.toolsUsed,
-          executionTime: result.totalExecutionTime,
-          iterations: result.iterations,
+          toolsUsed: queryResult.toolsUsed,
+          executionTime: queryResult.totalExecutionTime,
+          iterations: queryResult.iterations,
           isStreaming: true,
         }
 
         setMessages((prev) => [...prev, assistantMessage])
+        console.log('💬 Starting response streaming')
 
         // Start streaming the response
-        streamResponse(result.response, assistantMessageId)
+        streamResponse(queryResult.response, assistantMessageId)
       } else {
+        console.error('❌ Query processing failed:', queryResult?.error)
+        // Comprehensive state reset
         setCurrentThinking(null)
         setIsAgentWorking(false)
+        clearError()
 
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
           content:
-            result?.error || 'I apologize, but I encountered an error processing your request.',
+            queryResult?.error ||
+            'I apologize, but I encountered an error processing your request. Please try again.',
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, errorMessage])
       }
     } catch (error) {
+      console.error('❌ Exception in processActualQuery:', error)
+      // Comprehensive state reset on exception
       setCurrentThinking(null)
       setIsAgentWorking(false)
+      clearError()
 
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -278,9 +331,12 @@ Please check the console for more details and ensure all required services are r
   // }
 
   const clearConversation = () => {
+    console.log('🧹 Clearing conversation and resetting all states')
     setMessages([])
     setConversationId(null)
-    clearError()
+    setCurrentThinking(null)
+    setIsAgentWorking(false)
+    clearError() // This also resets loading state
   }
 
   const formatTimestamp = (date: Date): string => {
@@ -402,19 +458,23 @@ Please check the console for more details and ensure all required services are r
                     {/* Try to find server info */}
                     {(() => {
                       const tool = mcpServers.servers
-                        .flatMap(server => 
-                          Array(server.toolCount).fill(null).map(() => ({ serverId: server.id, serverName: server.name }))
+                        .flatMap((server) =>
+                          Array(server.toolCount)
+                            .fill(null)
+                            .map(() => ({ serverId: server.id, serverName: server.name }))
                         )
-                        .find(t => t.serverId);
-                      
-                      return tool && (
-                        <>
-                          <span>from</span>
-                          <span className="bg-blue-100 text-blue-800 px-1 py-0.5 rounded text-xs">
-                            MCP Server
-                          </span>
-                        </>
-                      );
+                        .find((t) => t.serverId)
+
+                      return (
+                        tool && (
+                          <>
+                            <span>from</span>
+                            <span className="bg-blue-100 text-blue-800 px-1 py-0.5 rounded text-xs">
+                              MCP Server
+                            </span>
+                          </>
+                        )
+                      )
                     })()}
                   </div>
                 </div>
@@ -440,9 +500,9 @@ Please check the console for more details and ensure all required services are r
                   <p className="font-semibold mb-1">🔧 Tools used:</p>
                   {message.toolsUsed.map((tool, idx) => {
                     // Find server name from MCP servers data
-                    const server = mcpServers.servers.find(s => s.id === tool.serverId)
+                    const server = mcpServers.servers.find((s) => s.id === tool.serverId)
                     const serverName = server ? server.name : tool.serverId
-                    
+
                     return (
                       <div key={idx} className="bg-gray-50 p-2 rounded mb-1">
                         <div className="flex justify-between items-center">
@@ -458,9 +518,11 @@ Please check the console for more details and ensure all required services are r
                         {/* Show server connection status */}
                         {server && (
                           <div className="flex items-center space-x-1 mt-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              server.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
-                            }`}></span>
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                server.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
+                              }`}
+                            ></span>
                             <span className="text-gray-400 text-xs">{server.status}</span>
                           </div>
                         )}
@@ -524,19 +586,27 @@ Please check the console for more details and ensure all required services are r
             placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
             className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             rows={1}
-            disabled={!isInitialized || isLoading}
+            disabled={!isInitialized || isLoading || isAgentWorking}
           />
           <button
             onClick={sendMessage}
-            disabled={!inputValue.trim() || !isInitialized || isLoading}
+            disabled={!inputValue.trim() || !isInitialized || isLoading || isAgentWorking}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            Send
+            {isLoading || isAgentWorking ? 'Processing...' : 'Send'}
           </button>
         </div>
 
-        <div className="mt-2 text-xs text-gray-500">
-          Tip: Ask me to search documents, analyze data, or help with various tasks!
+        <div className="mt-2 flex justify-between items-center">
+          <div className="text-xs text-gray-500">
+            Tip: Ask me to search documents, analyze data, or help with various tasks!
+          </div>
+          {process.env.NODE_ENV === 'development' && (
+            <div className="text-xs text-gray-400 font-mono">
+              Debug: Init={isInitialized ? '✓' : '✗'} Loading={isLoading ? '✓' : '✗'} Working=
+              {isAgentWorking ? '✓' : '✗'}
+            </div>
+          )}
         </div>
       </div>
     </div>

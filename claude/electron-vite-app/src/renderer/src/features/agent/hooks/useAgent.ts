@@ -69,32 +69,79 @@ export function useAgent() {
       conversationId?: string,
       options?: { maxIterations?: number; temperature?: number; model?: string }
     ): Promise<AgentExecutionResult | null> => {
+      console.log('🔄 processQuery called:', {
+        query: query.substring(0, 50),
+        conversationId,
+        isInitialized,
+        isLoading,
+      })
+
       if (!isInitialized) {
-        setError('Agent system not initialized')
+        console.warn('⚠️ Agent system not initialized, attempting to reinitialize...')
+        try {
+          await initialize()
+          if (!isInitialized) {
+            const errorMsg = 'Agent system not initialized and reinitialization failed'
+            setError(errorMsg)
+            return null
+          }
+        } catch (reinitError) {
+          const errorMsg = 'Failed to reinitialize agent system'
+          console.error('❌ Reinitialization failed:', reinitError)
+          setError(errorMsg)
+          return null
+        }
+      }
+
+      if (isLoading) {
+        console.warn('⚠️ processQuery called while already loading, ignoring request')
         return null
       }
 
       setIsLoading(true)
       setError(null)
+      console.log('▶️ Starting query processing...')
+
+      // Add timeout mechanism
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Query processing timeout after 60 seconds')), 60000)
+      })
 
       try {
-        const result = await window.api.agent.processQuery(query, conversationId, options)
+        const resultPromise = window.api.agent.processQuery(query, conversationId, options)
+        const result = await Promise.race([resultPromise, timeoutPromise])
+
+        console.log('✅ Query processing result:', {
+          success: result.success,
+          hasData: !!result.data,
+        })
 
         if (result.success) {
           return result.data || null
         } else {
-          setError(result.error || 'Failed to process query')
+          const errorMsg = result.error || 'Failed to process query'
+          console.error('❌ Query processing failed:', errorMsg)
+
+          // Check if we should reinitialize based on server response
+          if ((result as any).metadata?.shouldReinitialize) {
+            console.warn('🔄 Server suggests reinitialization, marking as uninitialized')
+            setIsInitialized(false)
+          }
+
+          setError(errorMsg)
           return null
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        console.error('❌ Query processing error:', error)
         setError(errorMessage)
         return null
       } finally {
+        console.log('🏁 Query processing completed, resetting loading state')
         setIsLoading(false)
       }
     },
-    [isInitialized]
+    [isInitialized, isLoading, initialize]
   )
 
   // Test simple query (for basic testing)
@@ -223,9 +270,12 @@ export function useAgent() {
     }
   }, [])
 
-  // Clear error
+  // Clear error and reset states if needed
   const clearError = useCallback(() => {
+    console.log('🧹 Clearing error and resetting states')
     setError(null)
+    // Also reset loading state if it's stuck
+    setIsLoading(false)
   }, [])
 
   return {

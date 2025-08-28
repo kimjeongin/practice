@@ -1,201 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import {
-  ServerConfig,
-  ServerConnection,
-  MCPTool,
-  ToolFilter,
-  ExecutionResult,
-  ExecutionHistoryEntry,
-  IPCResponse,
-} from '@shared/types/mcp.types'
-import { MCP_IPC_CHANNELS, AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
-
-// MCP Client Host API implementation
-const clientHostAPI = {
-  // ============================
-  // Server Management
-  // ============================
-  addServer: async (serverConfig: Omit<ServerConfig, 'id'>): Promise<IPCResponse<ServerConfig>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.ADD_SERVER, serverConfig)
-  },
-
-  removeServer: async (serverId: string): Promise<IPCResponse<{ serverId: string }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.REMOVE_SERVER, serverId)
-  },
-
-  updateServer: async (
-    serverId: string,
-    updates: Partial<ServerConfig>
-  ): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.UPDATE_SERVER, serverId, updates)
-  },
-
-  listServers: async (): Promise<IPCResponse<ServerConnection[]>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_SERVERS)
-  },
-
-  connectServer: async (
-    serverId: string
-  ): Promise<IPCResponse<{ serverId: string; connected: boolean }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.CONNECT_SERVER, serverId)
-  },
-
-  disconnectServer: async (
-    serverId: string
-  ): Promise<IPCResponse<{ serverId: string; connected: boolean }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.DISCONNECT_SERVER, serverId)
-  },
-
-  // ============================
-  // Tool Discovery and Management
-  // ============================
-  listTools: async (serverId?: string): Promise<IPCResponse<MCPTool[]>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_TOOLS, serverId)
-  },
-
-  searchTools: async (filter: ToolFilter): Promise<IPCResponse<MCPTool[]>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_TOOLS, filter)
-  },
-
-  getToolDetails: async (serverId: string, toolName: string): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_TOOLS, serverId, toolName)
-  },
-
-  // ============================
-  // Tool Execution
-  // ============================
-  executeTool: async (
-    serverId: string,
-    toolName: string,
-    parameters: Record<string, any>,
-    userId?: string
-  ): Promise<IPCResponse<ExecutionResult>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.EXECUTE_TOOL, serverId, toolName, parameters, userId)
-  },
-
-  getExecutionHistory: async (limit?: number): Promise<IPCResponse<ExecutionHistoryEntry[]>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_EXECUTION_HISTORY, limit)
-  },
-
-  clearHistory: async (): Promise<IPCResponse<{ cleared: boolean }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.CLEAR_EXECUTION_HISTORY)
-  },
-
-  // ============================
-  // Resources and Prompts
-  // ============================
-  listResources: async (serverId?: string): Promise<IPCResponse<any[]>> => {
-    return ipcRenderer.invoke('mcp:list-resources', serverId)
-  },
-
-  readResource: async (serverId: string, uri: string): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke('mcp:read-resource', serverId, uri)
-  },
-
-  listPrompts: async (serverId?: string): Promise<IPCResponse<any[]>> => {
-    return ipcRenderer.invoke('mcp:list-prompts', serverId)
-  },
-
-  getPrompt: async (
-    serverId: string,
-    name: string,
-    args?: Record<string, any>
-  ): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke('mcp:get-prompt', serverId, name, args)
-  },
-
-  // ============================
-  // Configuration and Status
-  // ============================
-  getConfig: async (): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke('mcp:get-config')
-  },
-
-  updateConfig: async (updates: any): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke('mcp:update-config', updates)
-  },
-
-  getStatus: async (): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_STATUS)
-  },
-
-  // ============================
-  // Events
-  // ============================
-  subscribeEvents: async (): Promise<IPCResponse<{ subscribed: boolean }>> => {
-    return ipcRenderer.invoke('mcp:subscribe-events')
-  },
-
-  unsubscribeEvents: async (): Promise<IPCResponse<{ unsubscribed: boolean }>> => {
-    return ipcRenderer.invoke('mcp:unsubscribe-events')
-  },
-
-  onEvent: (callback: (event: any, data: any) => void) => {
-    ipcRenderer.on('client-host-event', callback)
-  },
-
-  removeEventListener: (callback: (event: any, data: any) => void) => {
-    ipcRenderer.removeListener('client-host-event', callback)
-  },
-
-  // ============================
-  // Utility Functions
-  // ============================
-  getCategories: async (): Promise<IPCResponse<string[]>> => {
-    return ipcRenderer.invoke('client-host:get-categories')
-  },
-
-  getTags: async (): Promise<IPCResponse<string[]>> => {
-    return ipcRenderer.invoke('client-host:get-tags')
-  },
-
-  addToFavorites: async (serverId: string, toolName: string): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke('client-host:add-to-favorites', serverId, toolName)
-  },
-
-  removeFromFavorites: async (serverId: string, toolName: string): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke('client-host:remove-from-favorites', serverId, toolName)
-  },
-
-  getFavorites: async (): Promise<IPCResponse<MCPTool[]>> => {
-    return ipcRenderer.invoke('client-host:get-favorites')
-  },
-
-  getMostUsedTools: async (
-    limit = 10
-  ): Promise<IPCResponse<Array<{ tool: MCPTool; count: number }>>> => {
-    return ipcRenderer.invoke('client-host:get-most-used-tools', limit)
-  },
-
-  getServerConfig: async (): Promise<IPCResponse<any>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.GET_SERVER_CONFIG)
-  },
-
-  updateServerConfig: async (config: any): Promise<IPCResponse<{ success: boolean }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.UPDATE_SERVER_CONFIG, config)
-  },
-
-  reloadConfig: async (): Promise<IPCResponse<{ success: boolean }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.RELOAD_CONFIG)
-  },
-
-  exportConfig: async (): Promise<IPCResponse<{ data: string }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.EXPORT_CONFIG)
-  },
-
-  importConfig: async (configJson: string): Promise<IPCResponse<{ success: boolean }>> => {
-    return ipcRenderer.invoke(MCP_IPC_CHANNELS.IMPORT_CONFIG, configJson)
-  },
-
-  exportData: async (): Promise<IPCResponse<{ data: string }>> => {
-    return ipcRenderer.invoke('client-host:export-data')
-  },
-
-  importData: async (jsonData: string): Promise<IPCResponse<{ imported: boolean }>> => {
-    return ipcRenderer.invoke('client-host:import-data', jsonData)
-  },
-}
+import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 
 // Agent API implementation
 const agentAPI = {
@@ -243,6 +48,27 @@ const agentAPI = {
     return ipcRenderer.invoke('agent:get-mcp-servers')
   },
 
+  // MCP Server Management
+  addMCPServer: async (serverConfig: any): Promise<any> => {
+    return ipcRenderer.invoke('agent:add-mcp-server', serverConfig)
+  },
+
+  removeMCPServer: async (serverId: string): Promise<any> => {
+    return ipcRenderer.invoke('agent:remove-mcp-server', serverId)
+  },
+
+  connectMCPServer: async (serverId: string): Promise<any> => {
+    return ipcRenderer.invoke('agent:connect-mcp-server', serverId)
+  },
+
+  disconnectMCPServer: async (serverId: string): Promise<any> => {
+    return ipcRenderer.invoke('agent:disconnect-mcp-server', serverId)
+  },
+
+  updateMCPServer: async (serverId: string, updates: any): Promise<any> => {
+    return ipcRenderer.invoke('agent:update-mcp-server', serverId, updates)
+  },
+
   // Cleanup
   cleanup: async (): Promise<any> => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CLEANUP)
@@ -251,7 +77,6 @@ const agentAPI = {
 
 // Custom APIs for renderer
 const api = {
-  clientHost: clientHostAPI,
   agent: agentAPI,
 }
 

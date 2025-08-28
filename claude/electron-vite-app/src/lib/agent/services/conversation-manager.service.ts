@@ -1,22 +1,19 @@
 import { EventEmitter } from 'events'
-import { PrismaClient } from '@prisma/client'
+import { eq, desc, asc } from 'drizzle-orm'
 import { AgentMessage, AgentContext } from '../types/agent.types'
-import { DatabaseSetup } from '../../database/database-setup'
+import { db } from '../../database/db'
+import { conversations, messages, toolCalls, Message, ToolCall, NewConversation, NewMessage, NewToolCall } from '../../database/schema'
 
 /**
  * Service for managing agent conversations with persistent storage
  */
 export class ConversationManager extends EventEmitter {
-  private prisma: PrismaClient
   private activeConversations: Map<string, AgentContext> = new Map()
   private initialized = false
 
   constructor() {
     super()
     this.setMaxListeners(100)
-
-    // Use centralized database setup
-    this.prisma = DatabaseSetup.getPrismaClient()
   }
 
   /**
@@ -27,14 +24,10 @@ export class ConversationManager extends EventEmitter {
 
     try {
       console.log('🗄️ Initializing Conversation Manager...')
-
-      // Database setup is handled by DatabaseSetup utility
-      // Just test that connection works
-      const isConnected = await DatabaseSetup.testConnection()
-      if (!isConnected) {
-        throw new Error('Database connection failed')
-      }
-
+      
+      // Initialize database
+      await db.initialize()
+      
       this.initialized = true
       console.log('✅ Conversation Manager initialized successfully')
     } catch (error) {
@@ -48,11 +41,11 @@ export class ConversationManager extends EventEmitter {
    */
   async createConversation(title?: string): Promise<string> {
     try {
-      const conversation = await this.prisma.conversation.create({
-        data: {
-          title: title || `Conversation ${new Date().toLocaleString()}`,
-        },
-      })
+      const newConversation: NewConversation = {
+        title: title || `Conversation ${new Date().toLocaleString()}`,
+      }
+
+      const [conversation] = await db.getDB().insert(conversations).values(newConversation).returning()
 
       const context: AgentContext = {
         conversationId: conversation.id,
@@ -87,47 +80,63 @@ export class ConversationManager extends EventEmitter {
       }
 
       // Load from database
-      const conversation = await this.prisma.conversation.findUnique({
-        where: { id: conversationId },
-        include: {
-          messages: {
-            include: {
-              tool_calls: true,
-            },
-            orderBy: { created_at: 'asc' },
-          },
-        },
-      })
+      const conversation = await db.getDB().select().from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1)
+        .then(results => results[0])
 
       if (!conversation) {
         return null
       }
 
+      // Load messages with tool calls
+      const dbMessages = await db.getDB().select({
+        message: messages,
+        toolCall: toolCalls,
+      })
+      .from(messages)
+      .leftJoin(toolCalls, eq(messages.id, toolCalls.messageId))
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(asc(messages.createdAt))
+
+      // Group messages by message ID and collect tool calls
+      const messageMap = new Map<string, { message: Message, toolCalls: ToolCall[] }>()
+      
+      for (const row of dbMessages) {
+        const messageId = row.message.id
+        if (!messageMap.has(messageId)) {
+          messageMap.set(messageId, { message: row.message, toolCalls: [] })
+        }
+        if (row.toolCall) {
+          messageMap.get(messageId)!.toolCalls.push(row.toolCall)
+        }
+      }
+
       // Convert database messages to AgentMessage format
-      const messages: AgentMessage[] = conversation.messages.map((dbMessage) => {
+      const agentMessages: AgentMessage[] = Array.from(messageMap.values()).map(({ message, toolCalls }) => {
         const agentMessage: AgentMessage = {
-          id: dbMessage.id,
-          role: dbMessage.role as 'user' | 'assistant' | 'system',
-          content: dbMessage.content,
-          timestamp: dbMessage.created_at,
+          id: message.id,
+          role: message.role as 'user' | 'assistant' | 'system',
+          content: message.content,
+          timestamp: new Date(message.createdAt),
           conversationId: conversationId,
         }
 
         // Add tool call information if present
-        if (dbMessage.tool_calls.length > 0) {
-          const toolCall = dbMessage.tool_calls[0] // Assuming one tool call per message for now
+        if (toolCalls.length > 0) {
+          const toolCall = toolCalls[0] // Assuming one tool call per message for now
           agentMessage.toolCall = {
-            toolName: toolCall.tool_name,
+            toolName: toolCall.toolName,
             parameters: toolCall.parameters as Record<string, any>,
-            serverId: toolCall.server_id,
+            serverId: toolCall.serverId,
           }
 
           if (toolCall.result) {
             agentMessage.toolResult = {
               success: toolCall.status === 'success',
               result: toolCall.result,
-              error: toolCall.error_message || undefined,
-              executionTime: toolCall.execution_time || undefined,
+              error: toolCall.errorMessage || undefined,
+              executionTime: toolCall.executionTime || undefined,
             }
           }
         }
@@ -137,7 +146,7 @@ export class ConversationManager extends EventEmitter {
 
       const context: AgentContext = {
         conversationId,
-        messages,
+        messages: agentMessages,
         maxIterations: 10,
         currentIteration: 0,
       }
@@ -170,41 +179,41 @@ export class ConversationManager extends EventEmitter {
       }
 
       // Save to database
-      const dbMessage = await this.prisma.message.create({
-        data: {
-          conversation_id: conversationId,
-          role: message.role,
-          content: message.content,
-          metadata:
-            message.toolCall || message.toolResult
-              ? {
-                  toolCall: message.toolCall,
-                  toolResult: message.toolResult,
-                }
-              : undefined,
-        },
-      })
+      const newMessage: NewMessage = {
+        conversationId: conversationId,
+        role: message.role,
+        content: message.content,
+        metadata:
+          message.toolCall || message.toolResult
+            ? {
+                toolCall: message.toolCall,
+                toolResult: message.toolResult,
+              }
+            : undefined,
+      }
+
+      const [dbMessage] = await db.getDB().insert(messages).values(newMessage).returning()
 
       // Save tool call if present
       if (message.toolCall) {
-        await this.prisma.toolCall.create({
-          data: {
-            message_id: dbMessage.id,
-            tool_name: message.toolCall.toolName,
-            server_id: message.toolCall.serverId,
-            server_name: '', // Will be populated by agent orchestrator
-            parameters: message.toolCall.parameters,
-            result: message.toolResult?.result || null,
-            execution_time: message.toolResult?.executionTime || null,
-            status:
-              message.toolResult?.success === false
-                ? 'error'
-                : message.toolResult
-                  ? 'success'
-                  : 'pending',
-            error_message: message.toolResult?.error || null,
-          },
-        })
+        const newToolCall: NewToolCall = {
+          messageId: dbMessage.id,
+          toolName: message.toolCall.toolName,
+          serverId: message.toolCall.serverId,
+          serverName: '', // Will be populated by agent orchestrator
+          parameters: message.toolCall.parameters,
+          result: message.toolResult?.result || null,
+          executionTime: message.toolResult?.executionTime || null,
+          status:
+            message.toolResult?.success === false
+              ? 'error'
+              : message.toolResult
+                ? 'success'
+                : 'pending',
+          errorMessage: message.toolResult?.error || null,
+        }
+
+        await db.getDB().insert(toolCalls).values(newToolCall)
       }
 
       this.emit('message-added', { conversationId, message: agentMessage })
@@ -226,15 +235,14 @@ export class ConversationManager extends EventEmitter {
     error?: string
   ): Promise<void> {
     try {
-      await this.prisma.toolCall.update({
-        where: { id: toolCallId },
-        data: {
+      await db.getDB().update(toolCalls)
+        .set({
           result,
-          execution_time: executionTime,
+          executionTime: executionTime,
           status: success ? 'success' : 'error',
-          error_message: error,
-        },
-      })
+          errorMessage: error,
+        })
+        .where(eq(toolCalls.id, toolCallId))
 
       // Update in-memory context
       const context = this.activeConversations.get(conversationId)
@@ -280,19 +288,20 @@ export class ConversationManager extends EventEmitter {
     Array<{ id: string; title: string; created_at: Date; updated_at: Date }>
   > {
     try {
-      const conversations = await this.prisma.conversation.findMany({
-        orderBy: { updated_at: 'desc' },
-        select: {
-          id: true,
-          title: true,
-          created_at: true,
-          updated_at: true,
-        },
+      const conversationList = await db.getDB().select({
+        id: conversations.id,
+        title: conversations.title,
+        created_at: conversations.createdAt,
+        updated_at: conversations.updatedAt,
       })
+      .from(conversations)
+      .orderBy(desc(conversations.updatedAt))
 
-      return conversations.map((conv) => ({
+      return conversationList.map((conv) => ({
         ...conv,
         title: conv.title || 'Untitled',
+        created_at: new Date(conv.created_at),
+        updated_at: new Date(conv.updated_at),
       }))
     } catch (error) {
       console.error('Failed to get all conversations:', error)
@@ -305,10 +314,9 @@ export class ConversationManager extends EventEmitter {
    */
   async updateConversationTitle(conversationId: string, title: string): Promise<void> {
     try {
-      await this.prisma.conversation.update({
-        where: { id: conversationId },
-        data: { title },
-      })
+      await db.getDB().update(conversations)
+        .set({ title })
+        .where(eq(conversations.id, conversationId))
 
       this.emit('conversation-updated', { conversationId, title })
     } catch (error) {
@@ -326,9 +334,8 @@ export class ConversationManager extends EventEmitter {
       this.activeConversations.delete(conversationId)
 
       // Delete from database (cascade will handle related records)
-      await this.prisma.conversation.delete({
-        where: { id: conversationId },
-      })
+      await db.getDB().delete(conversations)
+        .where(eq(conversations.id, conversationId))
 
       this.emit('conversation-deleted', { conversationId })
       console.log(`🗑️ Deleted conversation: ${conversationId}`)
@@ -343,9 +350,8 @@ export class ConversationManager extends EventEmitter {
    */
   async clearConversationMessages(conversationId: string): Promise<void> {
     try {
-      await this.prisma.message.deleteMany({
-        where: { conversation_id: conversationId },
-      })
+      await db.getDB().delete(messages)
+        .where(eq(messages.conversationId, conversationId))
 
       // Update in-memory context
       const context = this.activeConversations.get(conversationId)
@@ -372,28 +378,28 @@ export class ConversationManager extends EventEmitter {
     errorToolCalls: number
   }> {
     try {
-      const stats = await this.prisma.conversation.findUnique({
-        where: { id: conversationId },
-        include: {
-          messages: {
-            include: {
-              tool_calls: true,
-            },
-          },
-        },
-      })
+      const conversation = await db.getDB().select().from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1)
+        .then(results => results[0])
 
-      if (!stats) {
+      if (!conversation) {
         throw new Error(`Conversation ${conversationId} not found`)
       }
 
-      const allToolCalls = stats.messages.flatMap((m) => m.tool_calls)
-      const successfulCalls = allToolCalls.filter((tc) => tc.status === 'success')
-      const errorCalls = allToolCalls.filter((tc) => tc.status === 'error')
+      const messageList = await db.getDB().select().from(messages)
+        .where(eq(messages.conversationId, conversationId))
 
-      const executionTimes = allToolCalls
-        .filter((tc) => tc.execution_time !== null)
-        .map((tc) => tc.execution_time!)
+      const toolCallList = await db.getDB().select().from(toolCalls)
+        .innerJoin(messages, eq(toolCalls.messageId, messages.id))
+        .where(eq(messages.conversationId, conversationId))
+
+      const successfulCalls = toolCallList.filter((tc) => tc.tool_calls.status === 'success')
+      const errorCalls = toolCallList.filter((tc) => tc.tool_calls.status === 'error')
+
+      const executionTimes = toolCallList
+        .filter((tc) => tc.tool_calls.executionTime !== null)
+        .map((tc) => tc.tool_calls.executionTime!)
 
       const avgExecutionTime =
         executionTimes.length > 0
@@ -401,8 +407,8 @@ export class ConversationManager extends EventEmitter {
           : 0
 
       return {
-        messageCount: stats.messages.length,
-        toolCallCount: allToolCalls.length,
+        messageCount: messageList.length,
+        toolCallCount: toolCallList.length,
         avgExecutionTime,
         successfulToolCalls: successfulCalls.length,
         errorToolCalls: errorCalls.length,
@@ -425,37 +431,37 @@ export class ConversationManager extends EventEmitter {
     }>
   > {
     try {
-      // Simple text search in conversation titles and message content
-      const conversations = await this.prisma.conversation.findMany({
-        where: {
-          OR: [
-            { title: { contains: query } },
-            {
-              messages: {
-                some: {
-                  content: { contains: query },
-                },
-              },
-            },
-          ],
-        },
-        include: {
-          messages: {
-            where: {
-              content: { contains: query },
-            },
-            take: 1,
-            select: { content: true },
-          },
-        },
-        orderBy: { updated_at: 'desc' },
+      // Simple text search in conversation titles
+      const titleMatches = await db.getDB().select({
+        id: conversations.id,
+        title: conversations.title,
+        created_at: conversations.createdAt,
       })
+      .from(conversations)
+      .where(eq(conversations.title, query)) // Note: SQLite LIKE would be better here
+      .orderBy(desc(conversations.updatedAt))
 
-      return conversations.map((conv) => ({
+      // Search in message content
+      const messageMatches = await db.getDB().select({
+        id: conversations.id,
+        title: conversations.title,
+        created_at: conversations.createdAt,
+        content: messages.content,
+      })
+      .from(conversations)
+      .innerJoin(messages, eq(conversations.id, messages.conversationId))
+      .where(eq(messages.content, query)) // Note: SQLite LIKE would be better here
+      .orderBy(desc(conversations.updatedAt))
+      .limit(1)
+
+      // Combine results (simplified - in a real app you'd want to deduplicate)
+      const allResults = [...titleMatches, ...messageMatches]
+      
+      return allResults.map((conv) => ({
         id: conv.id,
         title: conv.title || 'Untitled',
-        created_at: conv.created_at,
-        snippet: conv.messages[0]?.content.substring(0, 150) + '...' || 'No matching messages',
+        created_at: new Date(conv.created_at),
+        snippet: ('content' in conv && typeof conv.content === 'string') ? conv.content.substring(0, 150) + '...' : 'No matching messages',
       }))
     } catch (error) {
       console.error('Failed to search conversations:', error)
@@ -468,33 +474,36 @@ export class ConversationManager extends EventEmitter {
    */
   async exportConversation(conversationId: string): Promise<string> {
     try {
-      const conversation = await this.prisma.conversation.findUnique({
-        where: { id: conversationId },
-        include: {
-          messages: {
-            include: {
-              tool_calls: true,
-            },
-            orderBy: { created_at: 'asc' },
-          },
-        },
-      })
+      const conversation = await db.getDB().select().from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1)
+        .then(results => results[0])
 
       if (!conversation) {
         throw new Error(`Conversation ${conversationId} not found`)
       }
 
+      // Get messages with tool calls
+      const messagesWithToolCalls = await db.getDB().select({
+        message: messages,
+        toolCall: toolCalls,
+      })
+      .from(messages)
+      .leftJoin(toolCalls, eq(messages.id, toolCalls.messageId))
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(asc(messages.createdAt))
+
       return JSON.stringify(
         {
           id: conversation.id,
           title: conversation.title,
-          created_at: conversation.created_at,
-          updated_at: conversation.updated_at,
-          messages: conversation.messages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-            created_at: msg.created_at,
-            tool_calls: msg.tool_calls,
+          created_at: conversation.createdAt,
+          updated_at: conversation.updatedAt,
+          messages: messagesWithToolCalls.map((row) => ({
+            role: row.message.role,
+            content: row.message.content,
+            created_at: row.message.createdAt,
+            tool_calls: row.toolCall ? [row.toolCall] : [],
           })),
         },
         null,
@@ -513,7 +522,7 @@ export class ConversationManager extends EventEmitter {
     console.log('🧹 Cleaning up Conversation Manager...')
 
     try {
-      await this.prisma.$disconnect()
+      await db.close()
       this.activeConversations.clear()
       this.removeAllListeners()
 

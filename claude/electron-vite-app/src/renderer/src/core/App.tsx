@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useClientHost } from '../shared/hooks/useClientHost'
 import { AgentChat } from '../features/agent/components/AgentChat'
-import Versions from '../shared/components/Versions'
 import ErrorBoundary from '../shared/components/ErrorBoundary'
 import LoadingSpinner from '../shared/components/LoadingSpinner'
 
@@ -98,7 +97,6 @@ function App(): React.JSX.Element {
 
           {/* Footer */}
           <div className="mt-8 text-center text-sm text-gray-600">
-            {!isShuttingDown && <Versions />}
             {isShuttingDown && (
               <div className="p-5 text-center text-gray-600">
                 <p>Thank you for using MCP Client Host!</p>

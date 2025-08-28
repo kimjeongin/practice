@@ -2,16 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import {
-  startClientHostService,
-  stopClientHostService,
-} from '../lib/mcp/services/mcp-client-host.service'
-import {
-  registerClientHostHandlers,
-  unregisterClientHostHandlers,
-} from '../lib/mcp/ipc/mcp-client-host.handlers'
-import { DatabaseSetup } from '../lib/database/database-setup'
-import { performStartupMigration } from '../lib/mcp/services/mcp-migration.service'
+import { db } from '../lib/database/db'
 // Import agent IPC handlers (this will automatically register them)
 import '../lib/agent/ipc/agent-ipc.handlers'
 
@@ -68,19 +59,9 @@ async function initializeServices(): Promise<void> {
   try {
     console.log('🚀 Initializing application services...')
 
-    // 0. Perform configuration migration if needed
-    console.log('🔄 Checking for configuration migration...')
-    await performStartupMigration()
-
     // 1. Initialize database first
     console.log('🗄️ Setting up database...')
-    await DatabaseSetup.initialize()
-
-    // 2. Register IPC handlers
-    registerClientHostHandlers()
-
-    // 3. Start MCP client host service
-    await startClientHostService()
+    await db.initialize()
 
     console.log('✅ All services initialized successfully')
   } catch (error) {
@@ -148,19 +129,11 @@ async function cleanupServices(): Promise<void> {
 
     await cleanupNotification
 
-    // Step 1: Unregister IPC handlers first to prevent new requests
-    console.log('🔌 Unregistering IPC handlers...')
-    unregisterClientHostHandlers()
-
-    // Step 2: Stop Client Host service (this will disconnect all MCP servers)
-    console.log('🛑 Stopping MCP Client Host service...')
-    await stopClientHostService()
-
-    // Step 3: Close database connections
+    // Step 1: Close database connections
     console.log('🗄️ Closing database connections...')
-    await DatabaseSetup.close()
+    await db.close()
 
-    // Step 4: Force cleanup any remaining processes
+    // Step 2: Force cleanup any remaining processes
     console.log('🧹 Performing final cleanup...')
     // Give a moment for all connections to properly close
     await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -262,4 +235,4 @@ app.on('will-quit', async (event) => {
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
 
-console.log('✅ MCP Client Host application initialized with comprehensive cleanup handlers')
+console.log('✅ Agent application initialized with comprehensive cleanup handlers')

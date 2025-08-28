@@ -85,7 +85,56 @@ export interface AgentState {
   context: AgentContext
 }
 
-// Enhanced types for MCP compatibility
+// ============================
+// MCP Integration Types
+// ============================
+
+// MCP Transport types
+export type TransportType = 'stdio' | 'http' | 'sse'
+
+// Server status enumeration
+export enum ServerStatus {
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  ERROR = 'error',
+}
+
+// MCP Server configuration for Agent system
+export interface MCPServerConfig {
+  id: string
+  name: string
+  description?: string
+  transport: TransportType
+  command?: string
+  args?: string[]
+  url?: string
+  cwd?: string
+  env?: Record<string, string>
+  timeout?: number
+  enabled?: boolean
+  category?: string
+  tags?: string[]
+}
+
+// MCP Server connection information
+export interface MCPServerConnection {
+  config: MCPServerConfig
+  status: ServerStatus
+  error?: string
+  connectedAt?: Date
+  tools?: any[]
+}
+
+// IPC Response wrapper
+export interface IPCResponse<T> {
+  success: boolean
+  data?: T
+  error?: string
+  timestamp?: Date
+}
+
+// Enhanced types for MCP compatibility (legacy)
 export type EnhancedTransportType = 'stdio' | 'http' | 'sse'
 
 export interface EnhancedServerConfig {

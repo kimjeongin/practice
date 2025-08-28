@@ -20,7 +20,6 @@ export {
   initializeMCPLoaderService,
 } from './services/mcp-loader.service'
 
-
 // Types
 export type {
   OllamaModel,
@@ -37,10 +36,7 @@ export type {
 } from './types/agent.types'
 
 // MCP Types
-export type {
-  MCPServerConfig,
-} from './services/mcp-loader.service'
-
+export type { MCPServerConfig } from './services/mcp-loader.service'
 
 /**
  * Initialize the complete agent system with LangGraph

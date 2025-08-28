@@ -7,7 +7,7 @@ An intelligent desktop application powered by LangGraph and Model Context Protoc
 - **🤖 LangGraph-powered Agent**: Advanced AI agent built with LangChain.js and LangGraph for reliable, controllable workflows
 - **🔧 Multi-MCP Server Support**: Connect to multiple MCP servers simultaneously using `@langchain/mcp-adapters`
 - **🦙 Local Ollama Integration**: Privacy-focused local LLM integration with `@langchain/ollama`
-- **💬 Persistent Conversations**: SQLite-based conversation management with Prisma
+- **💬 Persistent Conversations**: SQLite-based conversation management with Drizzle ORM
 - **⚡ Real-time Communication**: Event-driven architecture with real-time updates
 - **🎨 Modern UI**: React + TypeScript + Tailwind CSS interface
 
@@ -36,10 +36,9 @@ $ yarn install
 
 ### Database Setup
 
-```bash
-# Generate Prisma client and setup database
-$ yarn db:setup
-```
+데이터베이스는 첫 실행 시 자동으로 설정됩니다! 별도의 설정 명령어가 필요 없습니다.
+
+- 스키마 변경 시에만: `yarn db:generate`
 
 ### Development
 
