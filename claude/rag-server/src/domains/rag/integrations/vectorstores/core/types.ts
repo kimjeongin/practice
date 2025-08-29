@@ -34,11 +34,13 @@ export interface IndexStats {
 /**
  * Provider-specific configurations
  */
-export interface FaissConfig {
-  indexType?: string
-  metric?: string
-  indexPath?: string
-  dimensions?: number
+export interface LanceDBConfig {
+  uri?: string
+  tableName?: string
+  mode?: 'create' | 'overwrite' | 'append'
+  enableFullTextSearch?: boolean
+  indexColumns?: string[]
+  storageOptions?: Record<string, any>
 }
 
 export interface QdrantConfig {
@@ -55,6 +57,6 @@ export interface QdrantConfig {
  * Common vector store configuration
  */
 export interface VectorStoreConfig {
-  provider: 'faiss' | 'qdrant' | string
-  config: FaissConfig | QdrantConfig | Record<string, any>
+  provider: 'lancedb' | 'qdrant' | string
+  config: LanceDBConfig | QdrantConfig | Record<string, any>
 }

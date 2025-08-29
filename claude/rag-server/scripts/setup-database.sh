@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # ====================================================================
-# RAG Server Database Setup Script
+# RAG Server Setup Script (LanceDB)
 # ====================================================================
 
 set -e  # Exit on any error
 
-echo "🚀 Setting up RAG Server database..."
+echo "🚀 Setting up RAG Server (LanceDB)..."
 
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,32 +25,15 @@ if [ ! -f ".env" ]; then
     fi
 fi
 
-# Create necessary directories
+# Create necessary directories for LanceDB
 echo "📁 Creating necessary directories..."
-mkdir -p .data
-mkdir -p .data/vectors
-mkdir -p .data/.cache
+mkdir -p data
+mkdir -p data/lancedb
+mkdir -p data/.cache
 mkdir -p documents
 mkdir -p logs
 
-# Check if Prisma client is generated
-echo "🔧 Generating Prisma client..."
-yarn db:generate
-
-# Check if database exists and has tables
-echo "🗄️  Checking database status..."
-if [ ! -f "prisma/database.db" ] || [ ! -s "prisma/database.db" ]; then
-    echo "📦 Database not found or empty, creating new database..."
-    yarn db:push
-else
-    echo "✅ Database file exists, checking tables..."
-    # Check if tables exist by trying a simple query
-    if ! npx prisma db execute --stdin <<< "SELECT name FROM sqlite_master WHERE type='table';" > /dev/null 2>&1; then
-        echo "📦 Tables not found, pushing schema..."
-        yarn db:push
-    else
-        echo "✅ Database tables exist"
-    fi
-fi
-
 echo "🎉 Setup complete! You can now run the server with 'yarn dev' or 'yarn start'"
+echo "📝 로그 파일 저장 위치:"
+echo "   - 전체 로그: $PROJECT_ROOT/logs/rag-server.log"
+echo "   - 에러 로그: $PROJECT_ROOT/logs/rag-server-error.log"

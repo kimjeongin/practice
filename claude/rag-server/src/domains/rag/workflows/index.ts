@@ -1,4 +1,3 @@
 // RAG Workflows index
-export * from './workflow.js'
-export * from './sync-manager.js'
-export * from './sync-scheduler.js'
+// workflow.js removed as part of VectorStore-only architecture
+// Workflows are now handled directly through MCP handlers using VectorStore

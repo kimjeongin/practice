@@ -1,6 +1,8 @@
-import { RAGWorkflow, RAGSearchOptions } from '@/domains/rag/workflows/workflow.js'
-import { IFileRepository } from '@/domains/rag/repositories/document.js'
+import { SearchService } from '@/domains/rag/services/search/search-service.js'
+import { SearchOptions } from '@/shared/types/interfaces.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
+import { logger } from '@/shared/logger/index.js'
 
 // Search tool arguments
 export interface SearchArgs {
@@ -26,7 +28,10 @@ export interface SearchByQuestionArgs {
 }
 
 export class SearchHandler {
-  constructor(private ragWorkflow: RAGWorkflow, private fileRepository: IFileRepository) {}
+  constructor(
+    private searchService: SearchService,
+    private config: ServerConfig
+  ) {}
 
   async handleSearch(args: SearchArgs) {
     const { query, search_type = 'semantic', limit = 5, sources, metadata_filters } = args
@@ -39,18 +44,19 @@ export class SearchHandler {
       }
     }
 
-    // Convert search_type to existing workflow options
-    const options: RAGSearchOptions = {
-      topK: Math.max(1, Math.min(limit, 50)), // Clamp between 1-50
-      fileTypes: sources, // Use sources as file type filter for now
-      metadataFilters: metadata_filters,
-      useSemanticSearch: search_type !== 'fulltext',
-      useHybridSearch: search_type === 'hybrid',
-      semanticWeight: search_type === 'hybrid' ? 0.7 : 1.0,
-    }
-
     try {
-      const results = await this.ragWorkflow.search(query, options)
+      // Use SearchService with advanced search options
+      const searchOptions: SearchOptions = {
+        topK: Math.max(1, Math.min(limit, 50)), // Clamp between 1-50
+        useSemanticSearch: search_type === 'semantic' || search_type === 'hybrid',
+        useHybridSearch: search_type === 'hybrid',
+        semanticWeight: search_type === 'hybrid' ? 0.7 : 1.0,
+        fileTypes: sources,
+        metadataFilters: metadata_filters,
+        scoreThreshold: 0.1,
+      }
+
+      const results = await this.searchService.search(query, searchOptions)
 
       return {
         query,
@@ -60,11 +66,14 @@ export class SearchHandler {
           rank: index + 1,
           content: result.content,
           relevance_score: result.score,
+          semantic_score: result.semanticScore,
+          keyword_score: result.keywordScore,
+          hybrid_score: result.hybridScore,
           source: {
-            filename: result.metadata.name || result.metadata.fileName || 'unknown',
-            filepath: result.metadata.path || result.metadata.filePath || 'unknown',
-            file_type: result.metadata.fileType || 'unknown',
-            chunk_index: result.chunkIndex,
+            filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
+            filepath: result.metadata?.filePath || result.metadata?.path || 'unknown', 
+            file_type: result.metadata?.fileType || 'unknown',
+            chunk_index: result.chunkIndex || 0,
           },
           metadata: result.metadata,
         })),
@@ -75,6 +84,7 @@ export class SearchHandler {
         },
       }
     } catch (error) {
+      logger.error('Search failed', error instanceof Error ? error : new Error(String(error)))
       return {
         error: 'SearchFailed',
         message: error instanceof Error ? error.message : 'Search operation failed',
@@ -95,28 +105,27 @@ export class SearchHandler {
     }
 
     try {
-      // Use semantic search to find similar content
-      const options: RAGSearchOptions = {
+      // Use SearchService for semantic similarity search
+      const searchOptions: SearchOptions = {
         topK: Math.max(1, Math.min(limit * 2, 20)), // Get more results to allow filtering
+        scoreThreshold: similarity_threshold,
         useSemanticSearch: true,
         useHybridSearch: false,
-        semanticWeight: 1.0, // Pure semantic search
-        scoreThreshold: similarity_threshold,
       }
 
-      const results = await this.ragWorkflow.search(reference_text, options)
+      const results = await this.searchService.search(reference_text, searchOptions)
 
       // Filter out excluded sources if specified
       let filteredResults = results
       if (exclude_source) {
         filteredResults = results.filter((result) => {
-          const filename = result.metadata.name || result.metadata.fileName
-          const filepath = result.metadata.path || result.metadata.filePath
+          const filename = result.metadata?.name || result.metadata?.fileName
+          const filepath = result.metadata?.path || result.metadata?.filePath
 
           return (
             filename !== exclude_source &&
             filepath !== exclude_source &&
-            result.metadata.fileId !== exclude_source
+            result.metadata?.fileId !== exclude_source
           )
         })
       }
@@ -145,11 +154,11 @@ export class SearchHandler {
             result.content.substring(0, 200) + (result.content.length > 200 ? '...' : ''),
           full_content: result.content,
           source: {
-            filename: result.metadata.name || result.metadata.fileName || 'unknown',
-            filepath: result.metadata.path || result.metadata.filePath || 'unknown',
-            file_type: result.metadata.fileType || 'unknown',
-            chunk_index: result.chunkIndex,
-            file_id: result.metadata.fileId || 'unknown',
+            filename: result.metadata?.name || result.metadata?.fileName || 'unknown',
+            filepath: result.metadata?.path || result.metadata?.filePath || 'unknown',
+            file_type: result.metadata?.fileType || 'unknown',
+            chunk_index: result.chunkIndex || 0,
+            file_id: result.metadata?.fileId || 'unknown',
           },
           metadata: result.metadata,
         })),
@@ -181,17 +190,17 @@ export class SearchHandler {
     }
 
     try {
-      // Search for relevant context
-      const searchOptions: RAGSearchOptions = {
+      // Search for relevant context using SearchService
+      const searchOptions: SearchOptions = {
         topK: Math.max(1, Math.min(context_limit, 20)),
-        fileTypes: sources, // Use sources as file type filter
+        scoreThreshold: 0.1, // Lower threshold for information extraction
         useSemanticSearch: search_method === 'semantic' || search_method === 'hybrid',
         useHybridSearch: search_method === 'hybrid',
         semanticWeight: search_method === 'hybrid' ? 0.7 : 1.0,
-        scoreThreshold: 0.1, // Lower threshold for information extraction
+        fileTypes: sources,
       }
 
-      const searchResults = await this.ragWorkflow.search(question, searchOptions)
+      const searchResults = await this.searchService.search(question, searchOptions)
 
       if (searchResults.length === 0) {
         return {
@@ -210,9 +219,9 @@ export class SearchHandler {
         content: result.content,
         relevance_score: result.score,
         source: {
-          filename: result.metadata.name || result.metadata.fileName || 'unknown',
-          filepath: result.metadata.path || result.metadata.filePath || 'unknown',
-          chunk_index: result.chunkIndex,
+          filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
+          filepath: result.metadata?.filePath || result.metadata?.path || 'unknown',
+          chunk_index: result.chunkIndex || 0,
         },
       }))
 

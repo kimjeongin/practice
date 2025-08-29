@@ -14,11 +14,15 @@ export interface ConfigProfile {
 }
 
 export interface VectorStoreConfig {
-  provider: 'faiss' | 'qdrant'
+  provider: 'lancedb' | 'qdrant'
   config: {
-    // FAISS specific
-    indexPath?: string
-    dimensions?: number
+    // LanceDB specific
+    uri?: string
+    tableName?: string
+    mode?: 'create' | 'overwrite' | 'append'
+    enableFullTextSearch?: boolean
+    indexColumns?: string[]
+    storageOptions?: Record<string, any>
 
     // Qdrant specific
     url?: string
@@ -73,8 +77,6 @@ export interface ServerConfig extends BaseServerConfig {
     migrationTimeout: number
   }
 
-  // Document synchronization settings
-  enableAutoSync?: boolean
 
   // MCP Transport configuration
   mcp: MCPTransportConfig
@@ -98,9 +100,9 @@ export class ConfigFactory {
       nodeEnv: 'development',
       logLevel: 'debug',
       vectorStore: {
-        provider: 'faiss',
+        provider: 'lancedb',
         config: {
-          indexPath: resolve('./.data/vectors'),
+          uri: process.env['LANCEDB_URI'] || resolve('./.data/lancedb')
         },
       },
       pipeline: {
@@ -125,8 +127,6 @@ export class ConfigFactory {
         backupEmbeddingsBeforeMigration: process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] === 'true', // False by default in dev
         migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '300000'), // 5 minutes
       },
-      // Document synchronization settings
-      enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'stdio',
         port: parseInt(process.env['MCP_PORT'] || '3000'),
@@ -150,13 +150,12 @@ export class ConfigFactory {
       nodeEnv: 'production',
       logLevel: 'info',
       vectorStore: {
-        provider: (process.env['VECTOR_STORE_PROVIDER'] as any) || 'faiss',
+        provider: (process.env['VECTOR_STORE_PROVIDER'] as any) || 'lancedb',
         config: {
-          // FAISS config
-          indexPath: process.env['FAISS_INDEX_PATH'] || `${baseConfig.dataDir}/vectors`,
-          dimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || '384'),
+          // LanceDB config
+          uri: process.env['LANCEDB_URI'] || `${baseConfig.dataDir}/lancedb`,
 
-          // Qdrant config (if needed)
+          // Qdrant config (fallback)
           url: process.env['QDRANT_URL'] || 'http://localhost:6333',
           apiKey: process.env['QDRANT_API_KEY'],
           collectionName: process.env['QDRANT_COLLECTION'] || 'documents',
@@ -186,8 +185,6 @@ export class ConfigFactory {
         backupEmbeddingsBeforeMigration: process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] !== 'false', // True by default in production
         migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '600000'), // 10 minutes in production
       },
-      // Document synchronization settings
-      enableAutoSync: process.env['ENABLE_AUTO_SYNC'] !== 'false',
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'streamable-http',
         port: parseInt(process.env['MCP_PORT'] || '3000'),
@@ -213,9 +210,9 @@ export class ConfigFactory {
       documentsDir: resolve('./tests/documents'),
       dataDir: resolve('./tests/.data'),
       vectorStore: {
-        provider: 'faiss',
+        provider: 'lancedb',
         config: {
-          indexPath: resolve('./tests/.data/vectors'),
+          uri: process.env['LANCEDB_URI'] || resolve('./tests/.data/lancedb')
         },
       },
       pipeline: {
@@ -240,8 +237,6 @@ export class ConfigFactory {
         backupEmbeddingsBeforeMigration: false,
         migrationTimeout: 30000, // Short timeout for tests
       },
-      // Document synchronization settings (disabled for tests by default)
-      enableAutoSync: process.env['ENABLE_AUTO_SYNC'] === 'true',
       mcp: {
         type: 'stdio',
         port: 3002,
@@ -331,8 +326,8 @@ export class ConfigFactory {
       errors.push('Qdrant URL is required when using Qdrant provider')
     }
 
-    if (config.vectorStore.provider === 'faiss' && !config.vectorStore.config.indexPath) {
-      errors.push('FAISS index path is required when using FAISS provider')
+    if (config.vectorStore.provider === 'lancedb' && !config.vectorStore.config.uri) {
+      errors.push('LanceDB URI is required when using LanceDB provider')
     }
 
     if (errors.length > 0) {

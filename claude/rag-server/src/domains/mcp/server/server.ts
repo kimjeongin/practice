@@ -10,7 +10,6 @@ import {
 
 import { SearchHandler } from '../handlers/search.js'
 import { InformationHandler } from '../handlers/information.js'
-import { IFileRepository } from '@/domains/rag/repositories/document.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 
@@ -20,7 +19,6 @@ export class MCPServer {
   constructor(
     private searchHandler: SearchHandler,
     private informationHandler: InformationHandler,
-    private fileRepository: IFileRepository,
     private config: ServerConfig
   ) {
     this.server = new Server(
@@ -115,44 +113,39 @@ export class MCPServer {
   }
 
   private setupResources(): void {
+    // Resources functionality temporarily removed - VectorStore-only architecture
+    // Files are now managed through VectorStore metadata rather than database
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      const files = await this.fileRepository.getAllFiles()
-
       return {
-        resources: files.map((file) => ({
-          uri: `file://${file.path}`,
-          name: file.name,
-          description: `${file.fileType.toUpperCase()} file (${file.size} bytes)`,
-          mimeType: this.getMimeType(file.fileType),
-        })),
+        resources: [],
       }
     })
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       const { uri } = request.params
-
+      
+      // Basic file reading without database dependency
       if (!uri.startsWith('file://')) {
         throw new Error('Only file:// URIs are supported')
       }
 
       const filePath = uri.replace('file://', '')
-      const file = await this.fileRepository.getFileByPath(filePath)
-
-      if (!file) {
+      
+      try {
+        const { readFile } = await import('fs/promises')
+        const content = await readFile(filePath, 'utf-8')
+        
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: this.getMimeType(filePath.split('.').pop() || ''),
+              text: content,
+            },
+          ],
+        }
+      } catch (error) {
         throw new Error('File not found')
-      }
-
-      // Get file content from chunks (simplified)
-      const content = `File: ${file.name}\nPath: ${file.path}\nType: ${file.fileType}`
-
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: this.getMimeType(file.fileType),
-            text: content,
-          },
-        ],
       }
     })
   }

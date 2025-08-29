@@ -1,33 +1,31 @@
 import chokidar from 'chokidar'
 import { basename, extname } from 'path'
-import { stat } from 'fs/promises'
+import { stat, lstatSync, realpathSync } from 'fs'
+import { stat as statAsync } from 'fs/promises'
 import { EventEmitter } from 'events'
-import { DatabaseConnection } from '../database/connection.js'
 import { FileMetadata } from '@/shared/types/index.js'
 import { calculateFileHash } from '@/shared/utils/crypto.js'
 
 export interface FileChangeEvent {
-  type: 'added' | 'changed' | 'removed'
+  type: 'added' | 'changed' | 'deleted'
   path: string
-  metadata?: FileMetadata
+  metadata?: Omit<FileMetadata, 'id'>
 }
 
 export class FileWatcher extends EventEmitter {
   private watcher: any | null = null
-  private db: DatabaseConnection
   private documentsDir: string
   private supportedExtensions: Set<string>
   private processingFiles: Map<string, NodeJS.Timeout> = new Map()
   private readonly DEBOUNCE_DELAY = 300 // 300ms debounce
-  private readonly MAX_SCAN_DEPTH = 5 // Reduced from 10 to prevent deep recursion
-  private readonly MAX_SCAN_TIME_MS = 30000 // 30 seconds max for directory scan
-  private readonly MAX_PROCESSING_QUEUE = 100 // Max concurrent file processing
-  private visitedPaths: Set<string> = new Set() // Track visited paths to prevent cycles
+  private readonly MAX_SCAN_DEPTH = 5
+  private readonly MAX_SCAN_TIME_MS = 30000
+  private readonly MAX_PROCESSING_QUEUE = 100
+  private visitedPaths: Set<string> = new Set()
   private scanAbortController: AbortController | null = null
 
-  constructor(db: DatabaseConnection, documentsDir: string) {
+  constructor(documentsDir: string) {
     super()
-    this.db = db
     this.documentsDir = documentsDir
     this.supportedExtensions = new Set([
       '.txt',
@@ -60,7 +58,7 @@ export class FileWatcher extends EventEmitter {
           // Additional filtering for vector store and system files
           // Also check for symbolic links to prevent infinite loops
           try {
-            const stats = require('fs').lstatSync(path)
+            const stats = lstatSync(path)
             if (stats.isSymbolicLink()) {
               console.warn(`Skipping symbolic link: ${path}`)
               return true
@@ -73,7 +71,7 @@ export class FileWatcher extends EventEmitter {
             path.includes('vectors') ||
             path.includes('storage') ||
             path.includes('docstore.json') ||
-            path.includes('.faiss') ||
+            path.includes('.lance') ||
             path.includes('.pkl') ||
             path.includes('database')
           )
@@ -162,20 +160,7 @@ export class FileWatcher extends EventEmitter {
       }
 
       const metadata = await this.extractFileMetadata(path)
-      const existingFile = await this.db.getFileByPath(path)
-
-      if (existingFile) {
-        // File already exists, check if it changed
-        if (existingFile.hash !== metadata.hash) {
-          await this.db.updateFile(existingFile.id, metadata)
-          this.emit('change', { type: 'changed', path, metadata: { ...existingFile, ...metadata } })
-        }
-      } else {
-        // New file
-        const fileId = await this.db.insertFile(metadata)
-        const fullMetadata = { id: fileId, ...metadata }
-        this.emit('change', { type: 'added', path, metadata: fullMetadata })
-      }
+      this.emit('change', { type: 'added', path, metadata })
     } catch (error) {
       console.error(`Error handling file added: ${path}`, error)
       this.emit('error', error)
@@ -189,17 +174,7 @@ export class FileWatcher extends EventEmitter {
       }
 
       const metadata = await this.extractFileMetadata(path)
-      const existingFile = await this.db.getFileByPath(path)
-
-      if (existingFile) {
-        if (existingFile.hash !== metadata.hash) {
-          await this.db.updateFile(existingFile.id, metadata)
-          this.emit('change', { type: 'changed', path, metadata: { ...existingFile, ...metadata } })
-        }
-      } else {
-        // File doesn't exist in DB, treat as new
-        await this.handleFileAdded(path)
-      }
+      this.emit('change', { type: 'changed', path, metadata })
     } catch (error) {
       console.error(`Error handling file changed: ${path}`, error)
       this.emit('error', error)
@@ -208,11 +183,7 @@ export class FileWatcher extends EventEmitter {
 
   private async handleFileRemoved(path: string): Promise<void> {
     try {
-      const existingFile = await this.db.getFileByPath(path)
-      if (existingFile) {
-        await this.db.deleteFile(existingFile.id)
-        this.emit('change', { type: 'removed', path, metadata: existingFile })
-      }
+      this.emit('change', { type: 'deleted', path })
     } catch (error) {
       console.error(`Error handling file removed: ${path}`, error)
       this.emit('error', error)
@@ -227,7 +198,7 @@ export class FileWatcher extends EventEmitter {
       path.includes('vectors') ||
       path.includes('storage') ||
       path.includes('docstore.json') ||
-      path.includes('.faiss') ||
+      path.includes('.lance') ||
       path.includes('.pkl') ||
       path.includes('database') ||
       path.includes('.transformers-cache')
@@ -239,7 +210,7 @@ export class FileWatcher extends EventEmitter {
   }
 
   private async extractFileMetadata(path: string): Promise<Omit<FileMetadata, 'id'>> {
-    const stats = await stat(path)
+    const stats = await statAsync(path)
     const hash = calculateFileHash(path)
     const name = basename(path)
     const fileType = extname(path).toLowerCase().substring(1) // Remove the dot
@@ -255,7 +226,7 @@ export class FileWatcher extends EventEmitter {
     }
   }
 
-  // Method to manually scan and sync the entire directory with safety checks
+  // Method to manually scan the entire directory and emit events for all files
   async syncDirectory(): Promise<void> {
     if (!this.watcher) {
       throw new Error('FileWatcher must be started before syncing directory')
@@ -264,13 +235,6 @@ export class FileWatcher extends EventEmitter {
     // Clear visited paths for fresh scan
     this.visitedPaths.clear()
     this.scanAbortController = new AbortController()
-
-    // Get all files currently in database
-    const dbFiles = await this.db.getAllFiles()
-    const dbFilePaths = new Set(dbFiles.map((f: FileMetadata) => f.path))
-
-    // Use chokidar to get all current files with timeout protection
-    const currentFiles = new Set<string>()
 
     return new Promise((resolve, reject) => {
       // Set maximum scan time
@@ -293,55 +257,39 @@ export class FileWatcher extends EventEmitter {
           '**/dist/**',
         ],
         persistent: false,
-        depth: this.MAX_SCAN_DEPTH, // Use same depth limit
+        depth: this.MAX_SCAN_DEPTH,
       })
 
       watcher
-        .on('add', (path) => {
+        .on('add', async (path) => {
           if (this.scanAbortController?.signal.aborted) {
             return
           }
 
           // Check for potential cycles
-          const realPath = require('fs').realpathSync(path)
-          if (this.visitedPaths.has(realPath)) {
-            console.warn(`Potential cycle detected, skipping: ${path}`)
-            return
-          }
-          this.visitedPaths.add(realPath)
+          try {
+            const realPath = realpathSync(path)
+            if (this.visitedPaths.has(realPath)) {
+              console.warn(`Potential cycle detected, skipping: ${path}`)
+              return
+            }
+            this.visitedPaths.add(realPath)
 
-          if (this.isSupportedFile(path)) {
-            currentFiles.add(path)
+            if (this.isSupportedFile(path)) {
+              // Emit event for each discovered file
+              const metadata = await this.extractFileMetadata(path)
+              this.emit('change', { type: 'added', path, metadata })
+            }
+          } catch (error) {
+            console.warn(`Error processing file ${path}:`, error)
           }
         })
-        .on('ready', async () => {
+        .on('ready', () => {
           clearTimeout(scanTimeout)
-
-          if (this.scanAbortController?.signal.aborted) {
-            watcher.close()
-            reject(new Error('Directory scan was aborted'))
-            return
-          }
-
-          try {
-            // Remove files that no longer exist
-            for (const dbFile of dbFiles) {
-              if (!currentFiles.has(dbFile.path)) {
-                await this.db.deleteFile(dbFile.id)
-                this.emit('change', { type: 'removed', path: dbFile.path, metadata: dbFile })
-              }
-            }
-
-            watcher.close()
-            this.visitedPaths.clear()
-            this.scanAbortController = null
-            resolve()
-          } catch (error) {
-            watcher.close()
-            this.visitedPaths.clear()
-            this.scanAbortController = null
-            reject(error)
-          }
+          watcher.close()
+          this.visitedPaths.clear()
+          this.scanAbortController = null
+          resolve()
         })
         .on('error', (error) => {
           clearTimeout(scanTimeout)

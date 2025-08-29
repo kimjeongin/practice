@@ -39,9 +39,11 @@ export function validateConfig(config: BaseServerConfig): void {
     ...config,
     // Add default advanced config properties
     vectorStore: {
-      provider: 'faiss',
+      provider: 'lancedb',
       config: {
-        indexPath: `${config.dataDir}/vectors`,
+        uri: `${config.dataDir}/lancedb`,
+        tableName: 'documents',
+        mode: 'create',
       },
     },
     pipeline: {

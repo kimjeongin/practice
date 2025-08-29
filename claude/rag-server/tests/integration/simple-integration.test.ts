@@ -71,7 +71,7 @@ describe('Simple Integration Tests', () => {
       expect(mockConfig.embedding.provider).toBe('transformers');
       
       expect(mockConfig.vectorStore).toBeDefined();
-      expect(mockConfig.vectorStore.provider).toBe('faiss');
+      expect(mockConfig.vectorStore.provider).toBe('lancedb');
       
       expect(mockConfig.search).toBeDefined();
       expect(mockConfig.search.enableHybridSearch).toBe(true);

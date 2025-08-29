@@ -4,24 +4,28 @@
  */
 
 import { VectorStoreProvider } from '@/domains/rag/integrations/vectorstores/core/interfaces.js'
-import { FaissProvider } from '@/domains/rag/integrations/vectorstores/providers/faiss.js'
 import { QdrantProvider } from '@/domains/rag/integrations/vectorstores/providers/qdrant.js'
+import { LanceDBProvider } from '@/domains/rag/integrations/vectorstores/providers/lancedb/index.js'
 import { VectorStoreAdapter } from '@/domains/rag/integrations/vectorstores/adapter.js'
 import { VectorStoreConfig } from './config-factory.js'
 import { IVectorStoreService } from '@/shared/types/interfaces.js'
-import { EmbeddingMetadataService } from '@/domains/rag/services/embedding-metadata-service.js'
-
 export class VectorStoreFactory {
   /**
    * 설정에 따라 VectorStoreProvider 생성
    */
-  static createProvider(config: VectorStoreConfig, serverConfig?: any, embeddingMetadataService?: EmbeddingMetadataService): VectorStoreProvider {
+  static createProvider(config: VectorStoreConfig, serverConfig?: any): VectorStoreProvider {
     switch (config.provider.toLowerCase()) {
-      case 'faiss':
-        return new FaissProvider({
-          indexPath: config.config.indexPath,
-          dimensions: config.config.dimensions,
-        }, serverConfig, embeddingMetadataService)
+      case 'lancedb':
+        return new LanceDBProvider(
+          serverConfig,
+          {
+            uri: config.config.uri || './.data/lancedb',
+            storageOptions: config.config.storageOptions || {}
+          },
+          {
+            // 스키마 설정은 LanceDBProvider 내부에서 schema-config.ts를 통해 관리
+          }
+        )
 
       case 'qdrant':
         return new QdrantProvider({
@@ -33,15 +37,15 @@ export class VectorStoreFactory {
         })
 
       default:
-        throw new Error(`Unsupported vector store provider: ${config.provider}`)
+        throw new Error(`Unsupported vector store provider: ${config.provider}. Supported providers: lancedb, qdrant`)
     }
   }
 
   /**
    * 설정에 따라 VectorStoreAdapter 생성 (IVectorStoreService 호환)
    */
-  static createService(config: VectorStoreConfig, serverConfig?: any, embeddingMetadataService?: EmbeddingMetadataService): IVectorStoreService {
-    const provider = VectorStoreFactory.createProvider(config, serverConfig, embeddingMetadataService)
+  static createService(config: VectorStoreConfig, serverConfig?: any): IVectorStoreService {
+    const provider = VectorStoreFactory.createProvider(config, serverConfig)
     return new VectorStoreAdapter(provider)
   }
 }

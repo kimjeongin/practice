@@ -74,8 +74,4 @@ export interface IVectorStoreService {
   removeAllDocuments(): Promise<void>
   getIndexInfo(): IndexInfo
   isHealthy(): boolean
-  getAllDocumentIds?(): string[]
-  getDocumentCount?(): number
-  hasDocumentsForFileId?(fileId: string): boolean
-  getDocumentMetadata?(docId: string): Promise<any | null>
 }

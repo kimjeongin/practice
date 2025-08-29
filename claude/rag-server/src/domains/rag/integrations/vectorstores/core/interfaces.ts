@@ -19,6 +19,8 @@ export interface VectorStoreProvider {
   getDocumentCount?(): number
   hasDocumentsForFileId?(fileId: string): boolean
   getDocumentMetadata?(docId: string): Promise<any | null>
+  getFileMetadata?(fileId: string): Promise<any | null>
+  getAllFileMetadata?(): Promise<Map<string, any>>
 
   // 고급 기능
   initialize?(): Promise<void>

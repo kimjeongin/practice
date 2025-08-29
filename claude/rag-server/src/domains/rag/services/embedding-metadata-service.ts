@@ -1,8 +1,8 @@
 import { createHash } from 'crypto'
-import { IEmbeddingMetadataRepository } from '../repositories/embedding-metadata.js'
 import { EmbeddingMetadataModel } from '../core/models.js'
 import { ModelInfo } from '@/shared/types/interfaces.js'
-import { ServerConfig } from '@/shared/types/index.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
+import { VectorStoreProvider } from '../integrations/vectorstores/adapter.js'
 import { logger } from '@/shared/logger/index.js'
 
 export interface ModelCompatibilityResult {
@@ -13,8 +13,14 @@ export interface ModelCompatibilityResult {
   issues: string[]
 }
 
+/**
+ * Embedding Metadata Service - VectorStore-only architecture
+ * Manages embedding model compatibility and migration without database dependencies
+ */
 export class EmbeddingMetadataService {
-  constructor(private embeddingMetadataRepository: IEmbeddingMetadataRepository) {}
+  private readonly METADATA_KEY = 'embedding_metadata'
+
+  constructor(private vectorStore: VectorStoreProvider) {}
 
   /**
    * Generate a unique hash for the current embedding configuration
@@ -32,12 +38,87 @@ export class EmbeddingMetadataService {
   }
 
   /**
+   * Get metadata from VectorStore metadata
+   */
+  private async getStoredMetadata(): Promise<EmbeddingMetadataModel | null> {
+    try {
+      // Check if VectorStore supports metadata queries
+      const indexInfo = this.vectorStore.getIndexInfo()
+      if (!indexInfo || !indexInfo.totalVectors || indexInfo.totalVectors === 0) {
+        return null
+      }
+
+      // For LanceDB/Qdrant, we'll store metadata in a special document
+      // This is a simple approach - in production, you might use a dedicated metadata table
+      const metadataResults = await this.vectorStore.search(this.METADATA_KEY, {
+        topK: 1,
+        scoreThreshold: 0.0,
+        // Removed metadataFilters since LanceDB schema doesn't have 'type' field
+        // Content search is sufficient since METADATA_KEY is unique
+      })
+
+      if (metadataResults.length > 0 && metadataResults[0]) {
+        const metadata = metadataResults[0].metadata || {}
+        return {
+          id: metadata.id || 'vectorstore',
+          modelName: metadata.modelName || '',
+          serviceName: metadata.serviceName || '',
+          dimensions: metadata.dimensions || 0,
+          modelVersion: metadata.modelVersion || '',
+          configHash: metadata.configHash || '',
+          isActive: metadata.isActive || false,
+          totalDocuments: metadata.totalDocuments || 0,
+          totalVectors: metadata.totalVectors || 0,
+          createdAt: metadata.createdAt ? new Date(metadata.createdAt) : new Date(),
+          lastUsedAt: metadata.lastUsedAt ? new Date(metadata.lastUsedAt) : new Date(),
+        }
+      }
+
+      return null
+    } catch (error) {
+      logger.debug('No stored metadata found in VectorStore', error instanceof Error ? error : new Error(String(error)))
+      return null
+    }
+  }
+
+  /**
+   * Store metadata to VectorStore
+   */
+  private async storeMetadata(metadata: EmbeddingMetadataModel): Promise<void> {
+    try {
+      const metadataDocument = {
+        id: `metadata_${metadata.configHash}`,
+        content: this.METADATA_KEY, // Searchable content
+        metadata: {
+          type: 'embedding_metadata',
+          id: metadata.id,
+          modelName: metadata.modelName,
+          serviceName: metadata.serviceName,
+          dimensions: metadata.dimensions,
+          modelVersion: metadata.modelVersion,
+          configHash: metadata.configHash,
+          isActive: metadata.isActive,
+          totalDocuments: metadata.totalDocuments,
+          totalVectors: metadata.totalVectors,
+          createdAt: metadata.createdAt.toISOString(),
+          lastUsedAt: metadata.lastUsedAt.toISOString(),
+        }
+      }
+
+      await this.vectorStore.addDocuments([metadataDocument])
+      logger.debug('Stored embedding metadata to VectorStore', { configHash: metadata.configHash })
+    } catch (error) {
+      logger.warn('Failed to store metadata to VectorStore', error instanceof Error ? error : new Error(String(error)))
+    }
+  }
+
+  /**
    * Check compatibility between current config and existing metadata
    */
   async checkModelCompatibility(config: ServerConfig, modelInfo: ModelInfo): Promise<ModelCompatibilityResult> {
     try {
       const configHash = this.generateConfigHash(config, modelInfo)
-      const activeMetadata = await this.embeddingMetadataRepository.getActiveMetadata()
+      const activeMetadata = await this.getStoredMetadata()
       
       logger.info('🔍 Checking model compatibility', {
         currentModel: modelInfo.name,
@@ -114,60 +195,44 @@ export class EmbeddingMetadataService {
   async createOrUpdateMetadata(config: ServerConfig, modelInfo: ModelInfo, vectorCounts: { documents: number; vectors: number } = { documents: 0, vectors: 0 }): Promise<string> {
     try {
       const configHash = this.generateConfigHash(config, modelInfo)
+      const existingMetadata = await this.getStoredMetadata()
       
-      // Check if metadata with this config already exists
-      const existingMetadata = await this.embeddingMetadataRepository.getMetadataByConfigHash(configHash)
+      const metadataId = `metadata_${configHash}`
+      const metadata: EmbeddingMetadataModel = {
+        id: metadataId,
+        modelName: modelInfo.name,
+        serviceName: modelInfo.service,
+        dimensions: modelInfo.dimensions,
+        modelVersion: modelInfo.model || modelInfo.name,
+        configHash,
+        isActive: true,
+        totalDocuments: vectorCounts.documents,
+        totalVectors: vectorCounts.vectors,
+        createdAt: existingMetadata?.createdAt || new Date(),
+        lastUsedAt: new Date(),
+      }
+
+      // Store metadata to VectorStore
+      await this.storeMetadata(metadata)
       
       if (existingMetadata) {
-        // Update existing metadata
-        await this.embeddingMetadataRepository.updateMetadata(existingMetadata.id, {
-          isActive: true,
-          totalDocuments: vectorCounts.documents,
-          totalVectors: vectorCounts.vectors,
-          lastUsedAt: new Date(),
-        })
-        
-        // Deactivate other metadata
-        const allMetadata = await this.embeddingMetadataRepository.getAllMetadata()
-        for (const metadata of allMetadata) {
-          if (metadata.id !== existingMetadata.id) {
-            await this.embeddingMetadataRepository.updateMetadata(metadata.id, { isActive: false })
-          }
-        }
-        
         logger.info('📝 Updated existing embedding metadata', {
-          id: existingMetadata.id,
+          id: metadataId,
           model: modelInfo.name,
           service: modelInfo.service,
           dimensions: modelInfo.dimensions,
         })
-        
-        return existingMetadata.id
       } else {
-        // Create new metadata
-        await this.embeddingMetadataRepository.deactivateAllMetadata()
-        
-        const id = await this.embeddingMetadataRepository.createMetadata({
-          modelName: modelInfo.name,
-          serviceName: modelInfo.service,
-          dimensions: modelInfo.dimensions,
-          modelVersion: modelInfo.model || modelInfo.name,
-          configHash,
-          isActive: true,
-          totalDocuments: vectorCounts.documents,
-          totalVectors: vectorCounts.vectors,
-        })
-        
         logger.info('✅ Created new embedding metadata', {
-          id,
+          id: metadataId,
           model: modelInfo.name,
           service: modelInfo.service,
           dimensions: modelInfo.dimensions,
           configHash,
         })
-        
-        return id
       }
+      
+      return metadataId
     } catch (error) {
       logger.error('❌ Failed to create/update embedding metadata', error instanceof Error ? error : new Error(String(error)))
       throw error
@@ -179,14 +244,13 @@ export class EmbeddingMetadataService {
    */
   async updateVectorCounts(documents: number, vectors: number): Promise<void> {
     try {
-      const activeMetadata = await this.embeddingMetadataRepository.getActiveMetadata()
+      const activeMetadata = await this.getStoredMetadata()
       if (activeMetadata) {
-        await this.embeddingMetadataRepository.updateMetadata(activeMetadata.id, {
-          totalDocuments: documents,
-          totalVectors: vectors,
-          lastUsedAt: new Date(),
-        })
+        activeMetadata.totalDocuments = documents
+        activeMetadata.totalVectors = vectors
+        activeMetadata.lastUsedAt = new Date()
         
+        await this.storeMetadata(activeMetadata)
         logger.debug('📊 Updated vector counts', { documents, vectors })
       }
     } catch (error) {
@@ -198,21 +262,51 @@ export class EmbeddingMetadataService {
    * Get current active metadata
    */
   async getActiveMetadata(): Promise<EmbeddingMetadataModel | null> {
-    return await this.embeddingMetadataRepository.getActiveMetadata()
+    return await this.getStoredMetadata()
   }
 
   /**
-   * Get all metadata history
+   * Get all metadata history (simplified for VectorStore-only architecture)
    */
   async getAllMetadata(): Promise<EmbeddingMetadataModel[]> {
-    return await this.embeddingMetadataRepository.getAllMetadata()
+    const activeMetadata = await this.getStoredMetadata()
+    return activeMetadata ? [activeMetadata] : []
   }
 
   /**
-   * Force model migration by deactivating current metadata
+   * Force model migration by clearing VectorStore
    */
   async forceMigration(): Promise<void> {
-    await this.embeddingMetadataRepository.deactivateAllMetadata()
-    logger.info('🔄 Forced model migration - all metadata deactivated')
+    try {
+      await this.vectorStore.removeAllDocuments()
+      logger.info('🔄 Forced model migration - VectorStore cleared')
+    } catch (error) {
+      logger.error('Failed to force migration', error instanceof Error ? error : new Error(String(error)))
+    }
+  }
+
+  /**
+   * Handle model migration based on compatibility check
+   */
+  async handleModelMigration(compatibility: ModelCompatibilityResult, config: ServerConfig): Promise<void> {
+    if (!compatibility.isCompatible || compatibility.requiresReindexing) {
+      logger.warn('🔄 Starting model migration', {
+        issues: compatibility.issues,
+        requiresReindexing: compatibility.requiresReindexing,
+      })
+
+      if (config.modelMigration.clearVectorsOnModelChange) {
+        // Backup if enabled
+        if (config.modelMigration.backupEmbeddingsBeforeMigration) {
+          logger.info('💾 Backing up embeddings before migration (skipped in VectorStore-only architecture)')
+        }
+
+        // Clear VectorStore
+        await this.forceMigration()
+        logger.info('🗑️ Cleared VectorStore for model migration')
+      }
+
+      logger.info('✅ Model migration completed')
+    }
   }
 }

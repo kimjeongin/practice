@@ -317,10 +317,11 @@ export class TransformersEmbeddings extends Embeddings {
   }
 
   /**
-   * Get model information
+   * Get model information (ModelInfo 인터페이스 호환)
    */
-  getModelInfo(): { model: string; service: string; dimensions: number; description: string } {
+  getModelInfo(): { name: string; model: string; service: string; dimensions: number; description?: string } {
     return {
+      name: this.modelConfig.modelId,
       model: this.modelConfig.modelId,
       service: 'transformers.js',
       dimensions: this.modelConfig.dimensions,

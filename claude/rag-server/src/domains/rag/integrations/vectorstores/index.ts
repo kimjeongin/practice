@@ -9,13 +9,13 @@ export type {
   VectorSearchResult,
   VectorSearchOptions,
   IndexStats,
-  FaissConfig,
+  LanceDBConfig,
   QdrantConfig,
   VectorStoreConfig,
 } from './core/types.js'
 
 // Providers
-export { FaissProvider } from './providers/faiss.js'
+export { LanceDBProvider } from './providers/lancedb/index.js'
 export { QdrantProvider } from './providers/qdrant.js'
 
 // Universal adapter
@@ -29,9 +29,9 @@ export function createVectorStoreProvider(config: {
   config?: any
 }): VectorStoreProvider {
   switch (config.provider.toLowerCase()) {
-    case 'faiss':
-      const { FaissProvider } = require('./providers/faiss.js')
-      return new FaissProvider(config.config)
+    case 'lancedb':
+      const { LanceDBProvider } = require('./providers/lancedb/index.js')
+      return new LanceDBProvider(config.config)
 
     case 'qdrant':
       const { QdrantProvider } = require('./providers/qdrant.js')

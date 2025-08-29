@@ -3,124 +3,174 @@
  * Production multi-transport MCP server with full RAG integration
  */
 
+import 'dotenv/config'
 import { ConfigFactory } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 import { MCPServer } from '@/domains/mcp/server/server.js'
 import { SearchHandler } from '@/domains/mcp/handlers/search.js'
 import { InformationHandler } from '@/domains/mcp/handlers/information.js'
-import { RAGWorkflow } from '@/domains/rag/workflows/workflow.js'
-import { FileRepository } from '@/domains/rag/repositories/document.js'
-import { ChunkRepository } from '@/domains/rag/repositories/chunk.js'
-import { EmbeddingMetadataRepository } from '@/domains/rag/repositories/embedding-metadata.js'
-import { SearchService } from '@/domains/rag/services/search/search-service.js'
-import { EmbeddingMetadataService } from '@/domains/rag/services/embedding-metadata-service.js'
-import { DatabaseConnection } from '@/shared/database/connection.js'
+// SearchService and RAGWorkflow removed as part of VectorStore-only architecture
+// These will be refactored in Phase 7 to work with VectorStore-only architecture
 import { serviceRegistry } from '@/shared/dependency-injection/service-registry.js'
+
+/**
+ * Check model compatibility and handle migration if needed
+ */
+async function checkAndHandleModelMigration(embeddingMetadataService: any, config: any) {
+  try {
+    // Create model info based on config and service type
+    const modelInfo = {
+      name: config.embeddingModel,
+      service: config.embeddingService,
+      dimensions: config.embeddingDimensions,
+      model: config.embeddingModel,
+    }
+
+    logger.info('🔍 Checking embedding model compatibility on startup', {
+      service: config.embeddingService,
+      model: config.embeddingModel,
+      dimensions: modelInfo.dimensions,
+    })
+
+    // Check compatibility
+    const compatibility = await embeddingMetadataService.checkModelCompatibility(config, modelInfo)
+    
+    if (!compatibility.isCompatible || compatibility.requiresReindexing) {
+      if (config.modelMigration.enableAutoMigration) {
+        logger.warn('🔄 Auto-migration enabled - handling model changes', {
+          issues: compatibility.issues,
+          requiresReindexing: compatibility.requiresReindexing,
+        })
+        
+        await embeddingMetadataService.handleModelMigration(compatibility, config)
+      } else {
+        logger.warn('⚠️ Model incompatibility detected but auto-migration disabled', {
+          issues: compatibility.issues,
+          suggestion: 'Enable AUTO_MIGRATION=true to handle automatically or run manual migration'
+        })
+      }
+    }
+
+    // Update or create metadata
+    await embeddingMetadataService.createOrUpdateMetadata(config, modelInfo, {
+      documents: 0, // Will be updated as documents are processed
+      vectors: 0
+    })
+
+  } catch (error) {
+    logger.error('Failed to check model compatibility', error instanceof Error ? error : new Error(String(error)))
+    
+    if (config.modelMigration.enableIncompatibilityDetection) {
+      logger.warn('Model compatibility check failed - proceeding with caution')
+    }
+  }
+}
 
 /**
  * Initialize all dependencies and create MCPServer instance
  */
 async function initializeServices(config: any) {
-  // Initialize database connection
-  const dbConnection = new DatabaseConnection()
-
-  // Register services in dependency injection container
-  serviceRegistry
-    .registerInstance('config', config)
-    .registerInstance('dbConnection', dbConnection)
-    .register('fileRepository', FileRepository, { dependencies: ['dbConnection'] })
-    .register('chunkRepository', ChunkRepository, { dependencies: ['dbConnection'] })
-    .register('embeddingMetadataRepository', EmbeddingMetadataRepository, { dependencies: ['dbConnection'] })
-
-  // Initialize repositories
-  const fileRepository = await serviceRegistry.resolve<FileRepository>('fileRepository')
-  const chunkRepository = await serviceRegistry.resolve<ChunkRepository>('chunkRepository')
-  const embeddingMetadataRepository = await serviceRegistry.resolve<EmbeddingMetadataRepository>('embeddingMetadataRepository')
-
-  // Initialize embedding metadata service
-  const embeddingMetadataService = new EmbeddingMetadataService(embeddingMetadataRepository)
+  // Register config in dependency injection container
+  serviceRegistry.registerInstance('config', config)
 
   // Initialize vector store and search service
   const { VectorStoreFactory } = await import('@/shared/config/vector-store-factory.js')
-  
+
   // IMPORTANT: Create only ONE provider instance and reuse it everywhere
-  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config, embeddingMetadataService)
-  const vectorStore = new (await import('@/domains/rag/integrations/vectorstores/adapter.js')).VectorStoreAdapter(vectorStoreProvider)
+  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config)
+  
+  // Initialize SearchService with abstraction layer
+  const { SearchService } = await import('@/domains/rag/services/search/search-service.js')
+  const searchService = new SearchService(vectorStoreProvider, config)
 
-  const searchService = new SearchService(
-    vectorStoreProvider, // Use the same provider instance for consistent embeddings
-    fileRepository,
-    chunkRepository,
-    config
-  )
+  // Initialize EmbeddingMetadataService for model migration
+  const { EmbeddingMetadataService } = await import('@/domains/rag/services/embedding-metadata-service.js')
+  const embeddingMetadataService = new EmbeddingMetadataService(vectorStoreProvider)
+  
+  // Check model compatibility and handle migration if needed
+  await checkAndHandleModelMigration(embeddingMetadataService, config)
 
-  // Initialize RAG workflow
-  const ragWorkflow = new RAGWorkflow(searchService, fileRepository, chunkRepository, config)
+  // Initialize DocumentProcessor for file processing
+  const { DocumentProcessor } = await import('@/domains/rag/services/document/processor.js')
+  const documentProcessor = new DocumentProcessor(vectorStoreProvider, embeddingMetadataService, config)
+  
+  // Initialize FileWatcher for automatic file processing
+  const { FileWatcher } = await import('@/shared/filesystem/watcher.js')
+  const fileWatcher = new FileWatcher(config.documentsDir)
+  
+  // Create a processing queue to limit concurrency
+  const processingQueue: Promise<void>[] = []
+  const MAX_CONCURRENT_PROCESSING = 3 // Limit concurrent file processing
 
-  // Model management service removed - auto-managed through configuration
-
-  // Initialize file processing service (optional)
-  let fileProcessingService
-  try {
-    const { FileProcessingService } = await import('@/domains/rag/services/document/processor.js')
-    fileProcessingService = new FileProcessingService(
-      fileRepository,
-      chunkRepository,
-      vectorStore,
-      config
-    )
-  } catch (error) {
-    logger.warn('File processing service not available')
-  }
-
-  // Initialize sync manager for document synchronization
-  const { SyncManager } = await import('@/domains/rag/workflows/sync-manager.js')
-  const syncManager = new SyncManager(
-    fileRepository,
-    chunkRepository,
-    vectorStore,
-    config,
-    fileProcessingService,
-    embeddingMetadataService
-  )
-
-  // Perform startup document synchronization
-  const enableAutoSync = config.enableAutoSync !== false
-  if (enableAutoSync) {
-    logger.info('🔄 Starting document synchronization...', {
-      documentsDir: config.documentsDir,
-      autoFix: true
-    })
-    
-    try {
-      const syncReport = await syncManager.performStartupSync({
-        autoFix: true,
-        deepScan: true,
-        includeNewFiles: true
+  // Connect FileWatcher to DocumentProcessor
+  fileWatcher.on('change', async (event) => {
+    // Limit concurrent processing to prevent resource exhaustion
+    if (processingQueue.length >= MAX_CONCURRENT_PROCESSING) {
+      logger.warn('Processing queue full, waiting...', {
+        queueSize: processingQueue.length,
+        maxConcurrent: MAX_CONCURRENT_PROCESSING
       })
-      
-      logger.info('📊 Document synchronization completed', {
-        totalFiles: syncReport.totalFiles,
-        totalVectors: syncReport.totalVectors,
-        totalChunks: syncReport.totalChunks,
-        newFiles: syncReport.fixedIssues.filter(issue => issue.type === 'new_file').length,
-        processingTime: `${Date.now() - syncReport.timestamp.getTime()}ms`
-      })
-    } catch (error) {
-      logger.warn('Document synchronization failed, continuing without sync', {
-        error: error instanceof Error ? error.message : String(error)
-      })
+      // Wait for at least one to complete
+      await Promise.race(processingQueue)
     }
-  } else {
-    logger.info('📋 Document auto-sync disabled via configuration')
+
+    const processingPromise = (async () => {
+      try {
+        if (event.type === 'added' || event.type === 'changed') {
+          logger.info('File change detected, processing', { 
+            type: event.type, 
+            path: event.path,
+            fileName: event.metadata?.name 
+          })
+          await documentProcessor.processFile(event.path)
+        } else if (event.type === 'deleted') {
+          logger.info('File deletion detected, removing from VectorStore', { 
+            path: event.path 
+          })
+          await documentProcessor.removeFile(event.path)
+        }
+      } catch (error) {
+        logger.error('Failed to process file change event', error instanceof Error ? error : new Error(String(error)), {
+          eventType: event.type,
+          filePath: event.path,
+        })
+      }
+    })()
+
+    // Add to queue and clean up completed promises
+    processingQueue.push(processingPromise)
+    processingPromise.finally(() => {
+      const index = processingQueue.indexOf(processingPromise)
+      if (index > -1) {
+        processingQueue.splice(index, 1)
+      }
+    })
+  })
+  
+  // Start file watching
+  await fileWatcher.start()
+  logger.info('FileWatcher started', { documentsDir: config.documentsDir })
+  
+  // Smart sync existing files on startup
+  logger.info('🧠 Starting intelligent directory synchronization...')
+  try {
+    await documentProcessor.syncDirectoryWithVectorStore(config.documentsDir)
+    logger.info('✅ Smart directory sync completed successfully')
+  } catch (error) {
+    logger.error('⚠️ Smart directory sync failed, but continuing startup', error instanceof Error ? error : new Error(String(error)))
   }
 
-  // Initialize handlers
-  const searchHandler = new SearchHandler(ragWorkflow, fileRepository)
-  const informationHandler = new InformationHandler(fileRepository)
+  // Initialize MCP handlers with SearchService (high-level abstraction)
+  const searchHandler = new SearchHandler(searchService, config)
+  const informationHandler = new InformationHandler(vectorStoreProvider, config)
 
-  // Create and return MCP Server
-  return new MCPServer(searchHandler, informationHandler, fileRepository, config)
+  // Create MCP Server
+  const mcpServer = new MCPServer(searchHandler, informationHandler, config)
+  
+  // Store fileWatcher globally for cleanup
+  ;(globalThis as any).fileWatcher = fileWatcher
+  
+  return mcpServer
 }
 
 async function main(): Promise<void> {
@@ -139,7 +189,7 @@ async function main(): Promise<void> {
     })
 
     // Initialize all services and create MCP server
-    logger.info('🔧 Initializing RAG services and dependencies...')
+    logger.info('🔧 Initializing RAG services and MCP server...')
     mcpServer = await initializeServices(config)
 
     // Setup graceful shutdown
@@ -148,7 +198,15 @@ async function main(): Promise<void> {
 
       if (mcpServer) {
         try {
+          // Stop FileWatcher first
+          const fileWatcher = (globalThis as any).fileWatcher
+          if (fileWatcher) {
+            logger.info('Stopping FileWatcher...')
+            await fileWatcher.stop()
+          }
+          
           await mcpServer.shutdown()
+          logger.info('MCP server shutdown completed')
         } catch (error) {
           logger.error(
             'Error during MCP server shutdown',

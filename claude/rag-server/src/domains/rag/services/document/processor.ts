@@ -1,57 +1,75 @@
 import { basename } from 'path'
 import { createHash } from 'crypto'
 import { IFileProcessingService, VectorDocument } from '@/shared/types/interfaces.js'
-import { IFileRepository } from '../../repositories/document.js'
-import { IChunkRepository } from '../../repositories/chunk.js'
 import { IVectorStoreService } from '@/shared/types/interfaces.js'
-import { DocumentChunk, FileMetadata } from '../../core/models.js'
+import { DocumentChunk, FileMetadata, CustomMetadata } from '../../core/models.js'
 import { Document } from '@langchain/core/documents'
-import { ServerConfig } from '@/shared/types/index.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
 import { FileReader } from './reader.js'
 import { ChunkingService } from '../chunking.js'
 import { FileProcessingError, VectorStoreError } from '@/shared/errors/index.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { withTimeout, withRetry, BatchProcessor } from '@/shared/utils/resilience.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
+import { VectorStoreProvider } from '../../integrations/vectorstores/adapter.js'
+import { EmbeddingMetadataService } from '../embedding-metadata-service.js'
+import { stat } from 'fs/promises'
 
-export class FileProcessingService implements IFileProcessingService {
+/**
+ * Document Processor - VectorStore-only architecture
+ * Processes files directly to VectorStore without database dependencies
+ */
+export class DocumentProcessor implements IFileProcessingService {
   private processingQueue = new Set<string>()
   private fileReader: FileReader
   private textChunker: ChunkingService
 
   constructor(
-    private fileRepository: IFileRepository,
-    private chunkRepository: IChunkRepository,
-    private vectorStoreService: IVectorStoreService,
+    private vectorStoreProvider: VectorStoreProvider,
+    private embeddingMetadataService: EmbeddingMetadataService,
     private config: ServerConfig
   ) {
     this.fileReader = new FileReader()
     this.textChunker = new ChunkingService(config)
   }
 
-  async processFile(filePath: string): Promise<void> {
+  async processFile(filePath: string, forceReprocess: boolean = false): Promise<void> {
     if (this.processingQueue.has(filePath)) {
-      logger.debug('File already being processed', { filePath, component: 'DocumentService' })
+      logger.debug('File already being processed', { filePath, component: 'DocumentProcessor' })
       return
     }
 
     this.processingQueue.add(filePath)
-    const endTiming = startTiming('file_processing', { filePath, component: 'DocumentService' })
+    const endTiming = startTiming('file_processing', { filePath, component: 'DocumentProcessor' })
 
     try {
       logger.info('Starting file processing', { filePath, fileName: basename(filePath) })
 
-      let fileMetadata = await this.fileRepository.getFileByPath(filePath)
-      if (!fileMetadata) {
-        const error = new FileProcessingError('File not found in database', filePath, 'file_lookup')
-        errorMonitor.recordError(error)
-        logger.warn('File not found in database, skipping', { filePath })
-        return
+      // Generate file metadata without database
+      const fileMetadata = await this.extractFileMetadata(filePath)
+      
+      // Check if file needs processing (smart sync)
+      if (!forceReprocess) {
+        const shouldProcess = await this.shouldProcessFile(fileMetadata)
+        if (!shouldProcess) {
+          logger.info('File unchanged, skipping processing', { 
+            filePath, 
+            fileName: fileMetadata.name,
+            fileId: fileMetadata.id 
+          })
+          return
+        }
       }
 
-      // 타임아웃 적용된 파일 읽기 (PDF 처리 시 오래 걸릴 수 있음)
+      logger.info('File requires processing', { 
+        filePath, 
+        fileName: fileMetadata.name,
+        forced: forceReprocess 
+      })
+      
+      // Timeout applied file reading (PDF processing can take long)
       const document = await withTimeout(this.fileReader.readFileContent(filePath), {
-        timeoutMs: 60000, // 1분
+        timeoutMs: 60000, // 1 minute
         operation: 'file_reading',
         fallback: async () => {
           logger.warn('File reading timed out, attempting fallback', { filePath })
@@ -71,256 +89,417 @@ export class FileProcessingService implements IFileProcessingService {
       }
 
       // Add file metadata to document metadata
+      const processedAt = new Date().toISOString()
       document.metadata = {
         ...document.metadata,
         fileId: fileMetadata.id,
         fileName: fileMetadata.name,
         filePath: fileMetadata.path,
         fileType: fileMetadata.fileType,
+        size: fileMetadata.size,
         createdAt: fileMetadata.createdAt.toISOString(),
+        sourceType: 'local_file',
+        processedAt: processedAt,
+        updatedAt: processedAt, // Set updatedAt for LanceDB schema consistency
       }
 
-      // 재시도 로직 적용된 청킹
-      const documentChunks = await withRetry(
+      // Chunking with retry logic
+      const langchainChunks = await withRetry(
         () => this.textChunker.chunkDocument(document),
         'document_chunking',
         { retries: 2 }
       )
+
+      // Convert to DocumentChunk format
+      const documentChunks: DocumentChunk[] = langchainChunks.map((chunk, index) => ({
+        id: `${fileMetadata.id}_${index}`,
+        fileId: fileMetadata.id,
+        chunkIndex: index,
+        content: chunk.pageContent,
+      }))
 
       logger.info('Document chunked successfully', {
         filePath,
         chunkCount: documentChunks.length,
       })
 
-      // Clear existing chunks for this file
-      await this.chunkRepository.deleteDocumentChunks(fileMetadata.id)
-      await this.vectorStoreService.removeDocumentsByFileId(fileMetadata.id)
+      // Clear existing chunks for this file from VectorStore
+      await this.vectorStoreProvider.removeDocumentsByFileId(fileMetadata.id)
 
-      // Process chunks in batches with enhanced error handling
+      // Process chunks in batches
       const batchSize = this.config.embeddingBatchSize || 10
-
       for (let i = 0; i < documentChunks.length; i += batchSize) {
         const batch = documentChunks.slice(i, i + batchSize)
-        await withRetry(() => this.processBatch(fileMetadata, batch, i), `batch_processing_${i}`, {
-          retries: 3,
-          minTimeout: 2000,
-        })
+        await this.processChunkBatch(batch, fileMetadata)
       }
+
+      // Update vector counts in metadata
+      const indexInfo = this.vectorStoreProvider.getIndexInfo()
+      await this.embeddingMetadataService.updateVectorCounts(
+        Math.floor(indexInfo.totalVectors / 10), // Rough estimate of document count
+        indexInfo.totalVectors
+      )
 
       logger.info('File processing completed successfully', {
         filePath,
-        fileName: basename(filePath),
         chunkCount: documentChunks.length,
+        totalVectors: indexInfo.totalVectors,
       })
+
+      endTiming()
+
     } catch (error) {
-      const processingError = new FileProcessingError(
-        `Failed to process file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      const processingError = error instanceof FileProcessingError ? error : new FileProcessingError(
+        'File processing pipeline failed',
         filePath,
-        'file_processing',
-        error instanceof Error ? error : undefined
+        'processing',
+        error instanceof Error ? error : new Error(String(error))
       )
 
-      errorMonitor.recordError(processingError)
       logger.error('File processing failed', processingError, { filePath })
+      endTiming()
+      errorMonitor.recordError(processingError)
       throw processingError
     } finally {
       this.processingQueue.delete(filePath)
-      endTiming()
     }
   }
 
   async removeFile(filePath: string): Promise<void> {
-    const endTiming = startTiming('file_removal', { filePath, component: 'DocumentService' })
-
     try {
-      const fileMetadata = await this.fileRepository.getFileByPath(filePath)
-      if (fileMetadata) {
-        await withTimeout(this.vectorStoreService.removeDocumentsByFileId(fileMetadata.id), {
-          timeoutMs: 30000, // 30초
-          operation: 'vector_store_removal',
-        })
+      logger.info('Removing file from VectorStore', { filePath })
 
-        logger.info('File removed from vector store', {
-          filePath,
-          fileName: basename(filePath),
-          fileId: fileMetadata.id,
-        })
-      } else {
-        logger.warn('File not found for removal', { filePath })
-      }
+      // Generate file ID for removal
+      const fileMetadata = await this.extractFileMetadata(filePath)
+      
+      // Remove from VectorStore
+      await this.vectorStoreProvider.removeDocumentsByFileId(fileMetadata.id)
+
+      // Update vector counts
+      const indexInfo = this.vectorStoreProvider.getIndexInfo()
+      await this.embeddingMetadataService.updateVectorCounts(
+        Math.floor(indexInfo.totalVectors / 10),
+        indexInfo.totalVectors
+      )
+
+      logger.info('File removed successfully', {
+        filePath,
+        remainingVectors: indexInfo.totalVectors,
+      })
+
     } catch (error) {
-      const removalError = new VectorStoreError(
-        `Failed to remove file from vector store: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`,
+      const removalError = new FileProcessingError(
+        'Failed to remove file',
+        filePath,
         'file_removal',
-        { filePath },
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : new Error(String(error))
       )
 
+      logger.error('File removal failed', removalError)
       errorMonitor.recordError(removalError)
-      logger.error('File removal failed', removalError, { filePath })
       throw removalError
-    } finally {
-      endTiming()
     }
   }
 
-  private async processBatch(
-    fileMetadata: FileMetadata,
-    chunks: Document[],
-    startIndex: number
-  ): Promise<void> {
-    const endTiming = startTiming('batch_processing', {
-      fileId: fileMetadata.id,
-      batchSize: chunks.length,
-      startIndex,
-      component: 'DocumentService',
-    })
-
+  /**
+   * Extract file metadata without database
+   */
+  private async extractFileMetadata(filePath: string): Promise<FileMetadata> {
     try {
-      logger.debug('Processing chunk batch', {
+      const stats = await stat(filePath)
+      const fileName = basename(filePath)
+      const fileExtension = fileName.split('.').pop()?.toLowerCase() || ''
+      
+      // Generate consistent file ID based on path
+      const fileId = createHash('sha256').update(filePath).digest('hex').substring(0, 16)
+      
+      return {
+        id: fileId,
+        name: fileName,
+        path: filePath,
+        size: stats.size,
+        fileType: this.guessFileType(fileExtension),
+        createdAt: stats.birthtime,
+        modifiedAt: stats.mtime,
+        hash: fileId, // Use fileId as hash for simplicity
+      }
+    } catch (error) {
+      throw new FileProcessingError(
+        `Failed to extract file metadata: ${error}`,
+        filePath,
+        'metadata_extraction',
+        error instanceof Error ? error : new Error(String(error))
+      )
+    }
+  }
+
+  /**
+   * Process a batch of chunks
+   */
+  private async processChunkBatch(chunks: DocumentChunk[], fileMetadata: FileMetadata): Promise<void> {
+    try {
+      const processedAt = new Date().toISOString()
+      // Convert chunks to VectorDocuments
+      const vectorDocuments: VectorDocument[] = chunks.map((chunk, index) => ({
+        id: `${fileMetadata.id}_${index}`,
+        content: chunk.content,
+        metadata: {
+          fileId: fileMetadata.id,
+          fileName: fileMetadata.name,
+          filePath: fileMetadata.path,
+          fileType: fileMetadata.fileType,
+          chunkIndex: index,
+          chunkCount: chunks.length,
+          size: fileMetadata.size,
+          createdAt: fileMetadata.createdAt.toISOString(),
+          processedAt: processedAt,
+          updatedAt: processedAt, // Set updatedAt for LanceDB schema consistency
+          sourceType: 'local_file',
+        }
+      }))
+
+      // Add to VectorStore
+      await this.vectorStoreProvider.addDocuments(vectorDocuments)
+
+      logger.debug('Processed chunk batch', {
         fileId: fileMetadata.id,
         batchSize: chunks.length,
-        startIndex,
       })
 
-      const vectorDocuments: VectorDocument[] = []
+    } catch (error) {
+      throw new VectorStoreError(
+        'Failed to process chunk batch',
+        'batch_processing',
+        { fileId: fileMetadata.id, batchSize: chunks.length },
+        error instanceof Error ? error : new Error(String(error))
+      )
+    }
+  }
 
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i]
-        const chunkIndex = startIndex + i
-        const chunkId = this.generateChunkId(fileMetadata.id, chunkIndex)
+  /**
+   * Guess file type from extension
+   */
+  private guessFileType(extension: string): string {
+    const typeMap: Record<string, string> = {
+      'txt': 'text',
+      'md': 'markdown',
+      'pdf': 'pdf',
+      'doc': 'document',
+      'docx': 'document', 
+      'json': 'json',
+      'csv': 'csv',
+      'html': 'html',
+      'htm': 'html',
+      'xml': 'xml',
+      'js': 'javascript',
+      'ts': 'typescript',
+      'py': 'python',
+      'java': 'java',
+      'cpp': 'cpp',
+      'c': 'c',
+      'go': 'go',
+      'rs': 'rust',
+    }
 
-        // Prepare for vector store with enhanced metadata from LangChain
-        const vectorDoc: VectorDocument = {
-          id: chunkId,
-          content: chunk?.pageContent || '',
-          metadata: {
-            ...(chunk?.metadata || {}), // Include all LangChain metadata
-            fileId: fileMetadata.id,
-            fileName: fileMetadata.name,
-            filePath: fileMetadata.path,
-            chunkIndex,
-            fileType: fileMetadata.fileType,
-            createdAt: fileMetadata.createdAt.toISOString(),
-          },
-        }
+    return typeMap[extension] || extension || 'text'
+  }
 
-        vectorDocuments.push(vectorDoc)
+  /**
+   * Get processing queue status
+   */
+  getProcessingStatus(): { activeFiles: string[], queueSize: number } {
+    return {
+      activeFiles: Array.from(this.processingQueue),
+      queueSize: this.processingQueue.size,
+    }
+  }
 
-        // Store in SQLite for metadata and reference (using same chunking result)
-        const dbChunk: Omit<DocumentChunk, 'id'> = {
-          fileId: fileMetadata.id,
-          chunkIndex,
-          content: chunk?.pageContent || '',
-          embeddingId: chunkId,
-        }
+  /**
+   * Check if file is currently being processed
+   */
+  isProcessing(filePath: string): boolean {
+    return this.processingQueue.has(filePath)
+  }
 
-        const insertedChunkId = await this.chunkRepository.insertDocumentChunk(dbChunk)
-
-        // Add SQLite ID to vector document metadata for cross-reference
-        vectorDoc.metadata.sqliteId = insertedChunkId
+  /**
+   * Check if file should be processed based on changes
+   * Returns true if file needs processing, false if unchanged
+   */
+  private async shouldProcessFile(currentMetadata: FileMetadata): Promise<boolean> {
+    try {
+      // Get existing metadata from vector store
+      if (!this.vectorStoreProvider.getFileMetadata) {
+        logger.debug('getFileMetadata not supported by vector store provider')
+        return true // Default to processing if check not supported
+      }
+      const existingMetadata = await this.vectorStoreProvider.getFileMetadata(currentMetadata.id)
+      
+      if (!existingMetadata) {
+        logger.debug('File not found in vector store, needs processing', {
+          fileId: currentMetadata.id,
+          fileName: currentMetadata.name
+        })
+        return true // New file
       }
 
-      // Add to vector store with embeddings (타임아웃 및 재시도 적용)
-      await withTimeout(this.vectorStoreService.addDocuments(vectorDocuments), {
-        timeoutMs: 120000, // 2분 (임베딩 생성 시간 고려)
-        operation: 'vector_store_addition',
+      // Compare file size
+      if (currentMetadata.size !== existingMetadata.size) {
+        logger.debug('File size changed, needs processing', {
+          fileId: currentMetadata.id,
+          fileName: currentMetadata.name,
+          oldSize: existingMetadata.size,
+          newSize: currentMetadata.size
+        })
+        return true
+      }
+
+      // Compare modification time
+      const currentModTime = currentMetadata.modifiedAt.getTime()
+      const existingProcessedTime = existingMetadata.processedAt 
+        ? new Date(existingMetadata.processedAt).getTime()
+        : new Date(existingMetadata.createdAt).getTime()
+      
+      if (currentModTime > existingProcessedTime) {
+        logger.debug('File modification time changed, needs processing', {
+          fileId: currentMetadata.id,
+          fileName: currentMetadata.name,
+          oldProcessedTime: existingMetadata.processedAt || existingMetadata.createdAt,
+          newModTime: currentMetadata.modifiedAt.toISOString()
+        })
+        return true
+      }
+
+      // Compare file hash if available (both should use hash field consistently)
+      if (currentMetadata.hash && existingMetadata.fileId) {
+        // Use fileId as the stored hash since that's how we generate it
+        if (currentMetadata.hash !== existingMetadata.fileId) {
+          logger.debug('File hash changed, needs processing', {
+            fileId: currentMetadata.id,
+            fileName: currentMetadata.name,
+            oldHash: existingMetadata.fileId,
+            newHash: currentMetadata.hash
+          })
+          return true
+        }
+      }
+
+      logger.debug('File unchanged, skipping processing', {
+        fileId: currentMetadata.id,
+        fileName: currentMetadata.name,
+        size: currentMetadata.size,
+        modTime: currentMetadata.modifiedAt.toISOString()
       })
 
-      logger.debug('Batch processed successfully', {
-        fileId: fileMetadata.id,
-        batchSize: chunks.length,
-        startIndex,
-      })
+      return false // File unchanged
     } catch (error) {
-      const batchError = new VectorStoreError(
-        `Failed to process batch starting at index ${startIndex}: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`,
-        'batch_processing',
-        {
-          fileId: fileMetadata.id,
-          batchSize: chunks.length,
-          startIndex,
-        },
-        error instanceof Error ? error : undefined
-      )
-
-      errorMonitor.recordError(batchError)
-      logger.error('Batch processing failed', batchError)
-      throw batchError
-    } finally {
-      endTiming()
+      logger.warn('Failed to check file changes, defaulting to process', {
+        fileId: currentMetadata.id,
+        fileName: currentMetadata.name,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return true // Default to processing if check fails
     }
   }
 
-  private generateChunkId(fileId: string, chunkIndex: number): string {
-    const hash = createHash('sha256')
-      .update(`${fileId}_${chunkIndex}`)
-      .digest('hex')
-      .substring(0, 16)
-    return hash || `chunk_${fileId}_${chunkIndex}`
-  }
-
-  async forceReindex(clearCache: boolean = false): Promise<void> {
-    const endTiming = startTiming('force_reindex', { clearCache, component: 'DocumentService' })
-
+  /**
+   * Perform smart directory synchronization
+   * Only processes changed files
+   */
+  async syncDirectoryWithVectorStore(documentsDir: string): Promise<void> {
     try {
-      logger.info('Starting force reindex', { clearCache })
+      logger.info('🔄 Starting smart directory synchronization...', {
+        documentsDir,
+        component: 'DocumentProcessor'
+      })
 
-      // Clear vector cache if requested
-      if (clearCache) {
-        logger.info('Clearing vector cache')
-        if ('rebuildIndex' in this.vectorStoreService) {
-          await withTimeout((this.vectorStoreService as any).rebuildIndex(), {
-            timeoutMs: 300000, // 5분
-            operation: 'vector_cache_rebuild',
+      // Get all existing file metadata from vector store
+      if (!this.vectorStoreProvider.getAllFileMetadata) {
+        logger.warn('getAllFileMetadata not supported by vector store provider, skipping smart sync')
+        return // Skip smart sync if not supported
+      }
+      const existingFiles = await this.vectorStoreProvider.getAllFileMetadata()
+      logger.info(`📊 Found ${existingFiles.size} files in vector store`)
+
+      // Get all current files in directory
+      const { glob } = await import('glob')
+      const pattern = `${documentsDir}/**/*.{txt,md,pdf,doc,docx,csv,json,html,xml}`
+      const currentFilePaths = await glob(pattern)
+      
+      logger.info(`📁 Found ${currentFilePaths.length} files in directory`)
+
+      const processedFiles = new Set<string>()
+      let newFiles = 0
+      let updatedFiles = 0
+      let skippedFiles = 0
+
+      // Process current files
+      for (const filePath of currentFilePaths) {
+        try {
+          const fileMetadata = await this.extractFileMetadata(filePath)
+          processedFiles.add(fileMetadata.id)
+          
+          const shouldProcess = await this.shouldProcessFile(fileMetadata)
+          if (shouldProcess) {
+            const isNew = !existingFiles.has(fileMetadata.id)
+            logger.info(`${isNew ? '🆕 New file' : '🔄 Updated file'} detected`, {
+              fileName: fileMetadata.name,
+              filePath
+            })
+            
+            await this.processFile(filePath, false) // Don't force, use smart logic
+            
+            if (isNew) {
+              newFiles++
+            } else {
+              updatedFiles++
+            }
+          } else {
+            skippedFiles++
+          }
+        } catch (error) {
+          logger.error('Failed to process file during sync', error instanceof Error ? error : new Error(String(error)), {
+            filePath
           })
         }
       }
 
-      // Reprocess all files with batch processing
-      const allFiles = await this.fileRepository.getAllFiles()
-      logger.info('Reprocessing all files', { fileCount: allFiles.length })
-
-      await BatchProcessor.processBatch(
-        allFiles,
-        async (file) => {
-          await this.processFile(file.path)
-          return file
-        },
-        {
-          batchSize: 5, // 동시 처리 파일 수 제한
-          concurrency: 2,
-          operation: 'force_reindex_batch',
+      // Remove files that no longer exist
+      let deletedFiles = 0
+      for (const [fileId, metadata] of existingFiles) {
+        if (!processedFiles.has(fileId)) {
+          logger.info('🗑️ File no longer exists, removing from vector store', {
+            fileName: metadata.fileName,
+            filePath: metadata.filePath,
+            fileId
+          })
+          
+          try {
+            await this.vectorStoreProvider.removeDocumentsByFileId(fileId)
+            deletedFiles++
+          } catch (error) {
+            logger.error('Failed to remove deleted file from vector store', error instanceof Error ? error : new Error(String(error)), {
+              fileId,
+              fileName: metadata.fileName
+            })
+          }
         }
-      )
+      }
 
-      logger.info('Force reindexing completed successfully', {
-        processedFiles: allFiles.length,
+      logger.info('✅ Smart directory synchronization completed', {
+        totalFiles: currentFilePaths.length,
+        newFiles,
+        updatedFiles,
+        skippedFiles,
+        deletedFiles,
+        component: 'DocumentProcessor'
       })
+
     } catch (error) {
-      const reindexError = new VectorStoreError(
-        `Force reindex failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'force_reindex',
-        { clearCache },
-        error instanceof Error ? error : undefined
-      )
-
-      errorMonitor.recordError(reindexError)
-      logger.error('Force reindex failed', reindexError)
-      throw reindexError
-    } finally {
-      endTiming()
-    }
-  }
-
-  getProcessingStatus() {
-    return {
-      isProcessing: this.processingQueue.size > 0,
-      queueSize: this.processingQueue.size,
+      logger.error('Smart directory synchronization failed', error instanceof Error ? error : new Error(String(error)), {
+        documentsDir,
+        component: 'DocumentProcessor'
+      })
+      throw error
     }
   }
 }

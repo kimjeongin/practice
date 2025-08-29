@@ -119,8 +119,8 @@ export const mockConfig = {
     dimensions: 5
   },
   vectorStore: {
-    provider: 'faiss' as const,
-    indexPath: './test-index'
+    provider: 'lancedb' as const,
+    indexPath: './test-lancedb'
   },
   search: {
     enableHybridSearch: true,

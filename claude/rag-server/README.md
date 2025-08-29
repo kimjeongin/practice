@@ -4,7 +4,7 @@ Local RAG (Retrieval Augmented Generation) server implementing Model Context Pro
 
 ## Features
 
-- **Local vector search** using FAISS or Qdrant
+- **Local vector search** using LanceDB or Qdrant
 - **Document processing** for text, markdown, JSON, XML, HTML, CSV files
 - **Embedding providers** supporting Transformers.js and Ollama
 - **MCP tools** for document search and information retrieval
@@ -35,7 +35,7 @@ cp .env.example .env
 ### Key Settings
 
 - `EMBEDDING_SERVICE`: `transformers` (local) or `ollama` (external)
-- `VECTOR_STORE_PROVIDER`: `faiss` (local) or `qdrant` (external)
+- `VECTOR_STORE_PROVIDER`: `lancedb` (local) or `qdrant` (external)
 - `MCP_TRANSPORT`: `stdio` (for MCP) or `streamable-http` (for HTTP)
 - `DOCUMENTS_DIR`: Directory containing documents to index
 

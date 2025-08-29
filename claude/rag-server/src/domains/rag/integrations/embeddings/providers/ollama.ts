@@ -11,6 +11,7 @@ export class OllamaEmbeddings extends Embeddings {
   private baseUrl: string
   private model: string
   private requestOptions: Record<string, any>
+  private cachedDimensions: number | null = null
 
   constructor(config: ServerConfig) {
     super({})
@@ -47,6 +48,12 @@ export class OllamaEmbeddings extends Embeddings {
 
       if (!data.embedding || !Array.isArray(data.embedding)) {
         throw new Error('Invalid embedding data received from Ollama')
+      }
+
+      // 차원 수 캐싱 (첫 번째 임베딩 생성 시)
+      if (this.cachedDimensions === null) {
+        this.cachedDimensions = data.embedding.length
+        console.log(`📊 Ollama model dimensions detected: ${this.cachedDimensions}`)
       }
 
       return data.embedding
@@ -154,7 +161,7 @@ export class OllamaEmbeddings extends Embeddings {
       return {
         name: this.model,
         service: 'ollama',
-        dimensions: 768, // 기본값, 실제로는 모델에 따라 다름
+        dimensions: this.cachedDimensions || 768, // 캐시된 차원 수 또는 기본값
         model: this.model,
       }
     } catch (error) {
@@ -162,23 +169,30 @@ export class OllamaEmbeddings extends Embeddings {
       return {
         name: this.model || 'unknown',
         service: 'ollama',
-        dimensions: 768,
+        dimensions: this.cachedDimensions || 768,
         model: this.model,
       }
     }
   }
 
   /**
-   * 임베딩 차원 수 추정 (실제로는 모델에 따라 다름)
+   * 임베딩 차원 수 반환 (동적 감지 또는 캐시된 값)
    */
   async getEmbeddingDimensions(): Promise<number> {
+    // 이미 캐시된 차원 수가 있으면 반환
+    if (this.cachedDimensions !== null) {
+      return this.cachedDimensions
+    }
+
     try {
       // 테스트 텍스트로 임베딩 생성하여 차원 수 확인
       const testEmbedding = await this.embedQuery('test')
+      // embedQuery에서 이미 캐싱되므로 길이만 반환
       return testEmbedding.length
     } catch (error) {
       console.warn('Could not determine embedding dimensions, using default')
-      // 기본값 반환 (nomic-embed-text는 768차원)
+      // 기본값 설정 및 캐싱
+      this.cachedDimensions = 768
       return 768
     }
   }

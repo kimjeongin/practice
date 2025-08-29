@@ -156,8 +156,8 @@ export function createTestConfig(overrides: any = {}) {
       dimensions: 384
     },
     vectorStore: {
-      provider: 'faiss' as const,
-      indexPath: './test-faiss-index'
+      provider: 'lancedb' as const,
+      indexPath: './test-lancedb'
     },
     search: {
       enableHybridSearch: true,
