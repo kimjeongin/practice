@@ -3,16 +3,12 @@
  * Implements semantic search, hybrid search, and query processing without database dependencies
  */
 
-import {
-  ISearchService,
-  SearchOptions,
-  SearchResult,
-} from '@/shared/types/interfaces.js'
-import { ServerConfig } from '@/shared/config/config-factory.js'
+import { ISearchService, SearchOptions, SearchResult } from '@/domains/rag/core/types.js'
 import { VectorStoreProvider } from '../../integrations/vectorstores/adapter.js'
 import { SearchError } from '@/shared/errors/index.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
+import { TimeoutWrapper } from '@/shared/utils/resilience.js'
 
 export interface QueryProcessingPipeline {
   name: string
@@ -52,10 +48,7 @@ export class SearchService implements ISearchService {
   private searchPipelines = new Map<string, SearchPipeline>()
   private rerankingPipelines = new Map<string, RerankingPipeline>()
 
-  constructor(
-    private vectorStore: VectorStoreProvider,
-    private config: ServerConfig
-  ) {
+  constructor(private vectorStore: VectorStoreProvider) {
     this.initializePipelines()
   }
 
@@ -68,47 +61,47 @@ export class SearchService implements ISearchService {
     })
 
     try {
-      logger.debug('Starting advanced search', {
+      // 전체 검색 파이프라인에 timeout 적용
+      const searchTimeout = parseInt(process.env.SEARCH_PIPELINE_TIMEOUT_MS || '60000') // 60초
+
+      logger.info('🚀 Starting advanced search with timeout', {
         query: query.substring(0, 100),
         searchType,
+        timeout: searchTimeout,
         options: {
-          useSemanticSearch: options.useSemanticSearch,
-          useHybridSearch: options.useHybridSearch,
+          searchType: options.searchType,
           topK: options.topK,
         },
+        component: 'SearchService',
       })
 
-      // Step 1: Query Processing Pipeline
-      const processedQuery = await this.processQuery(query, options)
+      const searchResults = await TimeoutWrapper.withTimeout(
+        this.executeSearchPipeline(query, options),
+        {
+          timeoutMs: searchTimeout,
+          operation: 'search_pipeline',
+        }
+      )
 
-      // Step 2: Search Pipeline Selection and Execution
-      const rawResults = await this.executeSearch(processedQuery, options)
-
-      // Step 3: Result Fusion (if multiple search strategies)
-      const fusedResults = await this.fuseResults(rawResults, options)
-
-      // Step 4: Reranking Pipeline (if enabled)
-      const rerankedResults = await this.rerankResults(query, fusedResults, options)
-
-      // Step 5: Post-processing and Filtering
-      const finalResults = await this.postProcessResults(rerankedResults, options)
-
-      logger.info('Advanced search completed', {
+      logger.info('✅ Advanced search completed successfully', {
         originalQuery: query.substring(0, 100),
-        resultsCount: finalResults.length,
+        resultsCount: searchResults.length,
         searchType,
+        component: 'SearchService',
       })
 
       endTiming()
-
-      return finalResults
+      return searchResults
     } catch (error) {
-      const searchError = error instanceof SearchError ? error : new SearchError(
-        'Advanced search pipeline failed',
-        query.substring(0, 100),
-        'hybrid',
-        error instanceof Error ? error : new Error(String(error))
-      )
+      const searchError =
+        error instanceof SearchError
+          ? error
+          : new SearchError(
+              'Advanced search pipeline failed',
+              query.substring(0, 100),
+              'hybrid',
+              error instanceof Error ? error : new Error(String(error))
+            )
 
       logger.error('Advanced search failed', searchError)
       endTiming()
@@ -118,13 +111,38 @@ export class SearchService implements ISearchService {
     }
   }
 
+  private async executeSearchPipeline(
+    query: string,
+    options: SearchOptions
+  ): Promise<SearchResult[]> {
+    // Step 1: Query Processing Pipeline
+    const processedQuery = await this.processQuery(query, options)
+
+    // Step 2: Search Pipeline Selection and Execution
+    const rawResults = await this.executeSearch(processedQuery, options)
+
+    // Step 3: Result Fusion (if multiple search strategies)
+    const fusedResults = await this.fuseResults(rawResults, options)
+
+    // Step 4: Reranking Pipeline (if enabled)
+    const rerankedResults = await this.rerankResults(query, fusedResults, options)
+
+    // Step 5: Post-processing and Filtering
+    const finalResults = await this.postProcessResults(rerankedResults, options)
+
+    return finalResults
+  }
+
   private async processQuery(query: string, options: SearchOptions): Promise<ProcessedQuery> {
     // Use basic query pipeline as default
     const pipeline = this.queryPipelines.get('basic') || this.createBasicQueryPipeline()
     return await pipeline.process(query, options)
   }
 
-  private async executeSearch(processedQuery: ProcessedQuery, options: SearchOptions): Promise<SearchResult[][]> {
+  private async executeSearch(
+    processedQuery: ProcessedQuery,
+    options: SearchOptions
+  ): Promise<SearchResult[][]> {
     const searchStrategies = this.determineSearchStrategies(options)
     const searchPromises: Promise<SearchResult[]>[] = []
 
@@ -141,7 +159,10 @@ export class SearchService implements ISearchService {
     return await Promise.all(searchPromises)
   }
 
-  private async fuseResults(resultSets: SearchResult[][], options: SearchOptions): Promise<SearchResult[]> {
+  private async fuseResults(
+    resultSets: SearchResult[][],
+    options: SearchOptions
+  ): Promise<SearchResult[]> {
     if (resultSets.length === 0) {
       return []
     }
@@ -155,15 +176,15 @@ export class SearchService implements ISearchService {
 
     resultSets.forEach((results, strategyIndex) => {
       const weight = weights[strategyIndex] || 1.0
-      
+
       results.forEach((result) => {
         const key = `${result.metadata.fileName || 'unknown'}_${result.chunkIndex}`
         const existing = fusedMap.get(key)
-        
+
         if (existing) {
           // Combine scores with weights
           existing.score = Math.max(existing.score, result.score * weight)
-          existing.hybridScore = (existing.hybridScore || 0) + (result.score * weight)
+          existing.hybridScore = (existing.hybridScore || 0) + result.score * weight
         } else {
           fusedMap.set(key, {
             ...result,
@@ -182,8 +203,13 @@ export class SearchService implements ISearchService {
     return fusedResults
   }
 
-  private async rerankResults(query: string, results: SearchResult[], options: SearchOptions): Promise<SearchResult[]> {
-    if (!this.config.search.rerankingEnabled || results.length <= 1) {
+  private async rerankResults(
+    query: string,
+    results: SearchResult[],
+    options: SearchOptions
+  ): Promise<SearchResult[]> {
+    // Reranking disabled for now - config doesn't have search.rerankingEnabled
+    if (results.length <= 1) {
       return results
     }
 
@@ -196,17 +222,20 @@ export class SearchService implements ISearchService {
     return results
   }
 
-  private async postProcessResults(results: SearchResult[], options: SearchOptions): Promise<SearchResult[]> {
+  private async postProcessResults(
+    results: SearchResult[],
+    options: SearchOptions
+  ): Promise<SearchResult[]> {
     let processedResults = [...results]
 
     // Apply score threshold
     if (options.scoreThreshold !== undefined) {
-      processedResults = processedResults.filter(r => r.score >= options.scoreThreshold!)
+      processedResults = processedResults.filter((r) => r.score >= options.scoreThreshold!)
     }
 
     // Apply file type filters
     if (options.fileTypes && options.fileTypes.length > 0) {
-      processedResults = processedResults.filter(r => {
+      processedResults = processedResults.filter((r) => {
         const fileType = r.metadata.fileType || 'unknown'
         return options.fileTypes!.includes(fileType)
       })
@@ -214,7 +243,7 @@ export class SearchService implements ISearchService {
 
     // Apply metadata filters
     if (options.metadataFilters) {
-      processedResults = processedResults.filter(r => {
+      processedResults = processedResults.filter((r) => {
         return Object.entries(options.metadataFilters!).every(([key, value]) => {
           return r.metadata[key] === value
         })
@@ -227,23 +256,26 @@ export class SearchService implements ISearchService {
   }
 
   private determineSearchStrategy(options: SearchOptions): string {
-    if (options.useHybridSearch) return 'hybrid'
-    if (options.useSemanticSearch) return 'semantic'
-    return 'basic'
+    return options.searchType || 'semantic'
   }
 
   private determineSearchStrategies(options: SearchOptions): string[] {
-    if (options.useHybridSearch) {
-      return ['semantic', 'fulltext']
+    const searchType = options.searchType || 'semantic'
+    switch (searchType) {
+      case 'hybrid':
+        return ['semantic', 'fulltext']
+      case 'semantic':
+        return ['semantic']
+      case 'fulltext':
+        return ['fulltext']
+      default:
+        return ['semantic'] // Default to semantic search
     }
-    if (options.useSemanticSearch) {
-      return ['semantic']
-    }
-    return ['semantic'] // Default to semantic search
   }
 
   private getStrategyWeights(options: SearchOptions): number[] {
-    if (options.useHybridSearch) {
+    const searchType = options.searchType || 'semantic'
+    if (searchType === 'hybrid') {
       const semanticWeight = options.semanticWeight || 0.7
       return [semanticWeight, 1.0 - semanticWeight]
     }
@@ -253,11 +285,11 @@ export class SearchService implements ISearchService {
   private initializePipelines(): void {
     // Initialize query processing pipelines
     this.queryPipelines.set('basic', this.createBasicQueryPipeline())
-    
+
     // Initialize search pipelines
     this.searchPipelines.set('semantic', this.createSemanticSearchPipeline())
     this.searchPipelines.set('fulltext', this.createFullTextSearchPipeline())
-    
+
     // Initialize reranking pipelines
     this.rerankingPipelines.set('basic', this.createBasicRerankingPipeline())
   }
@@ -268,8 +300,11 @@ export class SearchService implements ISearchService {
       async process(query: string, _options?: SearchOptions): Promise<ProcessedQuery> {
         // Basic query processing
         const processed = [query.toLowerCase().trim()]
-        const keywords = query.toLowerCase().split(/\s+/).filter(word => word.length > 2)
-        
+        const keywords = query
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((word) => word.length > 2)
+
         return {
           original: query,
           processed,
@@ -281,9 +316,9 @@ export class SearchService implements ISearchService {
             complexity: 'simple',
             categories: [],
             keywords,
-          }
+          },
         }
-      }
+      },
     }
   }
 
@@ -299,15 +334,17 @@ export class SearchService implements ISearchService {
         }
 
         const vectorResults = await this.vectorStore.search(query.original, vectorSearchOptions)
-        
-        return vectorResults.map((result): SearchResult => ({
-          content: result.content,
-          score: result.score,
-          semanticScore: result.score,
-          metadata: result.metadata,
-          chunkIndex: result.metadata?.chunkIndex || 0,
-        }))
-      }
+
+        return vectorResults.map(
+          (result): SearchResult => ({
+            content: result.content,
+            score: result.score,
+            semanticScore: result.score,
+            metadata: result.metadata,
+            chunkIndex: result.metadata?.chunkIndex || 0,
+          })
+        )
+      },
     }
   }
 
@@ -334,7 +371,7 @@ export class SearchService implements ISearchService {
             let keywordScore = 0
             let matchCount = 0
 
-            keywords.forEach(keyword => {
+            keywords.forEach((keyword) => {
               const matches = (content.match(new RegExp(keyword, 'g')) || []).length
               if (matches > 0) {
                 keywordScore += matches * 0.1
@@ -353,24 +390,28 @@ export class SearchService implements ISearchService {
               chunkIndex: result.metadata?.chunkIndex || 0,
             }
           })
-          .filter(result => result.score > (options?.scoreThreshold || 0.1))
+          .filter((result) => result.score > (options?.scoreThreshold || 0.1))
           .sort((a, b) => b.score - a.score)
           .slice(0, options?.topK || 10)
 
         return keywordResults
-      }
+      },
     }
   }
 
   private createBasicRerankingPipeline(): RerankingPipeline {
     return {
       name: 'basic',
-      async rerank(query: string, results: SearchResult[], _options?: any): Promise<SearchResult[]> {
+      async rerank(
+        query: string,
+        results: SearchResult[],
+        _options?: any
+      ): Promise<SearchResult[]> {
         // Simple reranking based on content length and keyword density
         const queryWords = query.toLowerCase().split(/\s+/)
-        
+
         return results
-          .map(result => {
+          .map((result) => {
             const content = result.content.toLowerCase()
             let rerankScore = result.score
 
@@ -383,21 +424,21 @@ export class SearchService implements ISearchService {
 
             // Boost results with query words in prominent positions
             const firstSentence = content.split('.')[0] || content.substring(0, 100)
-            const hasQueryWordsInStart = queryWords.some(word => 
-              word.length > 2 && firstSentence.includes(word)
+            const hasQueryWordsInStart = queryWords.some(
+              (word) => word.length > 2 && firstSentence.includes(word)
             )
-            
+
             if (hasQueryWordsInStart) {
               rerankScore *= 1.15
             }
 
             return {
               ...result,
-              score: Math.min(rerankScore, 1.0)
+              score: Math.min(rerankScore, 1.0),
             }
           })
           .sort((a, b) => b.score - a.score)
-      }
+      },
     }
   }
 }

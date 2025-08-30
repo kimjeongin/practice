@@ -4,7 +4,7 @@ import {
   VectorSearchResult,
   SearchOptions,
   IndexInfo,
-} from '@/shared/types/interfaces.js'
+} from '@/domains/rag/core/types.js'
 import { VectorStoreProvider } from './core/interfaces.js'
 import { VectorSearchOptions } from './core/types.js'
 

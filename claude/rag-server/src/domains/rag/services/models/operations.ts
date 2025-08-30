@@ -1,4 +1,4 @@
-import { IEmbeddingService } from '@/shared/types/interfaces.js'
+import { IEmbeddingService } from '@/domains/rag/core/types.js'
 
 interface IModelManagementService {
   getAvailableModels(): Promise<Record<string, any>>

@@ -17,6 +17,7 @@ export interface DocumentChunk {
   chunkIndex: number
   content: string
   embeddingId?: string
+  metadata?: any // Can hold UnifiedDocumentMetadata or legacy metadata
 }
 
 export interface CustomMetadata {

@@ -8,7 +8,7 @@ import { QdrantProvider } from '@/domains/rag/integrations/vectorstores/provider
 import { LanceDBProvider } from '@/domains/rag/integrations/vectorstores/providers/lancedb/index.js'
 import { VectorStoreAdapter } from '@/domains/rag/integrations/vectorstores/adapter.js'
 import { VectorStoreConfig } from './config-factory.js'
-import { IVectorStoreService } from '@/shared/types/interfaces.js'
+import { IVectorStoreService } from '@/domains/rag/core/types.js'
 export class VectorStoreFactory {
   /**
    * 설정에 따라 VectorStoreProvider 생성

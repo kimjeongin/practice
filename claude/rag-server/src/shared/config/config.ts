@@ -3,8 +3,7 @@
  * Wraps the new ConfigFactory for existing code compatibility
  */
 
-import { ConfigFactory, ServerConfig } from './config-factory.js'
-import { ServerConfig as BaseServerConfig } from '@/shared/types/index.js'
+import { ConfigFactory, ServerConfig, BaseServerConfig } from './config-factory.js'
 
 // Load environment variables (handled by ConfigFactory)
 // Export the loaded config with backward compatibility

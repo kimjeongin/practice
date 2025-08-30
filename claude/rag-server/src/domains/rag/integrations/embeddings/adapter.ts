@@ -1,5 +1,7 @@
-import { IEmbeddingService, ModelInfo } from '@/shared/types/interfaces.js'
+import { IEmbeddingService, ModelInfo } from '@/domains/rag/core/types.js'
 import { Embeddings } from '@langchain/core/embeddings'
+import { TransformersEmbeddings } from './providers/transformers.js'
+import { OllamaEmbeddings } from './providers/ollama.js'
 
 export class EmbeddingAdapter implements IEmbeddingService {
   constructor(private langchainEmbeddings: Embeddings, private actualService: string) {}
@@ -76,7 +78,7 @@ export class EmbeddingAdapter implements IEmbeddingService {
   }
 
   async getAvailableModels(): Promise<Record<string, any>> {
-    // Try to get models from the actual service
+    // Try to get models from the actual service first
     if ('getAvailableModels' in this.langchainEmbeddings) {
       try {
         return await (this.langchainEmbeddings as any).getAvailableModels()
@@ -85,12 +87,24 @@ export class EmbeddingAdapter implements IEmbeddingService {
       }
     }
 
-    // Fallback to default models
+    // Fallback to provider static methods
+    try {
+      if (this.actualService === 'transformers') {
+        return TransformersEmbeddings.getAvailableModels()
+      } else if (this.actualService === 'ollama') {
+        return OllamaEmbeddings.getAvailableModels()
+      }
+    } catch (error) {
+      console.warn('Could not get available models from provider:', error)
+    }
+
+    // Ultimate fallback
     return {
-      'all-MiniLM-L6-v2': { dimensions: 384, description: 'Small, fast model' },
-      'all-MiniLM-L12-v2': { dimensions: 384, description: 'Larger, more accurate model' },
-      'bge-small-en': { dimensions: 384, description: 'BGE small English model' },
-      'bge-base-en': { dimensions: 768, description: 'BGE base English model' },
+      'unknown-model': {
+        dimensions: 384,
+        description: 'Unknown model - check service configuration',
+        modelId: 'unknown-model',
+      },
     }
   }
 }

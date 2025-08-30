@@ -10,9 +10,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { MCPTransportConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 
-export type TransportInstance =
-  | StdioServerTransport
-  | StreamableHTTPServerTransport
+export type TransportInstance = StdioServerTransport | StreamableHTTPServerTransport
 
 export interface HTTPTransportContext {
   app: FastifyInstance
@@ -36,7 +34,6 @@ export class TransportFactory {
       case 'streamable-http':
         return await TransportFactory.createStreamableHTTPTransport(config)
 
-
       default:
         throw new Error(`Unsupported transport type: ${config.type}`)
     }
@@ -49,9 +46,23 @@ export class TransportFactory {
     transport: StreamableHTTPServerTransport
     context: HTTPTransportContext
   }> {
+    const timeoutConfig = {
+      connectionTimeout: parseInt(process.env.MCP_CONNECTION_TIMEOUT_MS || '120000'), // 2분
+      keepAliveTimeout: parseInt(process.env.MCP_KEEP_ALIVE_TIMEOUT_MS || '65000'), // 65초
+      requestTimeout: parseInt(process.env.MCP_REQUEST_TIMEOUT_MS || '90000'), // 90초 - 검색 작업 고려
+    }
+
+    logger.info('🔧 Configuring MCP HTTP server with timeouts', {
+      connectionTimeout: timeoutConfig.connectionTimeout,
+      keepAliveTimeout: timeoutConfig.keepAliveTimeout,
+      requestTimeout: timeoutConfig.requestTimeout,
+      component: 'TransportFactory',
+    })
+
     const app = fastify({
       logger: false, // Use our own logger
       trustProxy: true,
+      ...timeoutConfig,
     })
 
     // CORS setup
@@ -83,19 +94,22 @@ export class TransportFactory {
       if (sharedTransport.sessionId) {
         transports.delete(sharedTransport.sessionId)
         logger.debug('MCP session closed', { sessionId: sharedTransport.sessionId })
-        
+
         // Reset transport state to allow new connections
         // This fixes the "Server already initialized" error
         try {
           if ('_initialized' in sharedTransport) {
-            (sharedTransport as any)._initialized = false
+            ;(sharedTransport as any)._initialized = false
           }
           if ('_sessionId' in sharedTransport) {
-            (sharedTransport as any)._sessionId = null
+            ;(sharedTransport as any)._sessionId = null
           }
           logger.debug('Transport state reset for new connections')
         } catch (error) {
-          logger.warn('Error resetting transport state', error instanceof Error ? error : new Error(String(error)))
+          logger.warn(
+            'Error resetting transport state',
+            error instanceof Error ? error : new Error(String(error))
+          )
         }
       }
     }
@@ -128,13 +142,16 @@ export class TransportFactory {
           logger.debug('Client connection closed, resetting transport state')
           try {
             if ('_initialized' in sharedTransport) {
-              (sharedTransport as any)._initialized = false
+              ;(sharedTransport as any)._initialized = false
             }
             if ('_sessionId' in sharedTransport) {
-              (sharedTransport as any)._sessionId = null
+              ;(sharedTransport as any)._sessionId = null
             }
           } catch (error) {
-            logger.warn('Error resetting transport state on connection close', error instanceof Error ? error : new Error(String(error)))
+            logger.warn(
+              'Error resetting transport state on connection close',
+              error instanceof Error ? error : new Error(String(error))
+            )
           }
         })
 
@@ -152,14 +169,14 @@ export class TransportFactory {
     app.delete('/mcp', async (request, reply) => {
       try {
         await sharedTransport.handleRequest(request.raw, reply.raw)
-        
+
         // Explicitly reset transport state after DELETE
         logger.debug('DELETE request completed, resetting transport state')
         if ('_initialized' in sharedTransport) {
-          (sharedTransport as any)._initialized = false
+          ;(sharedTransport as any)._initialized = false
         }
         if ('_sessionId' in sharedTransport) {
-          (sharedTransport as any)._sessionId = null
+          ;(sharedTransport as any)._sessionId = null
         }
       } catch (error) {
         logger.error(
@@ -185,7 +202,6 @@ export class TransportFactory {
       context: { app, transports },
     }
   }
-
 
   /**
    * Start HTTP server for HTTP-based transports

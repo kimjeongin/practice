@@ -1,8 +1,8 @@
 import { createHash } from 'crypto'
-import { EmbeddingMetadataModel } from '../core/models.js'
-import { ModelInfo } from '@/shared/types/interfaces.js'
+import { EmbeddingMetadataModel } from '../../core/models.js'
+import { ModelInfo } from '@/domains/rag/core/types.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
-import { VectorStoreProvider } from '../integrations/vectorstores/adapter.js'
+import { VectorStoreProvider } from '../../integrations/vectorstores/adapter.js'
 import { logger } from '@/shared/logger/index.js'
 
 export interface ModelCompatibilityResult {
@@ -14,10 +14,10 @@ export interface ModelCompatibilityResult {
 }
 
 /**
- * Embedding Metadata Service - VectorStore-only architecture
+ * Model Compatibility Service - VectorStore-only architecture
  * Manages embedding model compatibility and migration without database dependencies
  */
-export class EmbeddingMetadataService {
+export class ModelCompatibilityService {
   private readonly METADATA_KEY = 'embedding_metadata'
 
   constructor(private vectorStore: VectorStoreProvider) {}
@@ -27,14 +27,32 @@ export class EmbeddingMetadataService {
    */
   private generateConfigHash(config: ServerConfig, modelInfo: ModelInfo): string {
     const configString = JSON.stringify({
-      embeddingService: config.embeddingService,
-      embeddingModel: config.embeddingModel,
-      modelName: modelInfo.name,
-      serviceName: modelInfo.service,
-      dimensions: modelInfo.dimensions,
-      modelVersion: modelInfo.model || modelInfo.name,
+      embeddingService: config.embeddingService || 'unknown',
+      embeddingModel: config.embeddingModel || 'unknown',
+      modelName: modelInfo.name || 'unknown',
+      serviceName: modelInfo.service || 'unknown',
+      dimensions: modelInfo.dimensions || 0,
+      modelVersion: modelInfo.model || modelInfo.name || 'unknown',
+      // Removed timestamp to ensure consistent hashing for same model configurations
     })
-    return createHash('sha256').update(configString).digest('hex').substring(0, 16)
+    
+    const hash = createHash('sha256').update(configString).digest('hex').substring(0, 16)
+    
+    // Ensure hash is never empty - use deterministic fallback
+    if (!hash || hash.length === 0) {
+      logger.warn('Generated empty config hash, using deterministic fallback')
+      const fallbackString = `${config.embeddingService}_${config.embeddingModel}_${modelInfo.dimensions}`
+      return createHash('sha256').update(fallbackString).digest('hex').substring(0, 16)
+    }
+    
+    logger.debug('Generated model config hash', {
+      service: config.embeddingService,
+      model: config.embeddingModel,
+      dimensions: modelInfo.dimensions,
+      hash
+    })
+    
+    return hash
   }
 
   /**
@@ -82,14 +100,18 @@ export class EmbeddingMetadataService {
   }
 
   /**
-   * Store metadata to VectorStore
+   * Store metadata to VectorStore - compatible with LanceDB schema
    */
   private async storeMetadata(metadata: EmbeddingMetadataModel): Promise<void> {
     try {
+      const now = new Date().toISOString()
+      
+      // Create metadata document compatible with LanceDB schema
       const metadataDocument = {
         id: `metadata_${metadata.configHash}`,
         content: this.METADATA_KEY, // Searchable content
         metadata: {
+          // System metadata fields
           type: 'embedding_metadata',
           id: metadata.id,
           modelName: metadata.modelName,
@@ -102,13 +124,35 @@ export class EmbeddingMetadataService {
           totalVectors: metadata.totalVectors,
           createdAt: metadata.createdAt.toISOString(),
           lastUsedAt: metadata.lastUsedAt.toISOString(),
+          
+          // LanceDB required fields - use system dummy values
+          fileId: `system_metadata_${metadata.configHash}`,
+          fileName: 'embedding_metadata.json',
+          filePath: '/system/embedding_metadata.json',
+          fileType: 'system_metadata',
+          fileSize: JSON.stringify(metadata).length,
+          fileHash: metadata.configHash,
+          fileModifiedAt: metadata.lastUsedAt.toISOString(),
+          fileCreatedAt: metadata.createdAt.toISOString(),
+          chunkIndex: 0,
+          processedAt: now,
+          updatedAt: now,
+          sourceType: 'system'
         }
       }
 
       await this.vectorStore.addDocuments([metadataDocument])
-      logger.debug('Stored embedding metadata to VectorStore', { configHash: metadata.configHash })
+      logger.debug('Stored embedding metadata to VectorStore', { 
+        configHash: metadata.configHash,
+        metadataId: metadata.id
+      })
     } catch (error) {
-      logger.warn('Failed to store metadata to VectorStore', error instanceof Error ? error : new Error(String(error)))
+      logger.warn('Failed to store metadata to VectorStore', {
+        error: error instanceof Error ? error.message : String(error),
+        configHash: metadata.configHash,
+        metadataId: metadata.id
+      })
+      // Don't throw - let upstream handle gracefully
     }
   }
 
@@ -213,7 +257,15 @@ export class EmbeddingMetadataService {
       }
 
       // Store metadata to VectorStore
-      await this.storeMetadata(metadata)
+      try {
+        await this.storeMetadata(metadata)
+      } catch (error) {
+        logger.error('Failed to store metadata to VectorStore, but continuing', error instanceof Error ? error : new Error(String(error)), {
+          configHash,
+          metadataId
+        })
+        // Don't throw - allow application to continue without metadata storage
+      }
       
       if (existingMetadata) {
         logger.info('📝 Updated existing embedding metadata', {
@@ -250,8 +302,14 @@ export class EmbeddingMetadataService {
         activeMetadata.totalVectors = vectors
         activeMetadata.lastUsedAt = new Date()
         
-        await this.storeMetadata(activeMetadata)
-        logger.debug('📊 Updated vector counts', { documents, vectors })
+        try {
+          await this.storeMetadata(activeMetadata)
+          logger.debug('📊 Updated vector counts', { documents, vectors })
+        } catch (error) {
+          logger.warn('Failed to store updated metadata, but vector counts updated in memory', {
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
       }
     } catch (error) {
       logger.error('❌ Failed to update vector counts', error instanceof Error ? error : new Error(String(error)))

@@ -1,7 +1,103 @@
 import { Embeddings } from '@langchain/core/embeddings'
 import fetch from 'node-fetch'
-import { ServerConfig } from '@/shared/types/index.js'
-import { ModelInfo } from '@/shared/types/interfaces.js'
+import { BaseServerConfig } from '@/shared/config/config-factory.js'
+import { ModelInfo } from '@/domains/rag/core/types.js'
+
+export interface OllamaModelConfig {
+  modelId: string
+  dimensions: number
+  maxTokens: number
+  description: string
+  recommendedBatchSize?: number
+}
+
+export const AVAILABLE_OLLAMA_MODELS: Record<string, OllamaModelConfig> = {
+  'nomic-embed-text': {
+    modelId: 'nomic-embed-text',
+    dimensions: 768,
+    maxTokens: 8192,
+    description: 'Nomic Embed - Recommended general-purpose embedding model',
+    recommendedBatchSize: 8,
+  },
+  'mxbai-embed-large': {
+    modelId: 'mxbai-embed-large',
+    dimensions: 1024,
+    maxTokens: 512,
+    description: 'MXBAI Embed Large - High quality embedding model',
+    recommendedBatchSize: 6,
+  },
+  'snowflake-arctic-embed': {
+    modelId: 'snowflake-arctic-embed',
+    dimensions: 1024,
+    maxTokens: 512,
+    description: 'Snowflake Arctic Embed - Good performance embedding model',
+    recommendedBatchSize: 6,
+  },
+  'bge-large': {
+    modelId: 'bge-large',
+    dimensions: 1024,
+    maxTokens: 512,
+    description: 'BGE Large - Multilingual embedding model',
+    recommendedBatchSize: 6,
+  },
+  'bge-m3': {
+    modelId: 'bge-m3',
+    dimensions: 1024,
+    maxTokens: 8192,
+    description: 'BGE M3 - Multilingual embedding model with long context',
+    recommendedBatchSize: 6,
+  },
+  'jina-embeddings-v2-base-en': {
+    modelId: 'jina-embeddings-v2-base-en',
+    dimensions: 768,
+    maxTokens: 8192,
+    description: 'Jina Embeddings v2 Base - English embedding model',
+    recommendedBatchSize: 8,
+  },
+  'jina-embeddings-v2-small-en': {
+    modelId: 'jina-embeddings-v2-small-en',
+    dimensions: 512,
+    maxTokens: 8192,
+    description: 'Jina Embeddings v2 Small - Compact English embedding model',
+    recommendedBatchSize: 12,
+  },
+  'all-minilm': {
+    modelId: 'all-minilm',
+    dimensions: 384,
+    maxTokens: 256,
+    description: 'All-MiniLM - Fast and compact embedding model',
+    recommendedBatchSize: 15,
+  },
+  'sentence-transformers': {
+    modelId: 'sentence-transformers',
+    dimensions: 384,
+    maxTokens: 256,
+    description: 'Sentence Transformers - General-purpose embedding model',
+    recommendedBatchSize: 15,
+  },
+  // Qwen3 models in Ollama (community versions)
+  'dengcao/qwen3-embedding-8b': {
+    modelId: 'dengcao/qwen3-embedding-8b',
+    dimensions: 4096,
+    maxTokens: 32000,
+    description: 'Qwen3-Embedding-8B - MTEB top performer, high performance multilingual',
+    recommendedBatchSize: 3,
+  },
+  'dengcao/qwen3-embedding-4b': {
+    modelId: 'dengcao/qwen3-embedding-4b',
+    dimensions: 2560,
+    maxTokens: 32000,
+    description: 'Qwen3-Embedding-4B - High performance multilingual embedding',
+    recommendedBatchSize: 4,
+  },
+  'dengcao/qwen3-embedding-0.6b': {
+    modelId: 'dengcao/qwen3-embedding-0.6b',
+    dimensions: 1024,
+    maxTokens: 32000,
+    description: 'Qwen3-Embedding-0.6B - Compact multilingual embedding model',
+    recommendedBatchSize: 6,
+  },
+}
 
 /**
  * LangChain 호환 Ollama 임베딩 클래스
@@ -13,7 +109,7 @@ export class OllamaEmbeddings extends Embeddings {
   private requestOptions: Record<string, any>
   private cachedDimensions: number | null = null
 
-  constructor(config: ServerConfig) {
+  constructor(config: BaseServerConfig) {
     super({})
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
     this.model = config.embeddingModel
@@ -288,5 +384,53 @@ export class OllamaEmbeddings extends Embeddings {
       message: 'Download progress is managed by Ollama server directly',
       note: 'Use `ollama pull <model-name>` command to download models',
     }
+  }
+
+  /**
+   * List available models with configuration
+   */
+  static getAvailableModels(): Record<string, OllamaModelConfig> {
+    return AVAILABLE_OLLAMA_MODELS
+  }
+
+  /**
+   * Get model configuration by name
+   */
+  static getModelConfig(modelName: string): OllamaModelConfig | null {
+    // Try exact match first
+    if (AVAILABLE_OLLAMA_MODELS[modelName]) {
+      return AVAILABLE_OLLAMA_MODELS[modelName]
+    }
+
+    // Try partial matches for versioned models
+    for (const [key, config] of Object.entries(AVAILABLE_OLLAMA_MODELS)) {
+      const keyParts = key.split(':')
+      const slashParts = key.split('/')
+      
+      if (keyParts[0] && modelName.includes(keyParts[0])) {
+        return config
+      }
+      if (slashParts.length > 1 && slashParts[1] && modelName.includes(slashParts[1])) {
+        return config
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Get dimensions for a specific model
+   */
+  static getModelDimensions(modelName: string): number {
+    const config = OllamaEmbeddings.getModelConfig(modelName)
+    return config?.dimensions || 768 // fallback to default
+  }
+
+  /**
+   * Get recommended batch size for a specific model
+   */
+  static getModelBatchSize(modelName: string): number {
+    const config = OllamaEmbeddings.getModelConfig(modelName)
+    return config?.recommendedBatchSize || 8 // fallback to default
   }
 }

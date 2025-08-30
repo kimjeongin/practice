@@ -51,21 +51,26 @@ export class MCPServer {
       const { name, arguments: args } = request.params
 
       try {
+        let result
         switch (name) {
           case 'search':
-            return await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'))
+            result = await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'))
+            break
           case 'search_similar':
-            return await this.searchHandler.handleSearchSimilar(
+            result = await this.searchHandler.handleSearchSimilar(
               this.validateAndCastArgs(args, 'search_similar')
             )
+            break
           case 'search_by_question':
-            return await this.searchHandler.handleSearchByQuestion(
+            result = await this.searchHandler.handleSearchByQuestion(
               this.validateAndCastArgs(args, 'search_by_question')
             )
+            break
           case 'list_sources':
-            return await this.informationHandler.handleListSources(
+            result = await this.informationHandler.handleListSources(
               this.validateAndCastArgs(args, 'list_sources')
             )
+            break
           default:
             // Graceful handling of unknown tools instead of crashing the service
             logger.warn('Unknown tool requested', {
@@ -91,13 +96,44 @@ export class MCPServer {
               isError: true,
             }
         }
+
+        // Ensure result follows MCP protocol
+        if (result && 'content' in result) {
+          return result
+        } else {
+          // Legacy fallback - wrap non-MCP compliant responses
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          }
+        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
+        logger.error(
+          'Tool execution failed',
+          error instanceof Error ? error : new Error(String(error)),
+          {
+            toolName: name,
+            arguments: args,
+          }
+        )
         return {
           content: [
             {
               type: 'text',
-              text: `Error executing tool ${name}: ${errorMessage}`,
+              text: JSON.stringify(
+                {
+                  error: 'ToolExecutionFailed',
+                  message: `Error executing tool ${name}: ${errorMessage}`,
+                  toolName: name,
+                },
+                null,
+                2
+              ),
             },
           ],
           isError: true,
@@ -123,18 +159,18 @@ export class MCPServer {
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       const { uri } = request.params
-      
+
       // Basic file reading without database dependency
       if (!uri.startsWith('file://')) {
         throw new Error('Only file:// URIs are supported')
       }
 
       const filePath = uri.replace('file://', '')
-      
+
       try {
         const { readFile } = await import('fs/promises')
         const content = await readFile(filePath, 'utf-8')
-        
+
         return {
           contents: [
             {
@@ -183,16 +219,24 @@ export class MCPServer {
             limit: contextLength,
           })
 
-          const contextText = results.results
-            ? results.results
-                .map(
-                  (result) =>
-                    `**${result.source.filename}** (Score: ${result.relevance_score.toFixed(
-                      4
-                    )}):\n${result.content}`
-                )
-                .join('\n\n---\n\n')
-            : 'No results found'
+          let contextText = 'No results found'
+          if (results.content && results.content[0] && 'text' in results.content[0]) {
+            try {
+              const parsedResults = JSON.parse(results.content[0].text as string)
+              if (parsedResults.results && Array.isArray(parsedResults.results)) {
+                contextText = parsedResults.results
+                  .map(
+                    (result: any) =>
+                      `**${result.source.filename}** (Score: ${result.relevance_score.toFixed(
+                        4
+                      )}):\n${result.content}`
+                  )
+                  .join('\n\n---\n\n')
+              }
+            } catch (e) {
+              contextText = 'Error parsing search results'
+            }
+          }
 
           return {
             messages: [
@@ -252,14 +296,14 @@ export class MCPServer {
 
   async shutdown(): Promise<void> {
     console.log('🔄 Shutting down MCP Server...')
-    
+
     try {
       // Close MCP server connection
       if (this.server && 'close' in this.server && typeof this.server.close === 'function') {
         await this.server.close()
         logger.debug('MCP server connection closed')
       }
-      
+
       // Additional cleanup logic can be added here
       logger.info('✅ MCP Server shutdown completed successfully')
     } catch (error) {

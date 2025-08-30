@@ -1,6 +1,6 @@
 import { Document } from '@langchain/core/documents'
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters'
-import { ServerConfig } from '@/shared/types/index.js'
+import { BaseServerConfig } from '@/shared/config/config-factory.js'
 
 export interface ChunkingOptions {
   chunkSize: number
@@ -15,7 +15,7 @@ export interface ChunkingOptions {
 export class ChunkingService {
   private splitters: Map<string, RecursiveCharacterTextSplitter>
 
-  constructor(private config: ServerConfig) {
+  constructor(private config: BaseServerConfig) {
     this.splitters = new Map()
     this.initializeSplitters()
   }

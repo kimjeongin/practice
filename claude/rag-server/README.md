@@ -41,18 +41,52 @@ cp .env.example .env
 
 ### Embedding Services
 
-**Transformers.js (Default)**
+**Transformers.js (Default) - Runs completely locally**
 ```env
 EMBEDDING_SERVICE=transformers
-EMBEDDING_MODEL=all-MiniLM-L6-v2
 ```
 
-**Ollama**
+Available models (dimensions and batch sizes are auto-configured):
+- `all-MiniLM-L6-v2` - 384 dims, fast, good for general use (~23MB, batch: 20)
+- `all-MiniLM-L12-v2` - 384 dims, more accurate than L6 (~45MB, batch: 15)
+- `bge-small-en` - 384 dims, high quality English embeddings (~67MB, batch: 15)
+- `bge-base-en` - 768 dims, better quality, slower (~109MB, batch: 10)
+- `qwen3-embedding-0.6b` - 1024 dims, MTEB top performer, compact (~150MB, batch: 8)
+- `qwen3-embedding-4b` - 2560 dims, high performance multilingual (~2.1GB, batch: 4)
+
+**Recommended for best performance:**
+```env
+EMBEDDING_SERVICE=transformers
+EMBEDDING_MODEL=qwen3-embedding-0.6b
+# EMBEDDING_DIMENSIONS=1024  # Auto-detected
+# EMBEDDING_BATCH_SIZE=8     # Auto-optimized
+```
+
+**For high-end performance (requires more memory):**
+```env
+EMBEDDING_SERVICE=transformers
+EMBEDDING_MODEL=qwen3-embedding-4b
+# EMBEDDING_DIMENSIONS=2560  # Auto-detected  
+# EMBEDDING_BATCH_SIZE=4     # Auto-optimized
+```
+
+**Ollama (External service) - Auto-configured dimensions and batch sizes**
 ```env
 EMBEDDING_SERVICE=ollama
 EMBEDDING_MODEL=nomic-embed-text
 OLLAMA_BASE_URL=http://localhost:11434
+# EMBEDDING_DIMENSIONS=768  # Auto-detected
+# EMBEDDING_BATCH_SIZE=8    # Auto-optimized
 ```
+
+Available Ollama models:
+- `nomic-embed-text` - 768 dims, recommended general use (batch: 8)
+- `mxbai-embed-large` - 1024 dims, high quality (batch: 6)
+- `snowflake-arctic-embed` - 1024 dims, good performance (batch: 6)
+- `bge-large` - 1024 dims, multilingual (batch: 6)
+- `dengcao/qwen3-embedding-8b` - 4096 dims, MTEB top performer (batch: 3)
+- `dengcao/qwen3-embedding-4b` - 2560 dims, high performance (batch: 4)
+- `dengcao/qwen3-embedding-0.6b` - 1024 dims, compact (batch: 6)
 
 ## Usage
 

@@ -4,7 +4,28 @@
  */
 
 import { resolve } from 'path'
-import { ServerConfig as BaseServerConfig } from '@/shared/types/index.js'
+
+// Base server configuration interface
+export interface BaseServerConfig {
+  documentsDir: string // 사용자 파일 디렉토리 (파일 워처 대상)
+  dataDir: string // 시스템 파일 디렉토리 (벡터DB, 캐시 등)
+  chunkSize: number
+  chunkOverlap: number
+  similarityTopK: number
+  embeddingModel: string
+  embeddingDevice: string
+  logLevel: string
+  // Embedding configuration
+  embeddingService: string
+  embeddingBatchSize: number
+  embeddingDimensions: number
+  similarityThreshold: number
+  // Ollama configuration
+  ollamaBaseUrl?: string
+  // Transformers.js configuration
+  transformersCacheDir?: string
+  nodeEnv: string
+}
 
 export interface ConfigProfile {
   name: string
@@ -66,8 +87,6 @@ export interface ServerConfig extends BaseServerConfig {
     rerankingEnabled: boolean
   }
 
-
-
   // Model migration and compatibility settings
   modelMigration: {
     enableAutoMigration: boolean
@@ -76,7 +95,6 @@ export interface ServerConfig extends BaseServerConfig {
     backupEmbeddingsBeforeMigration: boolean
     migrationTimeout: number
   }
-
 
   // MCP Transport configuration
   mcp: MCPTransportConfig
@@ -102,7 +120,7 @@ export class ConfigFactory {
       vectorStore: {
         provider: 'lancedb',
         config: {
-          uri: process.env['LANCEDB_URI'] || resolve('./.data/lancedb')
+          uri: process.env['LANCEDB_URI'] || resolve('./.data/lancedb'),
         },
       },
       pipeline: {
@@ -124,7 +142,8 @@ export class ConfigFactory {
         enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
         enableIncompatibilityDetection: process.env['ENABLE_INCOMPATIBILITY_DETECTION'] !== 'false',
         clearVectorsOnModelChange: process.env['CLEAR_VECTORS_ON_MODEL_CHANGE'] !== 'false',
-        backupEmbeddingsBeforeMigration: process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] === 'true', // False by default in dev
+        backupEmbeddingsBeforeMigration:
+          process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] === 'true', // False by default in dev
         migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '300000'), // 5 minutes
       },
       mcp: {
@@ -182,7 +201,8 @@ export class ConfigFactory {
         enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
         enableIncompatibilityDetection: process.env['ENABLE_INCOMPATIBILITY_DETECTION'] !== 'false',
         clearVectorsOnModelChange: process.env['CLEAR_VECTORS_ON_MODEL_CHANGE'] !== 'false',
-        backupEmbeddingsBeforeMigration: process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] !== 'false', // True by default in production
+        backupEmbeddingsBeforeMigration:
+          process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] !== 'false', // True by default in production
         migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '600000'), // 10 minutes in production
       },
       mcp: {
@@ -212,7 +232,7 @@ export class ConfigFactory {
       vectorStore: {
         provider: 'lancedb',
         config: {
-          uri: process.env['LANCEDB_URI'] || resolve('./tests/.data/lancedb')
+          uri: process.env['LANCEDB_URI'] || resolve('./tests/.data/lancedb'),
         },
       },
       pipeline: {
@@ -342,6 +362,12 @@ export class ConfigFactory {
     const service = process.env['EMBEDDING_SERVICE'] || 'transformers'
     const dataDir = resolve(process.env['DATA_DIR'] || './.data')
     const documentsDir = resolve(process.env['DOCUMENTS_DIR'] || './documents')
+    const embeddingModel =
+      process.env['EMBEDDING_MODEL'] || ConfigFactory.getDefaultEmbeddingModel(service)
+
+    // Get model-specific configuration
+    const modelDimensions = ConfigFactory.getModelDimensions(service, embeddingModel)
+    const modelBatchSize = ConfigFactory.getModelBatchSize(service, embeddingModel)
 
     return {
       nodeEnv: process.env['NODE_ENV'] || 'development',
@@ -350,14 +376,18 @@ export class ConfigFactory {
       chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1024', 10),
       chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '20', 10),
       similarityTopK: parseInt(process.env['SIMILARITY_TOP_K'] || '5', 10),
-      embeddingModel:
-        process.env['EMBEDDING_MODEL'] || ConfigFactory.getDefaultEmbeddingModel(service),
+      embeddingModel,
       embeddingDevice: process.env['EMBEDDING_DEVICE'] || 'cpu',
       logLevel: process.env['LOG_LEVEL'] || 'info',
       embeddingService: service,
-      embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '10', 10),
+      // Use model-specific batch size, but allow environment override
+      embeddingBatchSize: parseInt(
+        process.env['EMBEDDING_BATCH_SIZE'] || modelBatchSize.toString(),
+        10
+      ),
+      // Use model-specific dimensions, but allow environment override for debugging
       embeddingDimensions: parseInt(
-        process.env['EMBEDDING_DIMENSIONS'] || ConfigFactory.getDefaultEmbeddingDimensions(service),
+        process.env['EMBEDDING_DIMENSIONS'] || modelDimensions.toString(),
         10
       ),
       similarityThreshold: parseFloat(process.env['SIMILARITY_THRESHOLD'] || '0.1'),
@@ -415,10 +445,62 @@ export class ConfigFactory {
       case 'ollama':
         return '768'
       case 'transformers':
-        return '384'
+        return '384' // Changed to maintain compatibility
       default:
         return '384'
     }
+  }
+
+  /**
+   * Get model-specific dimensions
+   */
+  private static getModelDimensions(service: string, modelName: string): number {
+    if (service === 'transformers') {
+      try {
+        // Use dynamic import for ES modules compatibility
+        const transformersModule = require('../../domains/rag/integrations/embeddings/providers/transformers')
+        return transformersModule.TransformersEmbeddings.getModelDimensions(modelName)
+      } catch (error) {
+        // console.warn(`Could not get model dimensions for ${modelName}, using fallback`)
+        return parseInt(ConfigFactory.getDefaultEmbeddingDimensions(service), 10)
+      }
+    } else if (service === 'ollama') {
+      try {
+        // Use dynamic import for ES modules compatibility
+        const ollamaModule = require('../../domains/rag/integrations/embeddings/providers/ollama')
+        return ollamaModule.OllamaEmbeddings.getModelDimensions(modelName)
+      } catch (error) {
+        // console.warn(`Could not get model dimensions for ${modelName}, using fallback`)
+        return parseInt(ConfigFactory.getDefaultEmbeddingDimensions(service), 10)
+      }
+    }
+    return parseInt(ConfigFactory.getDefaultEmbeddingDimensions(service), 10)
+  }
+
+  /**
+   * Get model-specific batch size
+   */
+  private static getModelBatchSize(service: string, modelName: string): number {
+    if (service === 'transformers') {
+      try {
+        // Use dynamic import for ES modules compatibility
+        const transformersModule = require('../../domains/rag/integrations/embeddings/providers/transformers')
+        return transformersModule.TransformersEmbeddings.getModelBatchSize(modelName)
+      } catch (error) {
+        // console.warn(`Could not get model batch size for ${modelName}, using fallback`)
+        return 10 // fallback
+      }
+    } else if (service === 'ollama') {
+      try {
+        // Use dynamic import for ES modules compatibility
+        const ollamaModule = require('../../domains/rag/integrations/embeddings/providers/ollama')
+        return ollamaModule.OllamaEmbeddings.getModelBatchSize(modelName)
+      } catch (error) {
+        // console.warn(`Could not get model batch size for ${modelName}, using fallback`)
+        return 8 // fallback
+      }
+    }
+    return 10 // default batch size
   }
 }
 

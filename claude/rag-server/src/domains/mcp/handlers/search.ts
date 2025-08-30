@@ -1,5 +1,5 @@
 import { SearchService } from '@/domains/rag/services/search/search-service.js'
-import { SearchOptions } from '@/shared/types/interfaces.js'
+import { SearchOptions } from '@/domains/rag/core/types.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
@@ -28,19 +28,28 @@ export interface SearchByQuestionArgs {
 }
 
 export class SearchHandler {
-  constructor(
-    private searchService: SearchService,
-    private config: ServerConfig
-  ) {}
+  constructor(private searchService: SearchService, private config: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
     const { query, search_type = 'semantic', limit = 5, sources, metadata_filters } = args
 
     if (!query) {
       return {
-        error: 'InvalidQuery',
-        message: 'Query parameter is required',
-        suggestion: 'Provide a search query string to find relevant documents',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                error: 'InvalidQuery',
+                message: 'Query parameter is required',
+                suggestion: 'Provide a search query string to find relevant documents',
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
+          },
+        ],
+        isError: true,
       }
     }
 
@@ -48,8 +57,7 @@ export class SearchHandler {
       // Use SearchService with advanced search options
       const searchOptions: SearchOptions = {
         topK: Math.max(1, Math.min(limit, 50)), // Clamp between 1-50
-        useSemanticSearch: search_type === 'semantic' || search_type === 'hybrid',
-        useHybridSearch: search_type === 'hybrid',
+        searchType: search_type,
         semanticWeight: search_type === 'hybrid' ? 0.7 : 1.0,
         fileTypes: sources,
         metadataFilters: metadata_filters,
@@ -59,36 +67,59 @@ export class SearchHandler {
       const results = await this.searchService.search(query, searchOptions)
 
       return {
-        query,
-        search_type,
-        results_count: results.length,
-        results: results.map((result, index) => ({
-          rank: index + 1,
-          content: result.content,
-          relevance_score: result.score,
-          semantic_score: result.semanticScore,
-          keyword_score: result.keywordScore,
-          hybrid_score: result.hybridScore,
-          source: {
-            filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
-            filepath: result.metadata?.filePath || result.metadata?.path || 'unknown', 
-            file_type: result.metadata?.fileType || 'unknown',
-            chunk_index: result.chunkIndex || 0,
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                query,
+                search_type,
+                results_count: results.length,
+                results: results.map((result, index) => ({
+                  rank: index + 1,
+                  content: result.content,
+                  relevance_score: result.score,
+                  semantic_score: result.semanticScore,
+                  keyword_score: result.keywordScore,
+                  hybrid_score: result.hybridScore,
+                  source: {
+                    filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
+                    filepath: result.metadata?.filePath || result.metadata?.path || 'unknown',
+                    file_type: result.metadata?.fileType || 'unknown',
+                    chunk_index: result.chunkIndex || 0,
+                  },
+                  metadata: result.metadata,
+                })),
+                search_info: {
+                  total_results: results.length,
+                  search_method: search_type,
+                  max_requested: limit,
+                },
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
           },
-          metadata: result.metadata,
-        })),
-        search_info: {
-          total_results: results.length,
-          search_method: search_type,
-          max_requested: limit,
-        },
+        ],
       }
     } catch (error) {
       logger.error('Search failed', error instanceof Error ? error : new Error(String(error)))
       return {
-        error: 'SearchFailed',
-        message: error instanceof Error ? error.message : 'Search operation failed',
-        suggestion: 'Try a different query or check if documents are indexed properly',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                error: 'SearchFailed',
+                message: error instanceof Error ? error.message : 'Search operation failed',
+                suggestion: 'Try a different query or check if documents are indexed properly',
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
+          },
+        ],
+        isError: true,
       }
     }
   }
@@ -98,9 +129,21 @@ export class SearchHandler {
 
     if (!reference_text || reference_text.trim().length === 0) {
       return {
-        error: 'InvalidReferenceText',
-        message: 'reference_text parameter is required and cannot be empty',
-        suggestion: 'Provide some reference text to find similar documents',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                error: 'InvalidReferenceText',
+                message: 'reference_text parameter is required and cannot be empty',
+                suggestion: 'Provide some reference text to find similar documents',
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
+          },
+        ],
+        isError: true,
       }
     }
 
@@ -109,8 +152,7 @@ export class SearchHandler {
       const searchOptions: SearchOptions = {
         topK: Math.max(1, Math.min(limit * 2, 20)), // Get more results to allow filtering
         scoreThreshold: similarity_threshold,
-        useSemanticSearch: true,
-        useHybridSearch: false,
+        searchType: 'semantic',
       }
 
       const results = await this.searchService.search(reference_text, searchOptions)
@@ -135,45 +177,82 @@ export class SearchHandler {
 
       if (limitedResults.length === 0) {
         return {
-          reference_text:
-            reference_text.substring(0, 100) + (reference_text.length > 100 ? '...' : ''),
-          similar_documents: [],
-          total_found: 0,
-          message: 'No similar documents found',
-          suggestion: 'Try lowering the similarity threshold or using different reference text',
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  reference_text:
+                    reference_text.substring(0, 100) + (reference_text.length > 100 ? '...' : ''),
+                  similar_documents: [],
+                  total_found: 0,
+                  message: 'No similar documents found',
+                  suggestion:
+                    'Try lowering the similarity threshold or using different reference text',
+                },
+                (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+                2
+              ),
+            },
+          ],
         }
       }
 
       return {
-        reference_text:
-          reference_text.substring(0, 100) + (reference_text.length > 100 ? '...' : ''),
-        similar_documents: limitedResults.map((result, index) => ({
-          rank: index + 1,
-          similarity_score: result.score,
-          content_preview:
-            result.content.substring(0, 200) + (result.content.length > 200 ? '...' : ''),
-          full_content: result.content,
-          source: {
-            filename: result.metadata?.name || result.metadata?.fileName || 'unknown',
-            filepath: result.metadata?.path || result.metadata?.filePath || 'unknown',
-            file_type: result.metadata?.fileType || 'unknown',
-            chunk_index: result.chunkIndex || 0,
-            file_id: result.metadata?.fileId || 'unknown',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                reference_text:
+                  reference_text.substring(0, 100) + (reference_text.length > 100 ? '...' : ''),
+                similar_documents: limitedResults.map((result, index) => ({
+                  rank: index + 1,
+                  similarity_score: result.score,
+                  content_preview:
+                    result.content.substring(0, 200) + (result.content.length > 200 ? '...' : ''),
+                  full_content: result.content,
+                  source: {
+                    filename: result.metadata?.name || result.metadata?.fileName || 'unknown',
+                    filepath: result.metadata?.path || result.metadata?.filePath || 'unknown',
+                    file_type: result.metadata?.fileType || 'unknown',
+                    chunk_index: result.chunkIndex || 0,
+                    file_id: result.metadata?.fileId || 'unknown',
+                  },
+                  metadata: result.metadata,
+                })),
+                total_found: limitedResults.length,
+                search_info: {
+                  similarity_threshold: similarity_threshold,
+                  excluded_source: exclude_source,
+                  search_method: 'semantic_similarity',
+                },
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
           },
-          metadata: result.metadata,
-        })),
-        total_found: limitedResults.length,
-        search_info: {
-          similarity_threshold: similarity_threshold,
-          excluded_source: exclude_source,
-          search_method: 'semantic_similarity',
-        },
+        ],
       }
     } catch (error) {
       return {
-        error: 'SimilaritySearchFailed',
-        message: error instanceof Error ? error.message : 'Similarity search operation failed',
-        suggestion: 'Try a different reference text or check if documents are properly indexed',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                error: 'SimilaritySearchFailed',
+                message:
+                  error instanceof Error ? error.message : 'Similarity search operation failed',
+                suggestion:
+                  'Try a different reference text or check if documents are properly indexed',
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
+          },
+        ],
+        isError: true,
       }
     }
   }
@@ -183,9 +262,21 @@ export class SearchHandler {
 
     if (!question || question.trim().length === 0) {
       return {
-        error: 'InvalidQuestion',
-        message: 'question parameter is required and cannot be empty',
-        suggestion: 'Provide a clear question or information request',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                error: 'InvalidQuestion',
+                message: 'question parameter is required and cannot be empty',
+                suggestion: 'Provide a clear question or information request',
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
+          },
+        ],
+        isError: true,
       }
     }
 
@@ -194,8 +285,7 @@ export class SearchHandler {
       const searchOptions: SearchOptions = {
         topK: Math.max(1, Math.min(context_limit, 20)),
         scoreThreshold: 0.1, // Lower threshold for information extraction
-        useSemanticSearch: search_method === 'semantic' || search_method === 'hybrid',
-        useHybridSearch: search_method === 'hybrid',
+        searchType: search_method,
         semanticWeight: search_method === 'hybrid' ? 0.7 : 1.0,
         fileTypes: sources,
       }
@@ -204,12 +294,23 @@ export class SearchHandler {
 
       if (searchResults.length === 0) {
         return {
-          question,
-          answer: null,
-          confidence: 0,
-          context_found: false,
-          message: 'No relevant context found for the question',
-          suggestion: 'Try rephrasing the question or adding more documents to the system',
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  question,
+                  answer: null,
+                  confidence: 0,
+                  context_found: false,
+                  message: 'No relevant context found for the question',
+                  suggestion: 'Try rephrasing the question or adding more documents to the system',
+                },
+                (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+                2
+              ),
+            },
+          ],
         }
       }
 
@@ -241,24 +342,47 @@ export class SearchHandler {
       const extractedInfo = this.extractKeyInformation(question, combinedContext)
 
       return {
-        question,
-        extracted_information: extractedInfo,
-        confidence: Math.round(confidence),
-        context_chunks: contextChunks,
-        search_info: {
-          total_context_chunks: searchResults.length,
-          search_method: search_method,
-          sources_searched: sources ? sources.join(', ') : 'all',
-          context_limit: context_limit,
-        },
-        context_found: true,
-        raw_context: combinedContext, // Include full context for advanced users
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                question,
+                extracted_information: extractedInfo,
+                confidence: Math.round(confidence),
+                context_chunks: contextChunks,
+                search_info: {
+                  total_context_chunks: searchResults.length,
+                  search_method: search_method,
+                  sources_searched: sources ? sources.join(', ') : 'all',
+                  context_limit: context_limit,
+                },
+                context_found: true,
+                raw_context: combinedContext, // Include full context for advanced users
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
+          },
+        ],
       }
     } catch (error) {
       return {
-        error: 'QuestionSearchFailed',
-        message: error instanceof Error ? error.message : 'Question-based search failed',
-        suggestion: 'Try a simpler question or check if relevant documents are indexed',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                error: 'QuestionSearchFailed',
+                message: error instanceof Error ? error.message : 'Question-based search failed',
+                suggestion: 'Try a simpler question or check if relevant documents are indexed',
+              },
+              (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+              2
+            ),
+          },
+        ],
+        isError: true,
       }
     }
   }

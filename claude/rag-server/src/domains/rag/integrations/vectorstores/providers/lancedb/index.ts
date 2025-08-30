@@ -15,7 +15,7 @@ import { EmbeddingAdapter } from '../../../embeddings/adapter.js'
 import { EmbeddingFactory } from '../../../embeddings/index.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
-import { withTimeout, withRetry } from '@/shared/utils/resilience.js'
+import { TimeoutWrapper } from '@/shared/utils/resilience.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
 import { StructuredError, ErrorCode } from '@/shared/errors/index.js'
 
@@ -25,29 +25,19 @@ import {
   createLanceDBEmbeddingBridgeFromService,
 } from './embedding-bridge.js'
 import {
-  LanceDBDocumentRecord,
-  createLanceDBSchema,
-  vectorDocumentToLanceDBRecord,
   lanceDBResultToSearchResult,
-  validateLanceDBRecord,
   type LanceDBTableOptions,
 } from './types.js'
 import {
   getDefaultTableConfig,
   LANCEDB_CONSTANTS,
   DEFAULT_TABLE_OPTIONS,
-  type LanceDBTableConfig
+  type LanceDBTableConfig,
 } from './config.js'
 import {
-  buildWhereClause,
-  highlightSearchResult,
   processBatches,
-  getTableStats,
-  deduplicateRecords,
-  normalizeSearchScores,
   validateEmbeddingVector,
   type LanceDBConnectionOptions,
-  type LanceDBSearchFilter,
 } from './utils.js'
 
 export class LanceDBProvider implements VectorStoreProvider {
@@ -56,7 +46,7 @@ export class LanceDBProvider implements VectorStoreProvider {
   private embeddingService: EmbeddingAdapter | null = null
   private embeddingBridge: LanceDBEmbeddingBridge | null = null
   private isInitialized = false
-  
+
   // Simple cache for file metadata to prevent expensive queries on every list_sources call
   private fileMetadataCache: { data: Map<string, any>; timestamp: number } | null = null
   private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
@@ -64,7 +54,7 @@ export class LanceDBProvider implements VectorStoreProvider {
   private connectionOptions: LanceDBConnectionOptions
   private tableOptions: LanceDBTableOptions
   private schemaConfig: LanceDBTableConfig
-  
+
   public readonly capabilities: VectorStoreCapabilities = {
     supportsMetadataFiltering: true,
     supportsHybridSearch: true,
@@ -81,26 +71,27 @@ export class LanceDBProvider implements VectorStoreProvider {
   ) {
     this.connectionOptions = {
       uri: connectionOptions.uri || './.data/lancedb',
-      storageOptions: connectionOptions.storageOptions || {}
+      storageOptions: connectionOptions.storageOptions || {},
     }
-    
+
     // 스키마 설정 로드
     this.schemaConfig = getDefaultTableConfig()
-    
+
     this.tableOptions = {
       ...DEFAULT_TABLE_OPTIONS,
       ...tableOptions,
       tableName: tableOptions.tableName || this.schemaConfig.name,
-      enableFullTextSearch: tableOptions.enableFullTextSearch !== undefined 
-        ? tableOptions.enableFullTextSearch 
-        : this.schemaConfig.enableFullTextSearch,
-      indexColumns: tableOptions.indexColumns || this.schemaConfig.indexColumns
+      enableFullTextSearch:
+        tableOptions.enableFullTextSearch !== undefined
+          ? tableOptions.enableFullTextSearch
+          : this.schemaConfig.enableFullTextSearch,
+      indexColumns: tableOptions.indexColumns || this.schemaConfig.indexColumns,
     }
 
     logger.info('🚀 LanceDBProvider initialized', {
       uri: this.connectionOptions.uri,
       tableName: this.tableOptions.tableName,
-      component: 'LanceDBProvider'
+      component: 'LanceDBProvider',
     })
   }
 
@@ -118,19 +109,38 @@ export class LanceDBProvider implements VectorStoreProvider {
 
   private async _doInitialize(): Promise<void> {
     const endTiming = startTiming('lancedb_initialization', {
-      component: 'LanceDBProvider'
+      component: 'LanceDBProvider',
     })
 
     try {
       logger.info('🔄 Initializing LanceDB connection...', {
         uri: this.connectionOptions.uri,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
-      // 1. LanceDB 연결 생성
-      this.db = await lancedb.connect(this.connectionOptions.uri, {
-        storageOptions: this.connectionOptions.storageOptions
+      // 1. LanceDB 연결 생성 (timeout 설정 포함)
+      const connectionConfig = {
+        storageOptions: {
+          ...this.connectionOptions.storageOptions,
+          // LanceDB timeout 설정 - 환경변수 또는 기본값 사용
+          timeout: process.env.LANCEDB_CONNECT_TIMEOUT || '30s',
+        },
+        // LanceDB 0.21.3+ timeout 설정
+        timeout: {
+          connectTimeout: parseInt(process.env.LANCEDB_CONNECT_TIMEOUT_MS || '30000'),
+          readTimeout: parseInt(process.env.LANCEDB_READ_TIMEOUT_MS || '60000'),
+          poolIdleTimeout: parseInt(process.env.LANCEDB_POOL_IDLE_TIMEOUT_MS || '120000'),
+        },
+      }
+
+      logger.info('🔗 Connecting to LanceDB with timeout settings', {
+        uri: this.connectionOptions.uri,
+        connectTimeout: connectionConfig.timeout.connectTimeout,
+        readTimeout: connectionConfig.timeout.readTimeout,
+        component: 'LanceDBProvider',
       })
+
+      this.db = await lancedb.connect(this.connectionOptions.uri, connectionConfig)
 
       // 2. 임베딩 서비스 초기화
       await this.initializeEmbeddingService()
@@ -144,17 +154,24 @@ export class LanceDBProvider implements VectorStoreProvider {
         uri: this.connectionOptions.uri,
         tableName: this.tableOptions.tableName,
         embeddingDimensions: this.embeddingBridge?.ndims(),
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error('❌ LanceDB initialization failed', error instanceof Error ? error : new Error(errorMessage), {
-        uri: this.connectionOptions.uri,
-        component: 'LanceDBProvider'
-      })
-      
-      errorMonitor.recordError(error instanceof StructuredError ? error : new StructuredError(errorMessage, ErrorCode.VECTOR_STORE_ERROR))
+      logger.error(
+        '❌ LanceDB initialization failed',
+        error instanceof Error ? error : new Error(errorMessage),
+        {
+          uri: this.connectionOptions.uri,
+          component: 'LanceDBProvider',
+        }
+      )
+
+      errorMonitor.recordError(
+        error instanceof StructuredError
+          ? error
+          : new StructuredError(errorMessage, ErrorCode.VECTOR_STORE_ERROR)
+      )
       throw error
     } finally {
       endTiming()
@@ -164,34 +181,87 @@ export class LanceDBProvider implements VectorStoreProvider {
   private async initializeEmbeddingService(): Promise<void> {
     try {
       logger.info('🧠 Initializing embedding service for LanceDB...', {
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // EmbeddingFactory를 사용하여 임베딩 서비스 생성
       const { embeddings, actualService } = await EmbeddingFactory.createWithFallback(this.config)
-      
+
       // EmbeddingAdapter로 래핑
       this.embeddingService = new EmbeddingAdapter(embeddings, actualService)
-      
+
       // LanceDB 브릿지 생성
       this.embeddingBridge = createLanceDBEmbeddingBridgeFromService(
         this.embeddingService,
         'content'
       )
 
-      // 임베딩 서비스 테스트
-      const testEmbedding = await this.embeddingService.embedQuery('test')
+      // 임베딩 서비스 워밍업 - 모델 로드 및 성능 최적화
+      await this.warmupEmbeddingService()
+
       logger.info('✅ Embedding service initialized successfully', {
         service: actualService,
-        dimensions: testEmbedding.length,
-        component: 'LanceDBProvider'
+        dimensions: this.embeddingBridge.ndims(),
+        component: 'LanceDBProvider',
       })
-
     } catch (error) {
-      logger.error('❌ Failed to initialize embedding service', error instanceof Error ? error : new Error(String(error)), {
-        component: 'LanceDBProvider'
-      })
+      logger.error(
+        '❌ Failed to initialize embedding service',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'LanceDBProvider',
+        }
+      )
       throw error
+    }
+  }
+
+  private async warmupEmbeddingService(): Promise<void> {
+    if (!this.embeddingService || !this.embeddingBridge) {
+      throw new Error('Embedding service not initialized')
+    }
+
+    const warmupStartTime = Date.now()
+    logger.info('🔥 Starting embedding service warmup...', {
+      component: 'LanceDBProvider',
+    })
+
+    try {
+      // 1. 단일 쿼리 워밍업 (첫 번째 임베딩이 가장 오래 걸림)
+      logger.debug('Warming up with single query...')
+      const singleStart = Date.now()
+      const testEmbedding = await this.embeddingService.embedQuery(
+        'warmup test query for model initialization'
+      )
+      const singleTime = Date.now() - singleStart
+
+      // 2. 배치 워밍업 (배치 처리 최적화)
+      logger.debug('Warming up with batch queries...')
+      const batchStart = Date.now()
+      const warmupQueries = [
+        'sample document text for embedding',
+        'another test document',
+        'machine learning and AI',
+      ]
+      await this.embeddingService.embedDocuments(warmupQueries)
+      const batchTime = Date.now() - batchStart
+
+      const totalWarmupTime = Date.now() - warmupStartTime
+      logger.info('✅ Embedding service warmup completed', {
+        singleQueryTime: singleTime,
+        batchTime: batchTime,
+        totalWarmupTime,
+        dimensions: testEmbedding.length,
+        component: 'LanceDBProvider',
+      })
+    } catch (error) {
+      const warmupTime = Date.now() - warmupStartTime
+      logger.warn('⚠️ Embedding service warmup failed, but continuing', {
+        error: error instanceof Error ? error.message : String(error),
+        warmupTime,
+        component: 'LanceDBProvider',
+      })
+      // 워밍업 실패해도 계속 진행 - 첫 검색이 느릴 뿐
     }
   }
 
@@ -207,7 +277,7 @@ export class LanceDBProvider implements VectorStoreProvider {
       logger.info('🔄 Initializing LanceDB table...', {
         tableName,
         embeddingDimensions,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // 기존 테이블 확인
@@ -217,19 +287,42 @@ export class LanceDBProvider implements VectorStoreProvider {
       if (tableExists) {
         logger.info('📋 Opening existing table', {
           tableName,
-          component: 'LanceDBProvider'
+          component: 'LanceDBProvider',
         })
         this.table = await this.db.openTable(tableName)
       } else {
         logger.info('🆕 Creating new table', {
           tableName,
           embeddingDimensions,
-          component: 'LanceDBProvider'
+          component: 'LanceDBProvider',
         })
 
-        // 빈 스키마로 테이블 생성
-        const schema = createLanceDBSchema(embeddingDimensions)
-        this.table = await this.db.createEmptyTable(tableName, schema)
+        // 간단한 샘플 데이터로 테이블 생성 (LanceDB 권장 방식)
+        const sampleData = [{
+          id: 'init_sample',
+          content: 'Initial sample document',
+          vector: new Array(embeddingDimensions).fill(0),
+          fileId: 'sample',
+          fileName: 'sample.txt',
+          filePath: '/sample.txt',
+          fileSize: 0,
+          fileType: 'text',
+          fileHash: 'sample',
+          chunkIndex: 0,
+          totalChunks: 1,
+          createdAt: new Date().toISOString(),
+          modifiedAt: new Date().toISOString(),
+          processedAt: new Date().toISOString(),
+          modelVersion: '1.0.0',
+          processingVersion: '1.0.0',
+          sourceType: 'local_file',
+          status: 'completed'
+        }]
+        
+        this.table = await this.db.createTable(tableName, sampleData, { mode: 'overwrite' })
+        
+        // 샘플 데이터 삭제
+        await this.table.delete("id = 'init_sample'")
       }
 
       // 전문 검색 인덱스 생성 (스키마 설정 기반)
@@ -240,14 +333,17 @@ export class LanceDBProvider implements VectorStoreProvider {
       logger.info('✅ Table initialization completed', {
         tableName,
         existed: tableExists,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
-
     } catch (error) {
-      logger.error('❌ Failed to initialize table', error instanceof Error ? error : new Error(String(error)), {
-        tableName: this.tableOptions.tableName,
-        component: 'LanceDBProvider'
-      })
+      logger.error(
+        '❌ Failed to initialize table',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          tableName: this.tableOptions.tableName,
+          component: 'LanceDBProvider',
+        }
+      )
       throw error
     }
   }
@@ -258,7 +354,7 @@ export class LanceDBProvider implements VectorStoreProvider {
     try {
       logger.info('🔍 Creating full-text search indexes...', {
         columns: this.schemaConfig.indexColumns,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // LanceDB의 FTS 인덱스 생성 (스키마 설정 기반)
@@ -268,15 +364,14 @@ export class LanceDBProvider implements VectorStoreProvider {
           logger.debug(`✅ Created FTS index for column: ${column}`)
         } catch (error) {
           logger.warn(`⚠️ Failed to create FTS index for column: ${column}`, {
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
           })
         }
       }
-
     } catch (error) {
       logger.warn('⚠️ Failed to create some full-text indexes', {
         error: error instanceof Error ? error.message : String(error),
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
       // FTS 인덱스 생성 실패는 치명적이지 않으므로 계속 진행
     }
@@ -291,13 +386,13 @@ export class LanceDBProvider implements VectorStoreProvider {
 
     const endTiming = startTiming('lancedb_add_documents', {
       documentCount: documents.length,
-      component: 'LanceDBProvider'
+      component: 'LanceDBProvider',
     })
 
     try {
       logger.info('📄 Adding documents to LanceDB', {
         count: documents.length,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // 배치 처리로 메모리 사용량 최적화 (스키마 설정 기반)
@@ -308,75 +403,98 @@ export class LanceDBProvider implements VectorStoreProvider {
 
       logger.info('✅ Documents added successfully to LanceDB', {
         count: documents.length,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // Invalidate file metadata cache since files have changed
       this.fileMetadataCache = null
-
     } catch (error) {
-      logger.error('❌ Failed to add documents to LanceDB', error instanceof Error ? error : new Error(String(error)), {
-        documentCount: documents.length,
-        component: 'LanceDBProvider'
-      })
-      errorMonitor.recordError(error instanceof StructuredError ? error : new StructuredError(String(error), ErrorCode.VECTOR_STORE_ERROR))
+      logger.error(
+        '❌ Failed to add documents to LanceDB',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          documentCount: documents.length,
+          component: 'LanceDBProvider',
+        }
+      )
+      errorMonitor.recordError(
+        error instanceof StructuredError
+          ? error
+          : new StructuredError(String(error), ErrorCode.VECTOR_STORE_ERROR)
+      )
       throw error
     } finally {
       endTiming()
     }
   }
 
-  private async processBatchDocuments(documents: VectorDocument[]): Promise<LanceDBDocumentRecord[]> {
+  private async processBatchDocuments(
+    documents: VectorDocument[]
+  ): Promise<any[]> {
     if (!this.embeddingBridge) {
       throw new Error('Embedding bridge not initialized')
     }
 
     // 1. 임베딩 생성
-    const contents = documents.map(doc => doc.content)
+    const contents = documents.map((doc) => doc.content)
     const embeddings = await this.embeddingBridge.embed(contents)
 
-    // 2. LanceDB 레코드 형식으로 변환
-    const records: LanceDBDocumentRecord[] = []
+    // 2. 간단한 레코드 형식으로 변환 (LanceDB 권장 방식)
+    const records: any[] = []
     for (let i = 0; i < documents.length; i++) {
       const doc = documents[i]!
       const embedding = embeddings[i]!
-      
+
       // 임베딩 유효성 검사
       const validation = validateEmbeddingVector(embedding, this.embeddingBridge.ndims())
       if (!validation.isValid) {
         logger.warn('⚠️ Invalid embedding vector', {
           docId: doc.id,
           error: validation.error,
-          component: 'LanceDBProvider'
+          component: 'LanceDBProvider',
         })
         continue
       }
 
-      const record = vectorDocumentToLanceDBRecord(doc, embedding)
-      
-      // 레코드 유효성 검사
-      const recordValidation = validateLanceDBRecord(record)
-      if (recordValidation.length > 0) {
-        logger.warn('⚠️ Invalid LanceDB record', {
-          docId: doc.id,
-          errors: recordValidation,
-          component: 'LanceDBProvider'
-        })
-        continue
+      // 간단한 레코드 구조 (필수 필드만)
+      const record = {
+        id: doc.id,
+        content: doc.content,
+        vector: embedding,
+        
+        // File 메타데이터
+        fileId: doc.metadata.fileId || '',
+        fileName: doc.metadata.fileName || '',
+        filePath: doc.metadata.filePath || '',
+        fileSize: Number(doc.metadata.fileSize) || 0,
+        fileType: doc.metadata.fileType || 'text',
+        fileHash: doc.metadata.fileHash || '',
+        
+        // 구조 정보
+        chunkIndex: Number(doc.metadata.chunkIndex) || 0,
+        totalChunks: Number(doc.metadata.totalChunks) || 1,
+        
+        // 타임스탬프 (ISO 문자열)
+        createdAt: doc.metadata.createdAt || new Date().toISOString(),
+        modifiedAt: doc.metadata.modifiedAt || new Date().toISOString(),
+        processedAt: new Date().toISOString(),
+        
+        // 시스템 정보
+        modelVersion: '1.0.0',
+        processingVersion: '1.0.0',
+        sourceType: 'local_file',
+        status: 'completed'
       }
 
       records.push(record)
     }
 
-    // 3. 중복 제거
-    const deduplicatedRecords = deduplicateRecords(records)
-
-    // 4. 테이블에 추가
-    if (deduplicatedRecords.length > 0) {
-      await this.table!.add(deduplicatedRecords as any)
+    // 3. 테이블에 직접 추가 (중복 제거는 LanceDB에서 처리)
+    if (records.length > 0) {
+      await this.table!.add(records)
     }
 
-    return deduplicatedRecords
+    return records
   }
 
   async search(query: string, options: VectorSearchOptions = {}): Promise<VectorSearchResult[]> {
@@ -389,7 +507,7 @@ export class LanceDBProvider implements VectorStoreProvider {
     const endTiming = startTiming('lancedb_search', {
       query: query.substring(0, 50),
       topK: options.topK,
-      component: 'LanceDBProvider'
+      component: 'LanceDBProvider',
     })
 
     try {
@@ -397,77 +515,96 @@ export class LanceDBProvider implements VectorStoreProvider {
         query: query.substring(0, 100),
         topK: options.topK,
         scoreThreshold: options.scoreThreshold,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
-      // 1. 쿼리 임베딩 생성
-      const queryEmbedding = await this.embeddingBridge.embedQuery(query)
+      // 1. 쿼리 임베딩 생성 (timeout 적용)
+      const embeddingTimeout = parseInt(process.env.EMBEDDING_TIMEOUT_MS || '15000')
+      logger.debug('⚡ Generating query embedding with timeout', {
+        timeout: embeddingTimeout,
+        component: 'LanceDBProvider',
+      })
 
-      // 2. 검색 필터 구성
-      const whereClause = buildWhereClause(this.buildSearchFilter(options))
+      const queryEmbedding = await TimeoutWrapper.withTimeout(
+        this.embeddingBridge.embedQuery(query),
+        {
+          timeoutMs: embeddingTimeout,
+          operation: 'generate_query_embedding',
+        }
+      )
 
-      // 3. 벡터 검색 실행
-      let searchQuery = this.table
-        .vectorSearch(queryEmbedding)
-        .limit(options.topK || 10)
+      // 2. 간단한 벡터 검색 (LanceDB 권장 방식)
+      const searchTimeout = parseInt(process.env.LANCEDB_SEARCH_TIMEOUT_MS || '30000')
+      logger.debug('🔍 Performing simplified vector search', {
+        timeout: searchTimeout,
+        topK: options.topK,
+        component: 'LanceDBProvider',
+      })
 
-      if (whereClause) {
-        searchQuery = searchQuery.where(whereClause)
-      }
+      // 간단한 검색 (필터는 추후 추가)
+      const rawResults = await TimeoutWrapper.withTimeout(
+        this.table.search(queryEmbedding)
+          .limit(options.topK || 10)
+          .toArray(),
+        {
+          timeoutMs: searchTimeout,
+          operation: 'lancedb_vector_search',
+        }
+      )
 
-      const rawResults = await searchQuery.toArray()
-
-      // 4. 결과 변환 및 후처리
-      let results = rawResults.map(result => lanceDBResultToSearchResult(result))
-
-      // 5. 스코어 필터링
-      if (options.scoreThreshold) {
-        results = results.filter(result => result.score >= options.scoreThreshold!)
-      }
-
-      // 6. 스코어 정규화
-      results = normalizeSearchScores(results)
-
-      // 7. 하이라이트 추가 (항상 포함)
-      results = results.map(result => ({
-        ...result,
-        ...highlightSearchResult(result.content, query, 200)
+      // 3. 간단한 결과 변환
+      let results = rawResults.map((result) => ({
+        id: result.id || '',
+        content: result.content || '',
+        score: result._distance ? (1 - result._distance) : result.score || 0,
+        metadata: {
+          fileId: result.fileId || '',
+          fileName: result.fileName || 'unknown',
+          filePath: result.filePath || 'unknown',  
+          fileType: result.fileType || 'unknown',
+          fileSize: result.fileSize || 0,
+          fileHash: result.fileHash || '',
+          chunkIndex: result.chunkIndex || 0,
+          totalChunks: result.totalChunks || 1,
+          createdAt: result.createdAt || new Date().toISOString(),
+          modifiedAt: result.modifiedAt || new Date().toISOString(),
+          processedAt: result.processedAt || new Date().toISOString(),
+        },
       }))
+
+      // 4. 스코어 필터링
+      if (options.scoreThreshold) {
+        results = results.filter((result) => result.score >= options.scoreThreshold!)
+      }
 
       logger.info('✅ LanceDB search completed', {
         query: query.substring(0, 100),
         resultsCount: results.length,
         topScore: results[0]?.score || 0,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       return results
-
     } catch (error) {
-      logger.error('❌ LanceDB search failed', error instanceof Error ? error : new Error(String(error)), {
-        query: query.substring(0, 100),
-        component: 'LanceDBProvider'
-      })
-      errorMonitor.recordError(error instanceof StructuredError ? error : new StructuredError(String(error), ErrorCode.VECTOR_STORE_ERROR))
+      logger.error(
+        '❌ LanceDB search failed',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          query: query.substring(0, 100),
+          component: 'LanceDBProvider',
+        }
+      )
+      errorMonitor.recordError(
+        error instanceof StructuredError
+          ? error
+          : new StructuredError(String(error), ErrorCode.VECTOR_STORE_ERROR)
+      )
       throw error
     } finally {
       endTiming()
     }
   }
 
-  private buildSearchFilter(options: VectorSearchOptions): LanceDBSearchFilter {
-    const filter: LanceDBSearchFilter = {}
-
-    if (options.fileTypes && options.fileTypes.length > 0) {
-      filter.fileTypes = options.fileTypes
-    }
-
-    if (options.metadataFilters) {
-      filter.customFilters = options.metadataFilters
-    }
-
-    return filter
-  }
 
   async deleteDocuments(ids: string[]): Promise<void> {
     await this.initialize()
@@ -478,29 +615,32 @@ export class LanceDBProvider implements VectorStoreProvider {
 
     const endTiming = startTiming('lancedb_delete_documents', {
       documentCount: ids.length,
-      component: 'LanceDBProvider'
+      component: 'LanceDBProvider',
     })
 
     try {
       logger.info('🗑️ Deleting documents from LanceDB', {
         count: ids.length,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // ID 목록으로 삭제
-      const idsString = ids.map(id => `'${id}'`).join(', ')
+      const idsString = ids.map((id) => `'${id}'`).join(', ')
       await this.table.delete(`id IN (${idsString})`)
 
       logger.info('✅ Documents deleted successfully', {
         count: ids.length,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
-
     } catch (error) {
-      logger.error('❌ Failed to delete documents', error instanceof Error ? error : new Error(String(error)), {
-        documentCount: ids.length,
-        component: 'LanceDBProvider'
-      })
+      logger.error(
+        '❌ Failed to delete documents',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          documentCount: ids.length,
+          component: 'LanceDBProvider',
+        }
+      )
       throw error
     } finally {
       endTiming()
@@ -517,24 +657,27 @@ export class LanceDBProvider implements VectorStoreProvider {
     try {
       logger.info('🗑️ Removing documents by fileId', {
         fileId,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       await this.table.delete(`"fileId" = '${fileId}'`)
 
       logger.info('✅ Documents removed by fileId', {
         fileId,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // Invalidate file metadata cache since files have changed
       this.fileMetadataCache = null
-
     } catch (error) {
-      logger.error('❌ Failed to remove documents by fileId', error instanceof Error ? error : new Error(String(error)), {
-        fileId,
-        component: 'LanceDBProvider'
-      })
+      logger.error(
+        '❌ Failed to remove documents by fileId',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          fileId,
+          component: 'LanceDBProvider',
+        }
+      )
       throw error
     }
   }
@@ -548,20 +691,23 @@ export class LanceDBProvider implements VectorStoreProvider {
 
     try {
       logger.info('🗑️ Removing all documents from LanceDB', {
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // 모든 행 삭제 (조건 없이)
       await this.table.delete('true')
 
       logger.info('✅ All documents removed', {
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
-
     } catch (error) {
-      logger.error('❌ Failed to remove all documents', error instanceof Error ? error : new Error(String(error)), {
-        component: 'LanceDBProvider'
-      })
+      logger.error(
+        '❌ Failed to remove all documents',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'LanceDBProvider',
+        }
+      )
       throw error
     }
   }
@@ -572,15 +718,18 @@ export class LanceDBProvider implements VectorStoreProvider {
       // For now, return estimated counts since countRows might be async
       const dimensions = this.embeddingBridge?.ndims() || 384
       const estimatedVectors = this.isInitialized && this.table ? 1 : 0 // Basic estimation
-      
+
       return {
         totalVectors: estimatedVectors,
         dimensions: dimensions,
-        indexSize: Math.floor(estimatedVectors * dimensions * 4 / 1024), // Approximate size in KB
+        indexSize: Math.floor((estimatedVectors * dimensions * 4) / 1024), // Approximate size in KB
         lastUpdated: new Date(),
       }
     } catch (error) {
-      logger.warn('Failed to get LanceDB index stats', error instanceof Error ? error : new Error(String(error)))
+      logger.warn(
+        'Failed to get LanceDB index stats',
+        error instanceof Error ? error : new Error(String(error))
+      )
       return {
         totalVectors: 0,
         dimensions: this.embeddingBridge?.ndims() || 384,
@@ -600,7 +749,10 @@ export class LanceDBProvider implements VectorStoreProvider {
       // For now, return basic estimation since countRows might be async
       return this.isInitialized && this.table ? 1 : 0
     } catch (error) {
-      logger.debug('Failed to get document count', error instanceof Error ? error : new Error(String(error)))
+      logger.debug(
+        'Failed to get document count',
+        error instanceof Error ? error : new Error(String(error))
+      )
       return 0
     }
   }
@@ -621,28 +773,38 @@ export class LanceDBProvider implements VectorStoreProvider {
     try {
       logger.debug('Retrieving file metadata from LanceDB', {
         fileId,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
-      // Use efficient SQL query instead of vector search - match actual schema and quote column names
+      // Use efficient SQL query with centralized field selection
+      const { QueryGenerator } = await import('@/shared/schemas/schema-generator.js')
+      const selectFields = QueryGenerator.generateSelectClause('essential')
+      const whereClause = QueryGenerator.generateFileIdWhereClause(fileId)
+
       const results = await this.table
         .query()
-        .where(`"fileId" = '${fileId}'`)
-        .select(['fileId', 'fileName', 'filePath', 'fileType', 'fileSize', 'fileCreatedAt', 'updatedAt'])
+        .where(whereClause)
+        .select(selectFields.split(', ').map((field) => field.replace(/"/g, '')))
         .limit(1)
         .toArray()
 
       if (results.length > 0) {
         const result = results[0]
+        // Use centralized data transformation
+        const { DataTransformer } = await import('@/shared/schemas/schema-generator.js')
+        const unifiedMetadata = DataTransformer.lanceDBRecordToUnified(result)
+
         return {
-          fileId: result.fileId,
-          fileName: result.fileName,
-          filePath: result.filePath,
-          fileType: result.fileType,
-          size: result.fileSize || 0,
-          createdAt: result.fileCreatedAt,
-          processedAt: result.updatedAt || result.fileCreatedAt, // Use updatedAt as processed time, fall back to file creation
-          sourceType: 'local_file' // Default value since not in schema
+          fileId: unifiedMetadata.file.id,
+          fileName: unifiedMetadata.file.name,
+          filePath: unifiedMetadata.file.path,
+          fileType: unifiedMetadata.file.type,
+          size: unifiedMetadata.file.size,
+          fileHash: unifiedMetadata.file.hash,
+          modifiedAt: unifiedMetadata.timestamps.modified.toISOString(),
+          createdAt: unifiedMetadata.timestamps.created.toISOString(),
+          processedAt: unifiedMetadata.timestamps.processed.toISOString(),
+          sourceType: unifiedMetadata.system.sourceType,
         }
       }
 
@@ -651,7 +813,7 @@ export class LanceDBProvider implements VectorStoreProvider {
       logger.warn('Failed to retrieve file metadata', {
         fileId,
         error: error instanceof Error ? error.message : String(error),
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
       return null
     }
@@ -670,11 +832,11 @@ export class LanceDBProvider implements VectorStoreProvider {
 
     // Check cache first
     const now = Date.now()
-    if (this.fileMetadataCache && (now - this.fileMetadataCache.timestamp) < this.CACHE_TTL) {
+    if (this.fileMetadataCache && now - this.fileMetadataCache.timestamp < this.CACHE_TTL) {
       logger.debug('Using cached file metadata', {
         cacheAge: Math.round((now - this.fileMetadataCache.timestamp) / 1000),
         cachedFiles: this.fileMetadataCache.data.size,
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
       return new Map(this.fileMetadataCache.data) // Return a copy to prevent mutation
     }
@@ -683,27 +845,24 @@ export class LanceDBProvider implements VectorStoreProvider {
 
     try {
       logger.debug('Retrieving all file metadata from LanceDB (cache miss or expired)', {
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // DEBUGGING: Check total document count first
-      const totalCountResults = await this.table
-        .query()
-        .select(['id'])
-        .toArray()
-      
+      const totalCountResults = await this.table.query().select(['id']).toArray()
+
       logger.info(`🔍 Total documents in table: ${totalCountResults.length}`, {
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
-      // Use efficient SQL query to get all file metadata - match actual schema
+      // 간단한 쿼리 (모든 메타데이터 필드 선택)
       const results = await this.table
         .query()
-        .select(['fileId', 'fileName', 'filePath', 'fileType', 'fileSize', 'fileCreatedAt', 'updatedAt'])
+        .select(['fileId', 'fileName', 'filePath', 'fileType', 'fileSize', 'fileHash', 'createdAt', 'modifiedAt', 'processedAt'])
         .toArray()
 
       logger.info(`📊 Retrieved ${results.length} documents from LanceDB for metadata extraction`, {
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       // Debug: show sample results
@@ -711,46 +870,53 @@ export class LanceDBProvider implements VectorStoreProvider {
         const sample = results.slice(0, 3)
         logger.debug('Sample documents from LanceDB:', {
           sampleCount: sample.length,
-          samples: sample.map(r => ({
+          samples: sample.map((r) => ({
             fileId: r.fileId,
             fileName: r.fileName,
-            hasFileId: !!r.fileId
+            hasFileId: !!r.fileId,
           })),
-          component: 'LanceDBProvider'
+          component: 'LanceDBProvider',
         })
       } else {
         logger.warn('No documents found in LanceDB table', {
-          component: 'LanceDBProvider'
+          component: 'LanceDBProvider',
         })
       }
 
-      // Extract unique file metadata
+      // 간단한 변환 (복잡한 변환 없이)
       for (const result of results) {
         const fileId = result.fileId
         if (fileId && !fileMetadataMap.has(fileId)) {
-          // Get the most recent document for this file (highest chunkIndex or latest updatedAt)
+          // 가장 최근 문서만 유지
           const existingMeta = fileMetadataMap.get(fileId)
-          const currentProcessedAt = new Date(result.updatedAt || result.fileCreatedAt || 0).getTime()
-          const existingProcessedAt = existingMeta ? new Date(existingMeta.processedAt || existingMeta.createdAt || 0).getTime() : 0
+          const currentProcessedAt = new Date(result.processedAt || 0).getTime()
+          const existingProcessedAt = existingMeta
+            ? new Date(existingMeta.processedAt || 0).getTime()
+            : 0
 
           if (!existingMeta || currentProcessedAt > existingProcessedAt) {
             fileMetadataMap.set(fileId, {
-              fileId: result.fileId,
-              fileName: result.fileName,
-              filePath: result.filePath,
-              fileType: result.fileType,
-              size: result.fileSize || 0,
-              createdAt: result.fileCreatedAt,
-              processedAt: result.updatedAt || result.fileCreatedAt, // Use updatedAt as processed time, fall back to file creation
-              sourceType: 'local_file' // Default value since not in schema
+              fileId: result.fileId || '',
+              fileName: result.fileName || 'unknown',
+              filePath: result.filePath || 'unknown',
+              fileType: result.fileType || 'text',
+              size: Number(result.fileSize) || 0,
+              fileHash: result.fileHash || '',
+              modifiedAt: result.modifiedAt || new Date().toISOString(),
+              createdAt: result.createdAt || new Date().toISOString(),
+              processedAt: result.processedAt || new Date().toISOString(),
+              sourceType: 'local_file',
             })
           }
         }
       }
 
-      logger.info(`📊 Retrieved ${fileMetadataMap.size} unique files from ${results.length} documents`, {
-        component: 'LanceDBProvider'
-      })
+      logger.info(
+        `📊 Retrieved ${fileMetadataMap.size} unique files from ${results.length} documents`,
+        {
+          component: 'LanceDBProvider',
+        }
+      )
 
       // Log some sample metadata for debugging
       if (fileMetadataMap.size > 0) {
@@ -760,34 +926,35 @@ export class LanceDBProvider implements VectorStoreProvider {
           fileId: firstFile.fileId,
           size: firstFile.size,
           processedAt: firstFile.processedAt,
-          component: 'LanceDBProvider'
+          component: 'LanceDBProvider',
         })
       }
 
       // Update cache
       this.fileMetadataCache = {
         data: new Map(fileMetadataMap), // Store a copy
-        timestamp: Date.now()
+        timestamp: Date.now(),
       }
 
       logger.debug('File metadata cached', {
         fileCount: fileMetadataMap.size,
         cacheExpiry: new Date(Date.now() + this.CACHE_TTL).toISOString(),
-        component: 'LanceDBProvider'
+        component: 'LanceDBProvider',
       })
 
       return fileMetadataMap
-
     } catch (error) {
-      logger.error('Failed to retrieve all file metadata from LanceDB', error instanceof Error ? error : new Error(String(error)), {
-        component: 'LanceDBProvider'
-      })
-      
+      logger.error(
+        'Failed to retrieve all file metadata from LanceDB',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'LanceDBProvider',
+        }
+      )
+
       // Return empty map on error - will cause all files to be processed as new
       logger.warn('Falling back to empty metadata map - all files will be processed as new')
       return fileMetadataMap
     }
   }
-
-
 }

@@ -4,10 +4,8 @@
     "outDir": "./dist",
     "paths": {
       "@/*": ["*"],
+      "@/domains/*": ["domains/*"],
       "@/shared/*": ["shared/*"],
-      "@/infrastructure/*": ["infrastructure/*"],
-      "@/rag/*": ["rag/*"],
-      "@/mcp/*": ["mcp/*"],
       "@/app/*": ["app/*"]
     }
   }

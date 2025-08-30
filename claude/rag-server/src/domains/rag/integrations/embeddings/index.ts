@@ -1,5 +1,5 @@
 import { Embeddings } from '@langchain/core/embeddings'
-import { ServerConfig } from '@/shared/types/index.js'
+import { BaseServerConfig } from '@/shared/config/config-factory.js'
 import { OllamaEmbeddings } from './providers/ollama.js'
 import { TransformersEmbeddings } from './providers/transformers.js'
 
@@ -13,7 +13,7 @@ export class EmbeddingFactory {
   /**
    * Create an embedding service based on configuration
    */
-  static async createEmbeddingService(config: ServerConfig): Promise<Embeddings> {
+  static async createEmbeddingService(config: BaseServerConfig): Promise<Embeddings> {
     const service = (config.embeddingService || 'transformers') as EmbeddingServiceType
 
     console.log(`🏭 Creating embedding service: ${service}`)
@@ -35,7 +35,7 @@ export class EmbeddingFactory {
    * Create embedding service with automatic fallback
    * Tries the configured service first, falls back to transformers if it fails
    */
-  static async createWithFallback(config: ServerConfig): Promise<{
+  static async createWithFallback(config: BaseServerConfig): Promise<{
     embeddings: Embeddings
     actualService: EmbeddingServiceType
   }> {
@@ -138,7 +138,7 @@ export class EmbeddingFactory {
   /**
    * Validate embedding service configuration
    */
-  static validateConfig(config: ServerConfig): {
+  static validateConfig(config: BaseServerConfig): {
     isValid: boolean
     errors: string[]
     warnings: string[]

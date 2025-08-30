@@ -1,13 +1,14 @@
 import { pipeline, env } from '@huggingface/transformers'
 import type { FeatureExtractionPipeline } from '@huggingface/transformers'
 import { Embeddings } from '@langchain/core/embeddings'
-import { ServerConfig } from '@/shared/types/index.js'
+import { BaseServerConfig } from '@/shared/config/config-factory.js'
 
 export interface EmbeddingModelConfig {
   modelId: string
   dimensions: number
   maxTokens: number
   description: string
+  recommendedBatchSize?: number
 }
 
 export const AVAILABLE_MODELS: Record<string, EmbeddingModelConfig> = {
@@ -16,24 +17,42 @@ export const AVAILABLE_MODELS: Record<string, EmbeddingModelConfig> = {
     dimensions: 384,
     maxTokens: 256,
     description: 'Fast and efficient, good for general use',
+    recommendedBatchSize: 20,
   },
   'all-MiniLM-L12-v2': {
     modelId: 'Xenova/all-MiniLM-L12-v2',
     dimensions: 384,
     maxTokens: 256,
     description: 'Slightly larger and more accurate than L6',
+    recommendedBatchSize: 15,
   },
   'bge-small-en': {
     modelId: 'Xenova/bge-small-en',
     dimensions: 384,
     maxTokens: 512,
     description: 'High quality embeddings for English text',
+    recommendedBatchSize: 15,
   },
   'bge-base-en': {
     modelId: 'Xenova/bge-base-en',
     dimensions: 768,
     maxTokens: 512,
     description: 'Better quality, slower than small variant',
+    recommendedBatchSize: 10,
+  },
+  'qwen3-embedding-0.6b': {
+    modelId: 'onnx-community/Qwen3-Embedding-0.6B-ONNX',
+    dimensions: 1024,
+    maxTokens: 32000,
+    description: 'Qwen3-Embedding-0.6B - Compact multilingual embedding model (MTEB top performer)',
+    recommendedBatchSize: 8,
+  },
+  'qwen3-embedding-4b': {
+    modelId: 'zhiqing/Qwen3-Embedding-4B-ONNX',
+    dimensions: 2560,
+    maxTokens: 32000,
+    description: 'Qwen3-Embedding-4B - High performance multilingual embedding (up to 2560 dimensions)',
+    recommendedBatchSize: 4,
   },
 }
 
@@ -51,7 +70,7 @@ export class TransformersEmbeddings extends Embeddings {
     new Map()
   protected isLazyLoading: boolean
 
-  constructor(private config: ServerConfig) {
+  constructor(private config: BaseServerConfig) {
     super({})
 
     // Enable lazy loading in production or when explicitly set
@@ -354,6 +373,29 @@ export class TransformersEmbeddings extends Embeddings {
   }
 
   /**
+   * Get model configuration by name
+   */
+  static getModelConfig(modelName: string): EmbeddingModelConfig | null {
+    return AVAILABLE_MODELS[modelName] || null
+  }
+
+  /**
+   * Get dimensions for a specific model
+   */
+  static getModelDimensions(modelName: string): number {
+    const config = TransformersEmbeddings.getModelConfig(modelName)
+    return config?.dimensions || 384 // fallback to default
+  }
+
+  /**
+   * Get recommended batch size for a specific model
+   */
+  static getModelBatchSize(modelName: string): number {
+    const config = TransformersEmbeddings.getModelConfig(modelName)
+    return config?.recommendedBatchSize || 10 // fallback to default
+  }
+
+  /**
    * Estimate memory usage for the model
    */
   estimateMemoryUsage(): string {
@@ -362,6 +404,8 @@ export class TransformersEmbeddings extends Embeddings {
       'all-MiniLM-L12-v2': '~45MB',
       'bge-small-en': '~67MB',
       'bge-base-en': '~109MB',
+      'qwen3-embedding-0.6b': '~150MB',
+      'qwen3-embedding-4b': '~2.1GB',
     }
 
     const modelName = Object.keys(AVAILABLE_MODELS).find((key) => {
@@ -381,6 +425,8 @@ export class TransformersEmbeddings extends Embeddings {
       'all-MiniLM-L12-v2': 45_000_000, // 45MB
       'bge-small-en': 67_000_000, // 67MB
       'bge-base-en': 109_000_000, // 109MB
+      'qwen3-embedding-0.6b': 150_000_000, // 150MB
+      'qwen3-embedding-4b': 2_100_000_000, // 2.1GB
     }
 
     const modelName = Object.keys(AVAILABLE_MODELS).find((key) => {

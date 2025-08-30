@@ -11,12 +11,11 @@ import { SearchHandler } from '@/domains/mcp/handlers/search.js'
 import { InformationHandler } from '@/domains/mcp/handlers/information.js'
 // SearchService and RAGWorkflow removed as part of VectorStore-only architecture
 // These will be refactored in Phase 7 to work with VectorStore-only architecture
-import { serviceRegistry } from '@/shared/dependency-injection/service-registry.js'
 
 /**
  * Check model compatibility and handle migration if needed
  */
-async function checkAndHandleModelMigration(embeddingMetadataService: any, config: any) {
+async function checkAndHandleModelMigration(modelCompatibilityService: any, config: any) {
   try {
     // Create model info based on config and service type
     const modelInfo = {
@@ -30,38 +29,81 @@ async function checkAndHandleModelMigration(embeddingMetadataService: any, confi
       service: config.embeddingService,
       model: config.embeddingModel,
       dimensions: modelInfo.dimensions,
+      autoMigration: config.modelMigration.enableAutoMigration,
+      clearOnChange: config.modelMigration.clearVectorsOnModelChange,
     })
 
     // Check compatibility
-    const compatibility = await embeddingMetadataService.checkModelCompatibility(config, modelInfo)
-    
+    const compatibility = await modelCompatibilityService.checkModelCompatibility(config, modelInfo)
+
+    logger.info('📋 Model compatibility check result', {
+      isCompatible: compatibility.isCompatible,
+      requiresReindexing: compatibility.requiresReindexing,
+      issues: compatibility.issues,
+      hasCurrentMetadata: !!compatibility.currentMetadata,
+      currentMetadataInfo: compatibility.currentMetadata
+        ? {
+            modelName: compatibility.currentMetadata.modelName,
+            serviceName: compatibility.currentMetadata.serviceName,
+            dimensions: compatibility.currentMetadata.dimensions,
+            configHash: compatibility.currentMetadata.configHash,
+          }
+        : null,
+    })
+
     if (!compatibility.isCompatible || compatibility.requiresReindexing) {
       if (config.modelMigration.enableAutoMigration) {
         logger.warn('🔄 Auto-migration enabled - handling model changes', {
           issues: compatibility.issues,
           requiresReindexing: compatibility.requiresReindexing,
+          willClearVectors: config.modelMigration.clearVectorsOnModelChange,
         })
-        
-        await embeddingMetadataService.handleModelMigration(compatibility, config)
+
+        await modelCompatibilityService.handleModelMigration(compatibility, config)
+        logger.info('✅ Model migration completed successfully')
       } else {
         logger.warn('⚠️ Model incompatibility detected but auto-migration disabled', {
           issues: compatibility.issues,
-          suggestion: 'Enable AUTO_MIGRATION=true to handle automatically or run manual migration'
+          suggestion: 'Enable AUTO_MIGRATION=true to handle automatically or run manual migration',
+          currentConfig: {
+            service: config.embeddingService,
+            model: config.embeddingModel,
+            dimensions: config.embeddingDimensions,
+          },
         })
       }
+    } else {
+      logger.info('✅ Model configuration is compatible, no migration needed')
     }
 
     // Update or create metadata
-    await embeddingMetadataService.createOrUpdateMetadata(config, modelInfo, {
+    const metadataId = await modelCompatibilityService.createOrUpdateMetadata(config, modelInfo, {
       documents: 0, // Will be updated as documents are processed
-      vectors: 0
+      vectors: 0,
     })
 
+    logger.info('📝 Model metadata updated', {
+      metadataId,
+      modelName: modelInfo.name,
+      serviceName: modelInfo.service,
+    })
   } catch (error) {
-    logger.error('Failed to check model compatibility', error instanceof Error ? error : new Error(String(error)))
-    
+    logger.error(
+      '❌ Failed to check model compatibility',
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        service: config.embeddingService,
+        model: config.embeddingModel,
+        autoMigrationEnabled: config.modelMigration.enableAutoMigration,
+      }
+    )
+
     if (config.modelMigration.enableIncompatibilityDetection) {
-      logger.warn('Model compatibility check failed - proceeding with caution')
+      logger.warn(
+        '⚠️ Model compatibility check failed - proceeding with caution. This may cause issues with vector search.'
+      )
+    } else {
+      logger.info('ℹ️ Model compatibility detection is disabled, continuing startup')
     }
   }
 }
@@ -70,34 +112,37 @@ async function checkAndHandleModelMigration(embeddingMetadataService: any, confi
  * Initialize all dependencies and create MCPServer instance
  */
 async function initializeServices(config: any) {
-  // Register config in dependency injection container
-  serviceRegistry.registerInstance('config', config)
+  // Initialize services with config passed directly
 
   // Initialize vector store and search service
   const { VectorStoreFactory } = await import('@/shared/config/vector-store-factory.js')
 
   // IMPORTANT: Create only ONE provider instance and reuse it everywhere
   const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config)
-  
+
   // Initialize SearchService with abstraction layer
   const { SearchService } = await import('@/domains/rag/services/search/search-service.js')
-  const searchService = new SearchService(vectorStoreProvider, config)
+  const searchService = new SearchService(vectorStoreProvider)
 
-  // Initialize EmbeddingMetadataService for model migration
-  const { EmbeddingMetadataService } = await import('@/domains/rag/services/embedding-metadata-service.js')
-  const embeddingMetadataService = new EmbeddingMetadataService(vectorStoreProvider)
-  
+  // Initialize ModelCompatibilityService for model migration
+  const { ModelCompatibilityService } = await import('@/domains/rag/services/models/index.js')
+  const modelCompatibilityService = new ModelCompatibilityService(vectorStoreProvider)
+
   // Check model compatibility and handle migration if needed
-  await checkAndHandleModelMigration(embeddingMetadataService, config)
+  await checkAndHandleModelMigration(modelCompatibilityService, config)
 
   // Initialize DocumentProcessor for file processing
   const { DocumentProcessor } = await import('@/domains/rag/services/document/processor.js')
-  const documentProcessor = new DocumentProcessor(vectorStoreProvider, embeddingMetadataService, config)
-  
+  const documentProcessor = new DocumentProcessor(
+    vectorStoreProvider,
+    modelCompatibilityService,
+    config
+  )
+
   // Initialize FileWatcher for automatic file processing
-  const { FileWatcher } = await import('@/shared/filesystem/watcher.js')
-  const fileWatcher = new FileWatcher(config.documentsDir)
-  
+  const { FileWatcher } = await import('@/domains/filesystem/index.js')
+  const fileWatcher = new FileWatcher(config.documentsDir, documentProcessor)
+
   // Create a processing queue to limit concurrency
   const processingQueue: Promise<void>[] = []
   const MAX_CONCURRENT_PROCESSING = 3 // Limit concurrent file processing
@@ -108,7 +153,7 @@ async function initializeServices(config: any) {
     if (processingQueue.length >= MAX_CONCURRENT_PROCESSING) {
       logger.warn('Processing queue full, waiting...', {
         queueSize: processingQueue.length,
-        maxConcurrent: MAX_CONCURRENT_PROCESSING
+        maxConcurrent: MAX_CONCURRENT_PROCESSING,
       })
       // Wait for at least one to complete
       await Promise.race(processingQueue)
@@ -117,23 +162,27 @@ async function initializeServices(config: any) {
     const processingPromise = (async () => {
       try {
         if (event.type === 'added' || event.type === 'changed') {
-          logger.info('File change detected, processing', { 
-            type: event.type, 
+          logger.info('File change detected, processing', {
+            type: event.type,
             path: event.path,
-            fileName: event.metadata?.name 
+            fileName: event.metadata?.name,
           })
           await documentProcessor.processFile(event.path)
         } else if (event.type === 'deleted') {
-          logger.info('File deletion detected, removing from VectorStore', { 
-            path: event.path 
+          logger.info('File deletion detected, removing from VectorStore', {
+            path: event.path,
           })
           await documentProcessor.removeFile(event.path)
         }
       } catch (error) {
-        logger.error('Failed to process file change event', error instanceof Error ? error : new Error(String(error)), {
-          eventType: event.type,
-          filePath: event.path,
-        })
+        logger.error(
+          'Failed to process file change event',
+          error instanceof Error ? error : new Error(String(error)),
+          {
+            eventType: event.type,
+            filePath: event.path,
+          }
+        )
       }
     })()
 
@@ -146,18 +195,32 @@ async function initializeServices(config: any) {
       }
     })
   })
-  
-  // Start file watching
-  await fileWatcher.start()
-  logger.info('FileWatcher started', { documentsDir: config.documentsDir })
-  
-  // Smart sync existing files on startup
-  logger.info('🧠 Starting intelligent directory synchronization...')
+
+  // Start file watching (includes initial sync)
+  logger.info('🧠 Starting FileWatcher with intelligent directory synchronization...', {
+    documentsDir: config.documentsDir,
+    smartSyncEnabled: true,
+  })
+
+  const startTime = Date.now()
   try {
-    await documentProcessor.syncDirectoryWithVectorStore(config.documentsDir)
-    logger.info('✅ Smart directory sync completed successfully')
+    await fileWatcher.start()
+    const duration = Date.now() - startTime
+    logger.info('✅ FileWatcher started with smart directory sync completed', {
+      durationMs: duration,
+      documentsDir: config.documentsDir,
+    })
   } catch (error) {
-    logger.error('⚠️ Smart directory sync failed, but continuing startup', error instanceof Error ? error : new Error(String(error)))
+    const duration = Date.now() - startTime
+    logger.error(
+      '⚠️ FileWatcher startup failed, but continuing',
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        durationMs: duration,
+        documentsDir: config.documentsDir,
+      }
+    )
+    // Continue startup even if file watcher fails
   }
 
   // Initialize MCP handlers with SearchService (high-level abstraction)
@@ -166,10 +229,10 @@ async function initializeServices(config: any) {
 
   // Create MCP Server
   const mcpServer = new MCPServer(searchHandler, informationHandler, config)
-  
+
   // Store fileWatcher globally for cleanup
   ;(globalThis as any).fileWatcher = fileWatcher
-  
+
   return mcpServer
 }
 
@@ -204,7 +267,7 @@ async function main(): Promise<void> {
             logger.info('Stopping FileWatcher...')
             await fileWatcher.stop()
           }
-          
+
           await mcpServer.shutdown()
           logger.info('MCP server shutdown completed')
         } catch (error) {
@@ -215,8 +278,7 @@ async function main(): Promise<void> {
         }
       }
 
-      // Cleanup service registry
-      serviceRegistry.clear()
+      // Graceful shutdown completed
 
       process.exit(0)
     }
@@ -266,8 +328,7 @@ async function main(): Promise<void> {
       }
     }
 
-    // Cleanup service registry on error
-    serviceRegistry.clear()
+    // Error handling completed
 
     process.exit(1)
   }
