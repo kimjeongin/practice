@@ -7,7 +7,7 @@ import { logger } from '@/shared/logger/index.js'
 // Search tool arguments
 export interface SearchArgs {
   query: string
-  search_type?: 'semantic' | 'hybrid' | 'fulltext'
+  search_type?: 'semantic' | 'hybrid' | 'keyword'
   limit?: number
   sources?: string[]
   metadata_filters?: Record<string, string>
@@ -501,9 +501,9 @@ export class SearchHandler {
             },
             search_type: {
               type: 'string',
-              enum: ['semantic', 'hybrid', 'fulltext'],
+              enum: ['semantic', 'hybrid', 'keyword'],
               description:
-                'Search method: semantic (embeddings), hybrid (semantic+keyword), fulltext (keyword only)',
+                'Search method: semantic (embeddings), hybrid (semantic+keyword), keyword (keyword only)',
               default: 'semantic',
             },
             limit: {

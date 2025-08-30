@@ -12,47 +12,26 @@ export interface EmbeddingModelConfig {
 }
 
 export const AVAILABLE_MODELS: Record<string, EmbeddingModelConfig> = {
-  'all-MiniLM-L6-v2': {
+  'all-minilm-l6-v2': {
     modelId: 'Xenova/all-MiniLM-L6-v2',
     dimensions: 384,
     maxTokens: 256,
     description: 'Fast and efficient, good for general use',
     recommendedBatchSize: 20,
   },
-  'all-MiniLM-L12-v2': {
-    modelId: 'Xenova/all-MiniLM-L12-v2',
+  'paraphrase-multilingual-MiniLM-L12-v2': {
+    modelId: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
     dimensions: 384,
-    maxTokens: 256,
-    description: 'Slightly larger and more accurate than L6',
+    maxTokens: 128,
+    description: 'Multilingual model supporting 50+ languages, excellent for semantic similarity',
     recommendedBatchSize: 15,
   },
-  'bge-small-en': {
-    modelId: 'Xenova/bge-small-en',
-    dimensions: 384,
-    maxTokens: 512,
-    description: 'High quality embeddings for English text',
-    recommendedBatchSize: 15,
-  },
-  'bge-base-en': {
-    modelId: 'Xenova/bge-base-en',
+  'multilingual-e5-base': {
+    modelId: 'Xenova/multilingual-e5-base',
     dimensions: 768,
     maxTokens: 512,
-    description: 'Better quality, slower than small variant',
+    description: 'High-quality multilingual embedding model supporting 100+ languages',
     recommendedBatchSize: 10,
-  },
-  'qwen3-embedding-0.6b': {
-    modelId: 'onnx-community/Qwen3-Embedding-0.6B-ONNX',
-    dimensions: 1024,
-    maxTokens: 32000,
-    description: 'Qwen3-Embedding-0.6B - Compact multilingual embedding model (MTEB top performer)',
-    recommendedBatchSize: 8,
-  },
-  'qwen3-embedding-4b': {
-    modelId: 'zhiqing/Qwen3-Embedding-4B-ONNX',
-    dimensions: 2560,
-    maxTokens: 32000,
-    description: 'Qwen3-Embedding-4B - High performance multilingual embedding (up to 2560 dimensions)',
-    recommendedBatchSize: 4,
   },
 }
 
@@ -85,8 +64,8 @@ export class TransformersEmbeddings extends Embeddings {
     env.cacheDir = config.transformersCacheDir || './data/.transformers-cache'
 
     // Get model configuration
-    const modelName = config.embeddingModel || 'all-MiniLM-L6-v2'
-    const defaultModel = AVAILABLE_MODELS['all-MiniLM-L6-v2']
+    const modelName = config.embeddingModel || 'paraphrase-multilingual-MiniLM-L12-v2'
+    const defaultModel = AVAILABLE_MODELS['paraphrase-multilingual-MiniLM-L12-v2']
     if (!defaultModel) {
       throw new Error('Default embedding model configuration not found')
     }
@@ -400,12 +379,9 @@ export class TransformersEmbeddings extends Embeddings {
    */
   estimateMemoryUsage(): string {
     const modelSizes: Record<string, string> = {
-      'all-MiniLM-L6-v2': '~23MB',
-      'all-MiniLM-L12-v2': '~45MB',
-      'bge-small-en': '~67MB',
-      'bge-base-en': '~109MB',
-      'qwen3-embedding-0.6b': '~150MB',
-      'qwen3-embedding-4b': '~2.1GB',
+      'all-minilm-l6-v2': '~23MB',
+      'paraphrase-multilingual-MiniLM-L12-v2': '~45MB',
+      'multilingual-e5-base': '~109MB',
     }
 
     const modelName = Object.keys(AVAILABLE_MODELS).find((key) => {
@@ -413,7 +389,7 @@ export class TransformersEmbeddings extends Embeddings {
       return model && model.modelId === this.modelConfig.modelId
     })
 
-    return modelSizes[modelName || 'all-MiniLM-L6-v2'] || '~25MB'
+    return modelSizes[modelName || 'paraphrase-multilingual-MiniLM-L12-v2'] || '~45MB'
   }
 
   /**
@@ -421,12 +397,9 @@ export class TransformersEmbeddings extends Embeddings {
    */
   getEstimatedDownloadSize(): { size: number; formatted: string } {
     const modelSizes: Record<string, number> = {
-      'all-MiniLM-L6-v2': 23_000_000, // 23MB
-      'all-MiniLM-L12-v2': 45_000_000, // 45MB
-      'bge-small-en': 67_000_000, // 67MB
-      'bge-base-en': 109_000_000, // 109MB
-      'qwen3-embedding-0.6b': 150_000_000, // 150MB
-      'qwen3-embedding-4b': 2_100_000_000, // 2.1GB
+      'all-minilm-l6-v2': 23_000_000, // 23MB
+      'paraphrase-multilingual-MiniLM-L12-v2': 45_000_000, // 45MB
+      'multilingual-e5-base': 109_000_000, // 109MB
     }
 
     const modelName = Object.keys(AVAILABLE_MODELS).find((key) => {
@@ -434,7 +407,7 @@ export class TransformersEmbeddings extends Embeddings {
       return model && model.modelId === this.modelConfig.modelId
     })
 
-    const size = modelSizes[modelName || 'all-MiniLM-L6-v2'] || 25_000_000
+    const size = modelSizes[modelName || 'paraphrase-multilingual-MiniLM-L12-v2'] || 45_000_000
 
     return {
       size,

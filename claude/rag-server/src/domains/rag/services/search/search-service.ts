@@ -263,11 +263,11 @@ export class SearchService implements ISearchService {
     const searchType = options.searchType || 'semantic'
     switch (searchType) {
       case 'hybrid':
-        return ['semantic', 'fulltext']
+        return ['semantic', 'keyword']
       case 'semantic':
         return ['semantic']
-      case 'fulltext':
-        return ['fulltext']
+      case 'keyword':
+        return ['keyword']
       default:
         return ['semantic'] // Default to semantic search
     }
@@ -288,7 +288,7 @@ export class SearchService implements ISearchService {
 
     // Initialize search pipelines
     this.searchPipelines.set('semantic', this.createSemanticSearchPipeline())
-    this.searchPipelines.set('fulltext', this.createFullTextSearchPipeline())
+    this.searchPipelines.set('keyword', this.createKeywordSearchPipeline())
 
     // Initialize reranking pipelines
     this.rerankingPipelines.set('basic', this.createBasicRerankingPipeline())
@@ -348,9 +348,9 @@ export class SearchService implements ISearchService {
     }
   }
 
-  private createFullTextSearchPipeline(): SearchPipeline {
+  private createKeywordSearchPipeline(): SearchPipeline {
     return {
-      name: 'fulltext',
+      name: 'keyword',
       execute: async (query: ProcessedQuery, options?: SearchOptions): Promise<SearchResult[]> => {
         // For VectorStore-only architecture, we'll simulate fulltext search
         // by using keyword matching in the semantic search results

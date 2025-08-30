@@ -434,9 +434,9 @@ export class ConfigFactory {
       case 'ollama':
         return 'nomic-embed-text'
       case 'transformers':
-        return 'all-MiniLM-L6-v2'
+        return 'paraphrase-multilingual-MiniLM-L12-v2'
       default:
-        return 'all-MiniLM-L6-v2'
+        return 'paraphrase-multilingual-MiniLM-L12-v2'
     }
   }
 

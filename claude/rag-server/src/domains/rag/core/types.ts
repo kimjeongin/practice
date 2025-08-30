@@ -6,7 +6,7 @@ export interface SearchOptions {
   topK?: number
   fileTypes?: string[]
   metadataFilters?: Record<string, string>
-  searchType?: 'semantic' | 'hybrid' | 'fulltext'
+  searchType?: 'semantic' | 'hybrid' | 'keyword'
   useSemanticSearch?: boolean
   useHybridSearch?: boolean
   semanticWeight?: number
