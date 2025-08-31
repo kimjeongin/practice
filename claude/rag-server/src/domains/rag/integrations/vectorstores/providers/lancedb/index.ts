@@ -13,7 +13,7 @@ import {
 } from '../../core/types.js'
 import { EmbeddingAdapter } from '../../../embeddings/adapter.js'
 import { EmbeddingFactory } from '../../../embeddings/index.js'
-import { ServerConfig } from '@/shared/config/config-factory.js'
+import { ServerConfig, ConfigFactory } from '@/shared/config/config-factory.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { TimeoutWrapper } from '@/shared/utils/resilience.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'

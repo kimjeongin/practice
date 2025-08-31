@@ -1,3 +1,4 @@
+import { logger } from '@/shared/logger/index.js'
 let autoRefreshInterval = null;
 
 async function fetchData(endpoint) {
@@ -5,7 +6,7 @@ async function fetchData(endpoint) {
         const response = await fetch(`/api/${endpoint}`);
         return await response.json();
     } catch (error) {
-        console.error(`Error fetching ${endpoint}:`, error);
+        logger.error('Error fetching ${endpoint}:', error instanceof Error ? error : new Error(String(error)));
         return null;
     }
 }

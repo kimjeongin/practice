@@ -1,3 +1,4 @@
+import { logger } from '@/shared/logger/index.js'
 /**
  * LanceDB Embedding Bridge
  * 기존 EmbeddingAdapter를 LanceDB의 EmbeddingFunction 인터페이스와 연결
@@ -33,7 +34,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
 
   constructor(private embeddingService: IEmbeddingService, sourceColumn: string = 'content') {
     this.sourceColumn = sourceColumn
-    console.log(`🧠 LanceDB Embedding Bridge initialized with cache`, {
+    logger.debug(`🧠 LanceDB Embedding Bridge initialized with cache`, {
       cacheEnabled: this.cacheEnabled,
       maxCacheSize: this.maxCacheSize,
     })
@@ -76,7 +77,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
       const embeddings = await this.embeddingService.embedDocuments(data)
       const embeddingTime = Date.now() - startTime
 
-      console.log(`⚡ Batch embeddings generated in ${embeddingTime}ms`, {
+      logger.debug(`⚡ Batch embeddings generated in ${embeddingTime}ms`, {
         batchSize: data.length,
         avgTimePerDoc: Math.round(embeddingTime / data.length),
         embeddingDimensions: embeddings[0]?.length || 0,
@@ -90,7 +91,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
 
       return embeddings
     } catch (error) {
-      console.error('❌ Failed to generate embeddings in LanceDB bridge:', error)
+      logger.error('❌ Failed to generate embeddings in LanceDB bridge:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
@@ -107,7 +108,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
       // LRU 구현: 재사용된 항목을 끝으로 이동
       this.queryCache.delete(query)
       this.queryCache.set(query, cached)
-      console.log('🎯 Cache hit for query embedding')
+      logger.info('🎯 Cache hit for query embedding')
       return cached
     }
 
@@ -116,7 +117,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
     const embedding = await this.embeddingService.embedQuery(query)
     const embeddingTime = Date.now() - startTime
 
-    console.log(`⚡ Query embedding generated in ${embeddingTime}ms`, {
+    logger.debug(`⚡ Query embedding generated in ${embeddingTime}ms`, {
       queryLength: query.length,
       embeddingDimensions: embedding.length,
       cached: false,
@@ -133,7 +134,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
         }
       }
       this.queryCache.set(query, embedding)
-      console.log(
+      logger.debug(
         `📦 Cached query embedding (cache size: ${this.queryCache.size}/${this.maxCacheSize})`
       )
     }
@@ -165,7 +166,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
       const testEmbedding = await this.embedQuery('test')
       return Array.isArray(testEmbedding) && testEmbedding.length > 0
     } catch (error) {
-      console.warn('⚠️  Embedding bridge health check failed:', error)
+      logger.warn('⚠️  Embedding bridge health check failed:', error instanceof Error ? error : new Error(String(error)))
       return false
     }
   }
@@ -187,7 +188,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
    */
   clearCache() {
     this.queryCache.clear()
-    console.log('🧹 Embedding cache cleared')
+    logger.info('🧹 Embedding cache cleared')
   }
 }
 

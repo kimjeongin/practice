@@ -1,4 +1,5 @@
 import { IEmbeddingService } from '@/domains/rag/core/types.js'
+import { logger } from '@/shared/logger/index.js'
 
 interface IModelManagementService {
   getAvailableModels(): Promise<Record<string, any>>
@@ -19,7 +20,7 @@ export class ModelManagementService implements IModelManagementService {
       }
       return {}
     } catch (error) {
-      console.error('Error getting available models:', error)
+      logger.error('Error getting available models:', error instanceof Error ? error : new Error(String(error)))
       return {}
     }
   }
@@ -28,7 +29,7 @@ export class ModelManagementService implements IModelManagementService {
     try {
       return this.embeddingService.getModelInfo()
     } catch (error) {
-      console.error('Error getting current model info:', error)
+      logger.error('Error getting current model info:', error instanceof Error ? error : new Error(String(error)))
       return { error: 'Could not get model info' }
     }
   }
@@ -37,12 +38,12 @@ export class ModelManagementService implements IModelManagementService {
     try {
       if ('switchModel' in this.embeddingService) {
         await (this.embeddingService as any).switchModel(modelName)
-        console.log(`✅ Successfully switched to model: ${modelName}`)
+        logger.info(`✅ Successfully switched to model: ${modelName}`)
       } else {
         throw new Error('Model switching not supported for current embedding service')
       }
     } catch (error) {
-      console.error('Error switching model:', error)
+      logger.error('Error switching model:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
@@ -62,7 +63,7 @@ export class ModelManagementService implements IModelManagementService {
         throw new Error('Model downloading not supported for current embedding service')
       }
     } catch (error) {
-      console.error('Error downloading model:', error)
+      logger.error('Error downloading model:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
@@ -74,7 +75,7 @@ export class ModelManagementService implements IModelManagementService {
       }
       return { message: 'Cache info not available for current embedding service' }
     } catch (error) {
-      console.error('Error getting cache info:', error)
+      logger.error('Error getting cache info:', error instanceof Error ? error : new Error(String(error)))
       return { error: 'Could not get cache info' }
     }
   }
@@ -86,7 +87,7 @@ export class ModelManagementService implements IModelManagementService {
       }
       return {}
     } catch (error) {
-      console.error('Error getting download progress:', error)
+      logger.error('Error getting download progress:', error instanceof Error ? error : new Error(String(error)))
       return {}
     }
   }

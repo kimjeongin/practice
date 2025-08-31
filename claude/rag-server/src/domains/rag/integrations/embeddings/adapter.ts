@@ -2,6 +2,7 @@ import { IEmbeddingService, ModelInfo } from '@/domains/rag/core/types.js'
 import { Embeddings } from '@langchain/core/embeddings'
 import { TransformersEmbeddings } from './providers/transformers.js'
 import { OllamaEmbeddings } from './providers/ollama.js'
+import { logger } from '@/shared/logger/index.js'
 
 export class EmbeddingAdapter implements IEmbeddingService {
   constructor(private langchainEmbeddings: Embeddings, private actualService: string) {}
@@ -36,7 +37,7 @@ export class EmbeddingAdapter implements IEmbeddingService {
         model: 'Unknown Model',
       }
     } catch (error) {
-      console.warn('Could not get embedding model info:', error)
+      logger.warn('Could not get embedding model info:', error instanceof Error ? error : new Error(String(error)))
       return {
         name: 'Unknown Model',
         service: this.actualService,
@@ -83,7 +84,7 @@ export class EmbeddingAdapter implements IEmbeddingService {
       try {
         return await (this.langchainEmbeddings as any).getAvailableModels()
       } catch (error) {
-        console.warn('Could not get available models from service:', error)
+        logger.warn('Could not get available models from service:', error instanceof Error ? error : new Error(String(error)))
       }
     }
 
@@ -95,7 +96,7 @@ export class EmbeddingAdapter implements IEmbeddingService {
         return OllamaEmbeddings.getAvailableModels()
       }
     } catch (error) {
-      console.warn('Could not get available models from provider:', error)
+      logger.warn('Could not get available models from provider:', error instanceof Error ? error : new Error(String(error)))
     }
 
     // Ultimate fallback

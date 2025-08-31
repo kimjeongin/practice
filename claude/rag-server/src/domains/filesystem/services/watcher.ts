@@ -70,7 +70,7 @@ export class FileWatcher extends EventEmitter {
           try {
             const stats = lstatSync(path)
             if (stats.isSymbolicLink()) {
-              console.warn(`Skipping symbolic link: ${path}`)
+              logger.warn(`Skipping symbolic link: ${path}`)
               return true
             }
           } catch (err) {
@@ -104,14 +104,14 @@ export class FileWatcher extends EventEmitter {
       )
       .on('error', (error: any) => this.emit('error', error))
 
-    console.log(`FileWatcher started, watching: ${this.documentsDir}`)
+    logger.info(`FileWatcher started, watching: ${this.documentsDir}`)
   }
 
   stop(): void {
     if (this.watcher) {
       this.watcher.close()
       this.watcher = null
-      console.log('FileWatcher stopped')
+      logger.info('FileWatcher stopped')
     }
 
     // Abort any ongoing directory scan
@@ -134,7 +134,7 @@ export class FileWatcher extends EventEmitter {
   private debounceFileEvent(path: string, eventType: 'add' | 'change'): void {
     // Check if processing queue is full to prevent memory issues
     if (this.processingFiles.size >= this.MAX_PROCESSING_QUEUE) {
-      console.warn(`Processing queue full (${this.MAX_PROCESSING_QUEUE}), skipping file: ${path}`)
+      logger.warn(`Processing queue full (${this.MAX_PROCESSING_QUEUE}), skipping file: ${path}`)
       return
     }
 
@@ -155,7 +155,7 @@ export class FileWatcher extends EventEmitter {
           await this.handleFileChanged(path)
         }
       } catch (error) {
-        console.error(`Error processing file ${path}:`, error)
+        logger.error('Error processing file ${path}:', error instanceof Error ? error : new Error(String(error)))
         this.emit('error', error)
       }
     }, this.DEBOUNCE_DELAY)
@@ -172,7 +172,7 @@ export class FileWatcher extends EventEmitter {
       const metadata = await this.getFileMetadata(path)
       this.emit('change', { type: 'added', path, metadata })
     } catch (error) {
-      console.error(`Error handling file added: ${path}`, error)
+      logger.error('Error handling file added: ${path}', error instanceof Error ? error : new Error(String(error)))
       this.emit('error', error)
     }
   }
@@ -186,7 +186,7 @@ export class FileWatcher extends EventEmitter {
       const metadata = await this.getFileMetadata(path)
       this.emit('change', { type: 'changed', path, metadata })
     } catch (error) {
-      console.error(`Error handling file changed: ${path}`, error)
+      logger.error('Error handling file changed: ${path}', error instanceof Error ? error : new Error(String(error)))
       this.emit('error', error)
     }
   }
@@ -195,7 +195,7 @@ export class FileWatcher extends EventEmitter {
     try {
       this.emit('change', { type: 'deleted', path })
     } catch (error) {
-      console.error(`Error handling file removed: ${path}`, error)
+      logger.error('Error handling file removed: ${path}', error instanceof Error ? error : new Error(String(error)))
       this.emit('error', error)
     }
   }

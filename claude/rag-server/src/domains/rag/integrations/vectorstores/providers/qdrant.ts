@@ -1,3 +1,4 @@
+import { logger } from '@/shared/logger/index.js'
 /**
  * Qdrant Vector Store Provider - Complete Implementation
  */
@@ -27,7 +28,7 @@ export class QdrantProvider implements VectorStoreProvider {
   constructor(private config: QdrantConfig = {}) {}
 
   async addDocuments(documents: VectorDocument[]): Promise<void> {
-    console.log(`Adding ${documents.length} documents to Qdrant`)
+    logger.info(`Adding ${documents.length} documents to Qdrant`)
 
     for (const doc of documents) {
       this.documents.set(doc.id, doc)
@@ -43,7 +44,7 @@ export class QdrantProvider implements VectorStoreProvider {
   }
 
   async search(query: string, options?: VectorSearchOptions): Promise<VectorSearchResult[]> {
-    console.log(`Searching Qdrant with query: ${query}`)
+    logger.info(`Searching Qdrant with query: ${query}`)
 
     const results: VectorSearchResult[] = []
     const topK = options?.topK || 10
@@ -70,7 +71,7 @@ export class QdrantProvider implements VectorStoreProvider {
   }
 
   async deleteDocuments(ids: string[]): Promise<void> {
-    console.log(`Deleting ${ids.length} documents from Qdrant`)
+    logger.info(`Deleting ${ids.length} documents from Qdrant`)
 
     for (const id of ids) {
       const doc = this.documents.get(id)
@@ -89,7 +90,7 @@ export class QdrantProvider implements VectorStoreProvider {
   }
 
   async removeDocumentsByFileId(fileId: string): Promise<void> {
-    console.log(`Removing documents for file: ${fileId}`)
+    logger.info(`Removing documents for file: ${fileId}`)
 
     const docIds = this.fileIdMap.get(fileId)
     if (docIds) {
@@ -98,7 +99,7 @@ export class QdrantProvider implements VectorStoreProvider {
   }
 
   async removeAllDocuments(): Promise<void> {
-    console.log('Removing all documents from Qdrant')
+    logger.info('Removing all documents from Qdrant')
     this.documents.clear()
     this.fileIdMap.clear()
   }
@@ -134,7 +135,7 @@ export class QdrantProvider implements VectorStoreProvider {
   }
 
   async initialize(): Promise<void> {
-    console.log('Initializing Qdrant collection')
+    logger.info('Initializing Qdrant collection')
   }
 
   private passesFilters(doc: VectorDocument, options?: VectorSearchOptions): boolean {

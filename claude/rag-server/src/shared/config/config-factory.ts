@@ -1,3 +1,4 @@
+import { logger } from '@/shared/logger/index.js'
 /**
  * Configuration Factory Pattern
  * Manages environment-specific configurations following 2025 best practices
@@ -461,7 +462,7 @@ export class ConfigFactory {
         const transformersModule = require('../../domains/rag/integrations/embeddings/providers/transformers')
         return transformersModule.TransformersEmbeddings.getModelDimensions(modelName)
       } catch (error) {
-        // console.warn(`Could not get model dimensions for ${modelName}, using fallback`)
+        // logger.warn(`Could not get model dimensions for ${modelName}, using fallback`)
         return parseInt(ConfigFactory.getDefaultEmbeddingDimensions(service), 10)
       }
     } else if (service === 'ollama') {
@@ -470,7 +471,7 @@ export class ConfigFactory {
         const ollamaModule = require('../../domains/rag/integrations/embeddings/providers/ollama')
         return ollamaModule.OllamaEmbeddings.getModelDimensions(modelName)
       } catch (error) {
-        // console.warn(`Could not get model dimensions for ${modelName}, using fallback`)
+        // logger.warn(`Could not get model dimensions for ${modelName}, using fallback`)
         return parseInt(ConfigFactory.getDefaultEmbeddingDimensions(service), 10)
       }
     }
@@ -487,7 +488,7 @@ export class ConfigFactory {
         const transformersModule = require('../../domains/rag/integrations/embeddings/providers/transformers')
         return transformersModule.TransformersEmbeddings.getModelBatchSize(modelName)
       } catch (error) {
-        // console.warn(`Could not get model batch size for ${modelName}, using fallback`)
+        // logger.warn(`Could not get model batch size for ${modelName}, using fallback`)
         return 10 // fallback
       }
     } else if (service === 'ollama') {
@@ -496,7 +497,7 @@ export class ConfigFactory {
         const ollamaModule = require('../../domains/rag/integrations/embeddings/providers/ollama')
         return ollamaModule.OllamaEmbeddings.getModelBatchSize(modelName)
       } catch (error) {
-        // console.warn(`Could not get model batch size for ${modelName}, using fallback`)
+        // logger.warn(`Could not get model batch size for ${modelName}, using fallback`)
         return 8 // fallback
       }
     }

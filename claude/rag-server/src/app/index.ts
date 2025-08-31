@@ -340,7 +340,7 @@ export { main }
 // Run if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
-    console.error('Fatal error:', error)
+    logger.error('Fatal error:', error instanceof Error ? error : new Error(String(error)))
     process.exit(1)
   })
 }

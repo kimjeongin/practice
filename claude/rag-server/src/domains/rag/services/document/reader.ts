@@ -5,6 +5,7 @@ import { extractText, getDocumentProxy } from 'unpdf'
 import mammoth from 'mammoth'
 import csv from 'csv-parser'
 import { Readable } from 'stream'
+import { logger } from '@/shared/logger/index.js'
 
 /**
  * LangChain 기반 향상된 파일 리더 서비스
@@ -34,7 +35,7 @@ export class FileReader {
           return this.readPlainText(filePath)
       }
     } catch (error) {
-      console.error(`❌ Error reading file ${filePath}:`, error)
+      logger.error('❌ Error reading file ${filePath}:', error instanceof Error ? error : new Error(String(error)))
       return null
     }
   }
@@ -78,7 +79,7 @@ export class FileReader {
         },
       })
     } catch (error) {
-      console.error(`❌ Error parsing PDF ${filePath} with unpdf:`, error)
+      logger.error('❌ Error parsing PDF ${filePath} with unpdf:', error instanceof Error ? error : new Error(String(error)))
       return null
     }
   }
@@ -97,7 +98,7 @@ export class FileReader {
         },
       })
     } catch (error) {
-      console.error(`❌ Error parsing DOCX ${filePath}:`, error)
+      logger.error('❌ Error parsing DOCX ${filePath}:', error instanceof Error ? error : new Error(String(error)))
       return null
     }
   }
@@ -129,7 +130,7 @@ export class FileReader {
           .on('error', reject)
       })
     } catch (error) {
-      console.error(`❌ Error parsing CSV ${filePath}:`, error)
+      logger.error('❌ Error parsing CSV ${filePath}:', error instanceof Error ? error : new Error(String(error)))
       return null
     }
   }

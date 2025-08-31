@@ -2,6 +2,7 @@ import { pipeline, env } from '@huggingface/transformers'
 import type { FeatureExtractionPipeline } from '@huggingface/transformers'
 import { Embeddings } from '@langchain/core/embeddings'
 import { BaseServerConfig } from '@/shared/config/config-factory.js'
+import { logger } from '@/shared/logger/index.js'
 
 export interface EmbeddingModelConfig {
   modelId: string
@@ -71,11 +72,13 @@ export class TransformersEmbeddings extends Embeddings {
     }
     this.modelConfig = AVAILABLE_MODELS[modelName] ?? defaultModel
 
-    console.log(`🤖 Initialized TransformersEmbeddings with model: ${this.modelConfig.modelId}`)
-    console.log(
-      `📐 Dimensions: ${this.modelConfig.dimensions}, Max tokens: ${this.modelConfig.maxTokens}`
-    )
-    console.log(`⚡ Lazy loading: ${this.isLazyLoading ? 'enabled' : 'disabled'}`)
+    logger.info('🤖 TransformersEmbeddings initialized', {
+      model: this.modelConfig.modelId,
+      dimensions: this.modelConfig.dimensions,
+      maxTokens: this.modelConfig.maxTokens,
+      lazyLoading: this.isLazyLoading,
+      component: 'TransformersEmbeddings'
+    })
   }
 
   /**
@@ -96,10 +99,10 @@ export class TransformersEmbeddings extends Embeddings {
   private async _doInitialize(): Promise<void> {
     try {
       if (this.isLazyLoading && !(await this.isModelCached())) {
-        console.log(`⚡ Lazy loading enabled - model will download when first used`)
-        console.log(`📦 Model: ${this.modelConfig.modelId}`)
-        console.log(`📊 Estimated size: ${this.getEstimatedDownloadSize().formatted}`)
-        console.log(`💡 Use 'download_model' MCP tool to pre-download`)
+        logger.info('⚡ Lazy loading enabled - model will download when first used')
+        logger.info(`📦 Model: ${this.modelConfig.modelId}`)
+        logger.info(`📊 Estimated size: ${this.getEstimatedDownloadSize().formatted}`)
+        logger.info('💡 Use download_model MCP tool to pre-download')
 
         // Don't initialize pipeline yet - will be done on first use
         this.isInitialized = true
@@ -108,15 +111,15 @@ export class TransformersEmbeddings extends Embeddings {
 
       await this._downloadAndInitialize()
     } catch (error) {
-      console.error('❌ Failed to initialize TransformersEmbeddings:', error)
+      logger.error('❌ Failed to initialize TransformersEmbeddings:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
 
   private async _downloadAndInitialize(): Promise<void> {
-    console.log(`🔄 Loading embedding model: ${this.modelConfig.modelId}...`)
+    logger.info(`🔄 Loading embedding model: ${this.modelConfig.modelId}...`)
     const downloadInfo = this.getEstimatedDownloadSize()
-    console.log(`📦 Estimated download size: ${downloadInfo.formatted}`)
+    logger.info(`📦 Estimated download size: ${downloadInfo.formatted}`)
 
     const startTime = Date.now()
     let lastProgress = 0
@@ -138,21 +141,21 @@ export class TransformersEmbeddings extends Embeddings {
 
           // Only log every 10% to avoid spam
           if (percent >= lastProgress + 10 || percent === 100) {
-            console.log(`📥 Downloading ${progress.file}: ${percent}% (${currentMB}/${totalMB})`)
+            logger.info(`📥 Downloading ${progress.file}: ${percent}% (${currentMB}/${totalMB})`)
             lastProgress = percent
           }
         } else if (progress.status === 'ready') {
-          console.log(`✅ ${progress.file} ready`)
+          logger.info(`✅ ${progress.file} ready`)
         } else if (progress.status === 'loading') {
-          console.log(`🔄 Loading ${progress.file}...`)
+          logger.info(`🔄 Loading ${progress.file}...`)
         }
       },
     })
 
     const loadTime = Date.now() - startTime
-    console.log(`✅ Model loaded successfully in ${loadTime}ms`)
-    console.log(`💾 Model cached in: ${env.cacheDir}`)
-    console.log(`🚀 Ready for embeddings (${this.modelConfig.description})`)
+    logger.info(`✅ Model loaded successfully in ${loadTime}ms`)
+    logger.info(`💾 Model cached in: ${env.cacheDir}`)
+    logger.info(`🚀 Ready for embeddings (${this.modelConfig.description})`)
 
     this.isInitialized = true
   }
@@ -165,7 +168,7 @@ export class TransformersEmbeddings extends Embeddings {
 
     // Lazy loading: download model if not available
     if (this.isLazyLoading && !this.pipeline) {
-      console.log(`🔄 First embedding request - downloading model now...`)
+      logger.info('🔄 First embedding request - downloading model now...')
       await this._downloadAndInitialize()
     }
 
@@ -187,14 +190,14 @@ export class TransformersEmbeddings extends Embeddings {
       const embedding = Array.from(output.data) as number[]
 
       if (embedding.length !== this.modelConfig.dimensions) {
-        console.warn(
+        logger.warn(
           `⚠️  Expected ${this.modelConfig.dimensions} dimensions, got ${embedding.length}`
         )
       }
 
       return embedding
     } catch (error) {
-      console.error('❌ Error generating query embedding:', error)
+      logger.error('❌ Error generating query embedding:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
@@ -207,7 +210,7 @@ export class TransformersEmbeddings extends Embeddings {
 
     // Lazy loading: download model if not available
     if (this.isLazyLoading && !this.pipeline) {
-      console.log(`🔄 First embedding request - downloading model now...`)
+      logger.info('🔄 First embedding request - downloading model now...')
       await this._downloadAndInitialize()
     }
 
@@ -218,7 +221,7 @@ export class TransformersEmbeddings extends Embeddings {
     if (documents.length === 0) return []
 
     try {
-      console.log(`🔄 Generating embeddings for ${documents.length} documents...`)
+      logger.info(`🔄 Generating embeddings for ${documents.length} documents...`)
       const startTime = Date.now()
 
       // Process in batches for memory efficiency
@@ -246,7 +249,7 @@ export class TransformersEmbeddings extends Embeddings {
         embeddings.push(...batchEmbeddings)
 
         if (batch.length === batchSize) {
-          console.log(
+          logger.debug(
             `   📊 Processed ${Math.min(i + batchSize, documents.length)}/${
               documents.length
             } documents`
@@ -255,11 +258,11 @@ export class TransformersEmbeddings extends Embeddings {
       }
 
       const duration = Date.now() - startTime
-      console.log(`✅ Generated ${embeddings.length} embeddings in ${duration}ms`)
+      logger.info(`✅ Generated ${embeddings.length} embeddings in ${duration}ms`)
 
       return embeddings
     } catch (error) {
-      console.error('❌ Error generating document embeddings:', error)
+      logger.error('❌ Error generating document embeddings:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
@@ -275,7 +278,7 @@ export class TransformersEmbeddings extends Embeddings {
       return text
     }
 
-    console.warn(`⚠️  Truncating text from ${text.length} to ${maxChars} characters`)
+    logger.warn(`⚠️  Truncating text from ${text.length} to ${maxChars} characters`)
     return text.substring(0, maxChars)
   }
 
@@ -290,7 +293,7 @@ export class TransformersEmbeddings extends Embeddings {
       const testEmbedding = await this.embedQuery('test')
       return Array.isArray(testEmbedding) && testEmbedding.length === this.modelConfig.dimensions
     } catch (error) {
-      console.error('❌ Health check failed:', error)
+      logger.error('❌ Health check failed:', error instanceof Error ? error : new Error(String(error)))
       return false
     }
   }
@@ -445,11 +448,11 @@ export class TransformersEmbeddings extends Embeddings {
    */
   async downloadModel(): Promise<void> {
     if (await this.isModelCached()) {
-      console.log('✅ Model already cached, skipping download')
+      logger.info('✅ Model already cached, skipping download')
       return
     }
 
-    console.log('🔄 Starting model download...')
+    logger.info('🔄 Starting model download...')
     await this._downloadAndInitialize()
   }
 
@@ -468,7 +471,7 @@ export class TransformersEmbeddings extends Embeddings {
       throw new Error(`Model configuration not found for: ${modelName}`)
     }
 
-    console.log(`🔄 Switching from ${this.modelConfig.modelId} to ${newModelConfig.modelId}...`)
+    logger.info(`🔄 Switching from ${this.modelConfig.modelId} to ${newModelConfig.modelId}...`)
 
     // Update model configuration
     this.modelConfig = newModelConfig
@@ -484,7 +487,7 @@ export class TransformersEmbeddings extends Embeddings {
       await this.initialize()
     }
 
-    console.log(`✅ Model switched to ${this.modelConfig.modelId}`)
+    logger.info(`✅ Model switched to ${this.modelConfig.modelId}`)
   }
 
   /**
@@ -532,7 +535,7 @@ export class TransformersEmbeddings extends Embeddings {
         const { stdout } = await execAsync(`du -sh "${cacheDir}"`)
         cacheSize = stdout.split('\t')[0]
       } catch (error) {
-        console.warn('Could not get cache size:', error)
+        logger.warn('Could not get cache size:', error instanceof Error ? error : new Error(String(error)))
       }
 
       // Count cached models and list them

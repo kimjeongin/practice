@@ -88,9 +88,9 @@ export class Logger {
     this.setupFileLogging(logFile, errorLogFile)
 
     // 로그 파일 위치 안내
-    console.log(`📝 로그 파일 저장 위치:`)
-    console.log(`   - 전체 로그: ${logFile}`)
-    console.log(`   - 에러 로그: ${errorLogFile}`)
+    this.pino.info('📝 로그 파일 저장 위치:')
+    this.pino.info(`   - 전체 로그: ${logFile}`)
+    this.pino.info(`   - 에러 로그: ${errorLogFile}`)
   }
 
   /**
@@ -284,7 +284,7 @@ export class Logger {
     for (const [code, count] of this.errorMetrics.entries()) {
       const lastOccurred = this.lastErrorTime.get(code)
       if (!lastOccurred) {
-        console.warn(`No last occurrence time found for error code: ${code}`)
+        this.pino.warn(`No last occurrence time found for error code: ${code}`)
         continue
       }
       metrics.push({ code, count, lastOccurred })

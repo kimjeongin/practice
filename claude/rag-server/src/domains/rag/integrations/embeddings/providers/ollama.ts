@@ -2,6 +2,7 @@ import { Embeddings } from '@langchain/core/embeddings'
 import fetch from 'node-fetch'
 import { BaseServerConfig } from '@/shared/config/config-factory.js'
 import { ModelInfo } from '@/domains/rag/core/types.js'
+import { logger } from '@/shared/logger/index.js'
 
 export interface OllamaModelConfig {
   modelId: string
@@ -71,12 +72,12 @@ export class OllamaEmbeddings extends Embeddings {
       // 차원 수 캐싱 (첫 번째 임베딩 생성 시)
       if (this.cachedDimensions === null) {
         this.cachedDimensions = data.embedding.length
-        console.log(`📊 Ollama model dimensions detected: ${this.cachedDimensions}`)
+        logger.info(`📊 Ollama model dimensions detected: ${this.cachedDimensions}`)
       }
 
       return data.embedding
     } catch (error) {
-      console.error('Error generating Ollama embedding for query:', error)
+      logger.error('Error generating Ollama embedding for query:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
@@ -90,7 +91,7 @@ export class OllamaEmbeddings extends Embeddings {
     }
 
     try {
-      console.log(`Generating embeddings for ${documents.length} documents...`)
+      logger.info(`Generating embeddings for ${documents.length} documents...`)
       const embeddings: number[][] = []
 
       // Ollama는 배치 임베딩을 지원하지 않으므로 순차 처리
@@ -107,22 +108,22 @@ export class OllamaEmbeddings extends Embeddings {
 
           // 진행상황 로깅
           if (i % (concurrency * 5) === 0) {
-            console.log(
+            logger.debug(
               `Progress: ${Math.min(i + concurrency, documents.length)}/${
                 documents.length
               } embeddings generated`
             )
           }
         } catch (error) {
-          console.error(`Error in batch ${i}-${i + concurrency}:`, error)
+          logger.error(`Error in batch ${i}-${i + concurrency}:`, error instanceof Error ? error : new Error(String(error)))
           throw error
         }
       }
 
-      console.log(`Successfully generated ${embeddings.length} embeddings`)
+      logger.info(`Successfully generated ${embeddings.length} embeddings`)
       return embeddings
     } catch (error) {
-      console.error('Error generating Ollama embeddings for documents:', error)
+      logger.error('Error generating Ollama embeddings for documents:', error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
@@ -143,7 +144,7 @@ export class OllamaEmbeddings extends Embeddings {
       clearTimeout(timeoutId)
       return response.ok
     } catch (error) {
-      console.warn('Ollama health check failed:', error)
+      logger.warn('Ollama health check failed:', error instanceof Error ? error : new Error(String(error)))
       return false
     }
   }
@@ -166,7 +167,7 @@ export class OllamaEmbeddings extends Embeddings {
         (model) => model.name === this.model || model.name.startsWith(this.model + ':')
       )
     } catch (error) {
-      console.warn('Error checking Ollama model availability:', error)
+      logger.warn('Error checking Ollama model availability:', error instanceof Error ? error : new Error(String(error)))
       return false
     }
   }
@@ -183,7 +184,7 @@ export class OllamaEmbeddings extends Embeddings {
         model: this.model,
       }
     } catch (error) {
-      console.warn('Error getting model info:', error)
+      logger.warn('Error getting model info:', error instanceof Error ? error : new Error(String(error)))
       return {
         name: this.model || 'unknown',
         service: 'ollama',
@@ -208,7 +209,7 @@ export class OllamaEmbeddings extends Embeddings {
       // embedQuery에서 이미 캐싱되므로 길이만 반환
       return testEmbedding.length
     } catch (error) {
-      console.warn('Could not determine embedding dimensions, using default')
+      logger.warn('Could not determine embedding dimensions, using default')
       // 기본값 설정 및 캐싱
       this.cachedDimensions = 768
       return 768
@@ -244,7 +245,7 @@ export class OllamaEmbeddings extends Embeddings {
 
       return modelMap
     } catch (error) {
-      console.warn('Could not fetch available models from Ollama:', error)
+      logger.warn('Could not fetch available models from Ollama:', error instanceof Error ? error : new Error(String(error)))
       // 기본값 반환
       return {
         [this.model]: {
@@ -260,7 +261,7 @@ export class OllamaEmbeddings extends Embeddings {
    */
   async switchModel(modelName: string): Promise<void> {
     if (modelName === this.model) {
-      console.log(`Already using model: ${modelName}`)
+      logger.info(`Already using model: ${modelName}`)
       return
     }
 

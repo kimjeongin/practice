@@ -869,34 +869,34 @@ export class SchemaIntegrationValidator {
    * Print validation report to console
    */
   printReport(report: ValidationReport): void {
-    console.log('\n' + '='.repeat(60))
-    console.log('📊 SCHEMA INTEGRATION VALIDATION REPORT')
-    console.log('='.repeat(60))
+    logger.info('\n' + '='.repeat(60))
+    logger.info('📊 SCHEMA INTEGRATION VALIDATION REPORT')
+    logger.info('='.repeat(60))
 
-    console.log(`\n📈 Overall Results:`)
-    console.log(`  Status: ${report.overall.success ? '✅ PASS' : '❌ FAIL'}`)
-    console.log(`  Total Tests: ${report.overall.totalTests}`)
-    console.log(`  Passed: ${report.overall.passedTests}`)
-    console.log(`  Failed: ${report.overall.failedTests}`)
-    console.log(`  Duration: ${report.overall.duration}ms`)
+    logger.info('\n📈 Overall Results:')
+    logger.info(`  Status: ${report.overall.success ? '✅ PASS' : '❌ FAIL'}`)
+    logger.info(`  Total Tests: ${report.overall.totalTests}`)
+    logger.info(`  Passed: ${report.overall.passedTests}`)
+    logger.info(`  Failed: ${report.overall.failedTests}`)
+    logger.info(`  Duration: ${report.overall.duration}ms`)
 
-    console.log(`\n📋 Test Results:`)
+    logger.info('\n📋 Test Results:')
     for (const test of report.tests) {
       const status = test.success ? '✅' : '❌'
-      console.log(`  ${status} ${test.testName} (${test.duration}ms)`)
+      logger.info(`  ${status} ${test.testName} (${test.duration}ms)`)
       if (test.details) {
-        console.log(`     Details: ${JSON.stringify(test.details)}`)
+        logger.info(`     Details: ${JSON.stringify(test.details)}`)
       }
       if (test.errors.length > 0) {
-        console.log(`     Errors: ${test.errors.join(', ')}`)
+        logger.info(`     Errors: ${test.errors.join(', ')}`, { context: 'schema-validation' })
       }
     }
 
-    console.log(`\n💡 Recommendations:`)
+    logger.info('\n💡 Recommendations:')
     for (const rec of report.recommendations) {
-      console.log(`  • ${rec}`)
+      logger.info(`  • ${rec}`)
     }
 
-    console.log('\n' + '='.repeat(60))
+    logger.info('\n' + '='.repeat(60))
   }
 }

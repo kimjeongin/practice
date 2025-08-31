@@ -1,6 +1,7 @@
 import { Document } from '@langchain/core/documents'
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters'
 import { BaseServerConfig } from '@/shared/config/config-factory.js'
+import { logger } from '@/shared/logger/index.js'
 
 export interface ChunkingOptions {
   chunkSize: number
@@ -112,7 +113,7 @@ export class ChunkingService {
     const splitter = this.getSplitterForFileType(fileType)
 
     try {
-      console.log(`🔄 Chunking ${fileType} document with ${splitter.constructor.name}`)
+      logger.info(`🔄 Chunking ${fileType} document with ${splitter.constructor.name}`)
 
       const chunks = await splitter.splitDocuments([document])
 
@@ -130,7 +131,7 @@ export class ChunkingService {
         })
       })
 
-      console.log(
+      logger.debug(
         `📄 Split into ${enrichedChunks.length} chunks using ${this.getSplitterTypeForFileType(
           fileType
         )} strategy`
@@ -138,7 +139,7 @@ export class ChunkingService {
 
       return enrichedChunks
     } catch (error) {
-      console.error(`❌ Error chunking document:`, error)
+      logger.error('❌ Error chunking document:', error instanceof Error ? error : new Error(String(error)))
       // Fallback to basic chunking
       return this.fallbackChunking(document)
     }
@@ -196,7 +197,7 @@ export class ChunkingService {
   }
 
   private fallbackChunking(document: Document): Document[] {
-    console.log('🔄 Using fallback basic chunking')
+    logger.info('🔄 Using fallback basic chunking')
 
     const chunkSize = this.config.chunkSize
     const overlap = this.config.chunkOverlap

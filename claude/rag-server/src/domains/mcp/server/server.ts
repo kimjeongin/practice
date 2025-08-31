@@ -275,7 +275,7 @@ export class MCPServer {
     // Validate transport configuration
     TransportFactory.validateConfig(this.config.mcp)
 
-    console.log(`🔗 Starting MCP server with ${this.config.mcp.type} transport...`)
+    logger.info(`🔗 Starting MCP server with ${this.config.mcp.type} transport...`)
 
     const { transport, context } = await TransportFactory.createTransport(this.config.mcp)
 
@@ -287,7 +287,7 @@ export class MCPServer {
       await TransportFactory.startHTTPServer(context, this.config.mcp)
     }
 
-    console.log(`🎯 MCP Server started and ready for ${this.config.mcp.type} connections`, {
+    logger.info(`🎯 MCP Server started and ready for ${this.config.mcp.type} connections`, {
       transport: this.config.mcp.type,
       port: this.config.mcp.port,
       host: this.config.mcp.host,
@@ -295,7 +295,7 @@ export class MCPServer {
   }
 
   async shutdown(): Promise<void> {
-    console.log('🔄 Shutting down MCP Server...')
+    logger.info('🔄 Shutting down MCP Server...')
 
     try {
       // Close MCP server connection

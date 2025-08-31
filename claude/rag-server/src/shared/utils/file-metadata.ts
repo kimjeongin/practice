@@ -3,6 +3,7 @@ import { stat } from 'fs/promises'
 import { createHash } from 'crypto'
 import { calculateFileHash } from './crypto.js'
 import { FileMetadata } from '@/domains/rag/core/models.js'
+import { logger } from '@/shared/logger/index.js'
 
 /**
  * Extract comprehensive file metadata with consistent ID and hash generation
@@ -22,7 +23,7 @@ export async function extractFileMetadata(filePath: string): Promise<FileMetadat
     try {
       fileHash = calculateFileHash(filePath).substring(0, 16)
     } catch (error) {
-      console.warn(`Failed to calculate file hash for ${filePath}, using fallback`, error)
+      logger.warn(`Failed to calculate file hash for ${filePath}, using fallback`, { filePath, error: error instanceof Error ? error : new Error(String(error)) })
       // Use path + size + mtime as fallback hash for consistency
       const fallback = `${filePath}_${stats.size}_${stats.mtime.getTime()}`
       fileHash = createHash('sha256').update(fallback).digest('hex').substring(0, 16)

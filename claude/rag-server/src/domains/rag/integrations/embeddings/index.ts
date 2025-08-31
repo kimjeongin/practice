@@ -2,6 +2,7 @@ import { Embeddings } from '@langchain/core/embeddings'
 import { BaseServerConfig } from '@/shared/config/config-factory.js'
 import { OllamaEmbeddings } from './providers/ollama.js'
 import { TransformersEmbeddings } from './providers/transformers.js'
+import { logger } from '@/shared/logger/index.js'
 
 export type EmbeddingServiceType = 'transformers' | 'ollama'
 
@@ -16,7 +17,7 @@ export class EmbeddingFactory {
   static async createEmbeddingService(config: BaseServerConfig): Promise<Embeddings> {
     const service = (config.embeddingService || 'transformers') as EmbeddingServiceType
 
-    console.log(`🏭 Creating embedding service: ${service}`)
+    logger.info(`🏭 Creating embedding service: ${service}`)
 
     switch (service) {
       case 'transformers':
@@ -26,7 +27,7 @@ export class EmbeddingFactory {
         return new OllamaEmbeddings(config)
 
       default:
-        console.warn(`⚠️  Unknown embedding service: ${service}, falling back to transformers`)
+        logger.warn(`⚠️  Unknown embedding service: ${service}, falling back to transformers`)
         return new TransformersEmbeddings(config)
     }
   }
@@ -42,33 +43,33 @@ export class EmbeddingFactory {
     const requestedService = (config.embeddingService || 'transformers') as EmbeddingServiceType
 
     try {
-      console.log(`🔍 Attempting to create ${requestedService} embedding service...`)
+      logger.info(`🔍 Attempting to create ${requestedService} embedding service...`)
       const embeddings = await this.createEmbeddingService(config)
 
       // Test the service
       const isHealthy = await this.testEmbeddingService(embeddings)
 
       if (isHealthy) {
-        console.log(`✅ Successfully created ${requestedService} embedding service`)
+        logger.info(`✅ Successfully created ${requestedService} embedding service`)
         return { embeddings, actualService: requestedService }
       } else {
         throw new Error(`${requestedService} service health check failed`)
       }
     } catch (error) {
-      console.warn(`⚠️  Failed to create ${requestedService} service:`, error)
+      logger.warn(`⚠️  Failed to create ${requestedService} service:`, error instanceof Error ? error : new Error(String(error)))
 
       if (requestedService !== 'transformers') {
-        console.log(`🔄 Falling back to transformers embedding service...`)
+        logger.info('🔄 Falling back to transformers embedding service...')
         try {
           const fallbackEmbeddings = new TransformersEmbeddings(config)
           const isHealthy = await this.testEmbeddingService(fallbackEmbeddings)
 
           if (isHealthy) {
-            console.log(`✅ Successfully created fallback transformers service`)
+            logger.info('✅ Successfully created fallback transformers service')
             return { embeddings: fallbackEmbeddings, actualService: 'transformers' }
           }
         } catch (fallbackError) {
-          console.error(`❌ Fallback to transformers also failed:`, fallbackError)
+          logger.error('❌ Fallback to transformers also failed:', fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)))
         }
       }
 
@@ -81,17 +82,17 @@ export class EmbeddingFactory {
    */
   private static async testEmbeddingService(embeddings: Embeddings): Promise<boolean> {
     try {
-      console.log(`🧪 Testing embedding service...`)
+      logger.info('🧪 Testing embedding service...')
       const testText = 'This is a test sentence for embedding generation.'
       const result = await embeddings.embedQuery(testText)
 
       const isValid =
         Array.isArray(result) && result.length > 0 && result.every((x) => typeof x === 'number')
-      console.log(`📊 Test result: ${isValid ? 'PASS' : 'FAIL'} (${result.length} dimensions)`)
+      logger.info(`📊 Test result: ${isValid ? 'PASS' : 'FAIL'} (${result.length} dimensions)`)
 
       return isValid
     } catch (error) {
-      console.error(`❌ Embedding service test failed:`, error)
+      logger.error('❌ Embedding service test failed:', error instanceof Error ? error : new Error(String(error)))
       return false
     }
   }
