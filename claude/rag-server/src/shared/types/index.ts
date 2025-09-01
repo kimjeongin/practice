@@ -1,6 +1,6 @@
-// Shared types for cross-domain compatibility
-// Re-export common types for backward compatibility
-export type { FileMetadata, CustomMetadata, DocumentChunk } from '@/domains/rag/core/models.js'
+// Shared types for cross-domain compatibility  
+// Re-export common types for backward compatibility (now unified)
+export type { FileMetadata, DocumentMetadata, CustomMetadata, DocumentChunk } from '@/domains/rag/core/models.js'
 export type { 
   SearchResult, 
   SearchOptions, 

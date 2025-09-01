@@ -36,22 +36,14 @@ export interface ConfigProfile {
 }
 
 export interface VectorStoreConfig {
-  provider: 'lancedb' | 'qdrant'
+  provider: 'lancedb'
   config: {
-    // LanceDB specific
     uri?: string
     tableName?: string
     mode?: 'create' | 'overwrite' | 'append'
     enableFullTextSearch?: boolean
     indexColumns?: string[]
     storageOptions?: Record<string, any>
-
-    // Qdrant specific
-    url?: string
-    apiKey?: string
-    collectionName?: string
-    vectorSize?: number
-    distance?: string
   }
 }
 
@@ -170,17 +162,9 @@ export class ConfigFactory {
       nodeEnv: 'production',
       logLevel: 'info',
       vectorStore: {
-        provider: (process.env['VECTOR_STORE_PROVIDER'] as any) || 'lancedb',
+        provider: 'lancedb',
         config: {
-          // LanceDB config
           uri: process.env['LANCEDB_URI'] || `${baseConfig.dataDir}/lancedb`,
-
-          // Qdrant config (fallback)
-          url: process.env['QDRANT_URL'] || 'http://localhost:6333',
-          apiKey: process.env['QDRANT_API_KEY'],
-          collectionName: process.env['QDRANT_COLLECTION'] || 'documents',
-          vectorSize: parseInt(process.env['EMBEDDING_DIMENSIONS'] || '384'),
-          distance: 'cosine',
         },
       },
       pipeline: {
@@ -343,12 +327,9 @@ export class ConfigFactory {
       errors.push('Semantic weight must be between 0 and 1')
     }
 
-    if (config.vectorStore.provider === 'qdrant' && !config.vectorStore.config.url) {
-      errors.push('Qdrant URL is required when using Qdrant provider')
-    }
-
-    if (config.vectorStore.provider === 'lancedb' && !config.vectorStore.config.uri) {
-      errors.push('LanceDB URI is required when using LanceDB provider')
+    // LanceDB validation
+    if (!config.vectorStore.config.uri) {
+      errors.push('LanceDB URI is required')
     }
 
     if (errors.length > 0) {

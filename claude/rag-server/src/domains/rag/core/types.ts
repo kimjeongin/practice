@@ -23,25 +23,8 @@ export interface SearchResult {
   chunkIndex: number
 }
 
-export interface VectorDocument {
-  id: string
-  content: string
-  metadata: {
-    fileId: string
-    fileName: string
-    filePath: string
-    chunkIndex: number
-    fileType: string
-    createdAt: string
-    [key: string]: any
-  }
-}
-
-export interface VectorSearchResult {
-  content: string
-  score: number
-  metadata: Record<string, any>
-}
+// New unified VectorDocument and VectorSearchResult (re-export from vectorstore core)
+export type { VectorDocument, VectorSearchResult } from '../integrations/vectorstores/core/types.js'
 
 export interface ModelInfo {
   name: string
@@ -70,6 +53,9 @@ export interface IEmbeddingService {
   embedDocuments(texts: string[]): Promise<number[][]>
   getModelInfo(): ModelInfo
 }
+
+// Import the types first
+import type { VectorDocument, VectorSearchResult } from '../integrations/vectorstores/core/types.js'
 
 export interface IVectorStoreService {
   addDocuments(documents: VectorDocument[]): Promise<void>

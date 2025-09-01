@@ -255,7 +255,7 @@ export class FileWatcher extends EventEmitter {
         let processedCount = 0
         for (const filePath of currentFilePaths) {
           try {
-            await this.documentProcessor.processFile(filePath, false)
+            await this.documentProcessor.processFile(filePath)
             processedCount++
           } catch (error) {
             logger.error(
@@ -316,7 +316,7 @@ export class FileWatcher extends EventEmitter {
               filePath: fileMetadata.path,
             })
 
-            await this.documentProcessor.processFile(filePath, false)
+            await this.documentProcessor.processFile(filePath)
 
             if (isNew) {
               newFiles++
@@ -449,7 +449,7 @@ export class FileWatcher extends EventEmitter {
         fileName: currentMetadata.name,
         current: {
           size: currentMetadata.size,
-          modTime: currentMetadata.modifiedAt.toISOString(),
+          modTime: currentMetadata.modifiedAt,
           hash: currentMetadata.hash,
         },
         existing: {
@@ -489,7 +489,7 @@ export class FileWatcher extends EventEmitter {
       // Tertiary check: Compare modification time
       const existingModTime = existingMetadata.fileModifiedAt || existingMetadata.modifiedAt
       if (existingModTime) {
-        const currentModTime = currentMetadata.modifiedAt.getTime()
+        const currentModTime = new Date(currentMetadata.modifiedAt).getTime()
         const storedModTime = new Date(existingModTime).getTime()
 
         if (currentModTime > storedModTime) {
@@ -497,7 +497,7 @@ export class FileWatcher extends EventEmitter {
             fileId: currentMetadata.id,
             fileName: currentMetadata.name,
             storedModTime: new Date(storedModTime).toISOString(),
-            currentModTime: currentMetadata.modifiedAt.toISOString(),
+            currentModTime: currentMetadata.modifiedAt,
           })
           return true
         }
@@ -507,7 +507,7 @@ export class FileWatcher extends EventEmitter {
         fileId: currentMetadata.id,
         fileName: currentMetadata.name,
         size: currentMetadata.size,
-        modTime: currentMetadata.modifiedAt.toISOString(),
+        modTime: currentMetadata.modifiedAt,
         hash: currentMetadata.hash.substring(0, 8) + '...',
       })
 

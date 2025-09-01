@@ -35,8 +35,8 @@ export async function extractFileMetadata(filePath: string): Promise<FileMetadat
       path: filePath,
       size: stats.size,
       fileType: guessFileType(fileExtension),
-      createdAt: stats.birthtime,
-      modifiedAt: stats.mtime,
+      createdAt: stats.birthtime.toISOString(),
+      modifiedAt: stats.mtime.toISOString(),
       hash: fileHash,
     }
   } catch (error) {

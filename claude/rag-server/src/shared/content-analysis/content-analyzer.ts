@@ -11,7 +11,7 @@
  */
 
 import { logger } from '@/shared/logger/index.js'
-import { UnifiedDocumentMetadata } from '../schemas/metadata-schema.js'
+import { DocumentMetadata } from '@/domains/rag/integrations/vectorstores/providers/lancedb/simple-schema.js'
 
 /**
  * Content analysis configuration
@@ -223,7 +223,7 @@ export class ContentAnalyzer {
    */
   async analyzeContent(
     content: string,
-    existingMetadata: Partial<UnifiedDocumentMetadata> = {}
+    existingMetadata: Partial<DocumentMetadata> = {}
   ): Promise<ContentAnalysisResult> {
     const startTime = Date.now()
 
@@ -466,7 +466,7 @@ export class ContentAnalyzer {
    */
   private generateContextHeaders(
     content: string,
-    metadata: Partial<UnifiedDocumentMetadata>,
+    metadata: Partial<DocumentMetadata>,
     limit: number
   ): string[] {
     const headers: string[] = []
@@ -506,7 +506,7 @@ export class ContentAnalyzer {
   private generateSearchableText(
     content: string,
     analysis: ContentAnalysisResult,
-    metadata: Partial<UnifiedDocumentMetadata>
+    metadata: Partial<DocumentMetadata>
   ): string {
     const parts: string[] = [content]
 
@@ -518,7 +518,7 @@ export class ContentAnalyzer {
 
     // Add file path components
     if (metadata.file?.path) {
-      const pathParts = metadata.file.path.split('/').filter((part) => part.length > 0)
+      const pathParts = metadata.file.path.split('/').filter((part: string) => part.length > 0)
       parts.push(...pathParts)
     }
 

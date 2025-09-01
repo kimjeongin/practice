@@ -266,4 +266,10 @@ export class FileReader {
       .replace(/&#39;/g, "'")
       .trim()
   }
+
+  // DocumentProcessor에서 호출하는 간단한 readFile 메서드
+  async readFile(filePath: string): Promise<string> {
+    const document = await this.readFileContent(filePath)
+    return document ? document.pageContent : ''
+  }
 }

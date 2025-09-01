@@ -4,7 +4,7 @@
  */
 
 import type * as lancedb from '@lancedb/lancedb'
-import type { LanceDBDocumentRecord, LanceDBSearchResult } from './types.js'
+import type { RAGDocumentRecord } from './types.js'
 import { logger } from '@/shared/logger/index.js'
 
 /**
@@ -211,17 +211,17 @@ export async function getTableStats(table: any): Promise<{
 }
 
 /**
- * 중복 문서 제거
+ * 중복 문서 제거 (간소화 버전)
  * @param records LanceDB 레코드 배열
  * @returns 중복 제거된 레코드 배열
  */
-export function deduplicateRecords(records: LanceDBDocumentRecord[]): LanceDBDocumentRecord[] {
+export function deduplicateRecords(records: RAGDocumentRecord[]): RAGDocumentRecord[] {
   const seen = new Set<string>()
-  const deduplicated: LanceDBDocumentRecord[] = []
+  const deduplicated: RAGDocumentRecord[] = []
 
   for (const record of records) {
-    // fileId + chunkIndex 조합으로 중복 체크
-    const key = `${record.fileId}_${record.chunkIndex}`
+    // doc_id + chunk_id 조합으로 중복 체크
+    const key = `${record.doc_id}_${record.chunk_id}`
     
     if (!seen.has(key)) {
       seen.add(key)
@@ -244,7 +244,7 @@ export function deduplicateRecords(records: LanceDBDocumentRecord[]): LanceDBDoc
  * @param results 검색 결과 배열
  * @returns 정규화된 검색 결과
  */
-export function normalizeSearchScores(results: LanceDBSearchResult[]): LanceDBSearchResult[] {
+export function normalizeSearchScores(results: any[]): any[] {
   if (results.length === 0) return results
 
   const scores = results.map(r => r.score)

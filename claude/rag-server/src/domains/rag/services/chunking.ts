@@ -238,6 +238,29 @@ export class ChunkingService {
     return chunks
   }
 
+  // 간단한 텍스트 청킹 메서드 (DocumentProcessor에서 사용)
+  async chunkText(text: string, options: { maxChunkSize: number; overlap: number }): Promise<{text: string}[]> {
+    try {
+      const document = new Document({
+        pageContent: text,
+        metadata: {}
+      })
+
+      const splitter = new RecursiveCharacterTextSplitter({
+        chunkSize: options.maxChunkSize,
+        chunkOverlap: options.overlap,
+        separators: ['\n\n', '\n', '. ', '? ', '! ', '; ', ', ', ' ', '']
+      })
+
+      const chunks = await splitter.splitDocuments([document])
+      
+      return chunks.map(chunk => ({ text: chunk.pageContent }))
+    } catch (error) {
+      logger.error('Error in chunkText:', error instanceof Error ? error : new Error(String(error)))
+      throw error
+    }
+  }
+
   // 청킹 전략 정보 가져오기
   getChunkingStrategy(fileType: string): {
     splitterType: string

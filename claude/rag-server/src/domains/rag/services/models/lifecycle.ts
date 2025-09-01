@@ -66,7 +66,7 @@ export class ModelCompatibilityService {
         return null
       }
 
-      // For LanceDB/Qdrant, we'll store metadata in a special document
+      // For LanceDB, we'll store metadata in a special document
       // This is a simple approach - in production, you might use a dedicated metadata table
       const metadataResults = await this.vectorStore.search(this.METADATA_KEY, {
         topK: 1,
@@ -106,11 +106,15 @@ export class ModelCompatibilityService {
     try {
       const now = new Date().toISOString()
       
-      // Create metadata document compatible with LanceDB schema
+      // Create metadata document compatible with new 5-field LanceDB schema
       const metadataDocument = {
+        // New 5-field structure
         id: `metadata_${metadata.configHash}`,
         content: this.METADATA_KEY, // Searchable content
-        metadata: {
+        vector: [], // Will be filled by VectorStore
+        doc_id: `system_metadata_${metadata.configHash}`,
+        chunk_id: 0,
+        metadata: JSON.stringify({
           // System metadata fields
           type: 'embedding_metadata',
           id: metadata.id,
@@ -125,20 +129,17 @@ export class ModelCompatibilityService {
           createdAt: metadata.createdAt.toISOString(),
           lastUsedAt: metadata.lastUsedAt.toISOString(),
           
-          // LanceDB required fields - use system dummy values
-          fileId: `system_metadata_${metadata.configHash}`,
+          // File metadata fields (system dummy values)
           fileName: 'embedding_metadata.json',
           filePath: '/system/embedding_metadata.json',
           fileType: 'system_metadata',
           fileSize: JSON.stringify(metadata).length,
           fileHash: metadata.configHash,
-          fileModifiedAt: metadata.lastUsedAt.toISOString(),
-          fileCreatedAt: metadata.createdAt.toISOString(),
-          chunkIndex: 0,
           processedAt: now,
-          updatedAt: now,
           sourceType: 'system'
-        }
+        }),
+        // Backward compatibility field
+        text: this.METADATA_KEY
       }
 
       await this.vectorStore.addDocuments([metadataDocument])

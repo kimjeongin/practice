@@ -115,7 +115,7 @@ async function initializeServices(config: any) {
   // Initialize services with config passed directly
 
   // Initialize vector store and search service
-  const { VectorStoreFactory } = await import('@/shared/config/vector-store-factory.js')
+  const { VectorStoreFactory } = await import('@/domains/rag/integrations/vectorstores/index.js')
 
   // IMPORTANT: Create only ONE provider instance and reuse it everywhere
   const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config)

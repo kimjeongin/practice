@@ -183,13 +183,13 @@ export class SearchService implements ISearchService {
 
         if (existing) {
           // Combine scores with weights
-          existing.score = Math.max(existing.score, result.score * weight)
-          existing.hybridScore = (existing.hybridScore || 0) + result.score * weight
+          existing.score = Math.max(existing.score, (result.score || 0) * weight)
+          existing.hybridScore = (existing.hybridScore || 0) + (result.score || 0) * weight
         } else {
           fusedMap.set(key, {
             ...result,
-            score: result.score * weight,
-            hybridScore: result.score * weight,
+            score: (result.score || 0) * weight,
+            hybridScore: (result.score || 0) * weight,
           })
         }
       })
@@ -338,10 +338,10 @@ export class SearchService implements ISearchService {
         return vectorResults.map(
           (result): SearchResult => ({
             content: result.content,
-            score: result.score,
-            semanticScore: result.score,
+            score: result.score || 0,
+            semanticScore: result.score || 0,
             metadata: result.metadata,
-            chunkIndex: result.metadata?.chunkIndex || 0,
+            chunkIndex: result.metadata?.chunkIndex || result.chunk_id || 0,
           })
         )
       },
@@ -380,7 +380,7 @@ export class SearchService implements ISearchService {
             })
 
             // Boost score based on keyword matches
-            const finalScore = matchCount > 0 ? Math.min(keywordScore, 1.0) : result.score * 0.3
+            const finalScore = matchCount > 0 ? Math.min(keywordScore, 1.0) : (result.score || 0) * 0.3
 
             return {
               content: result.content,
@@ -413,7 +413,7 @@ export class SearchService implements ISearchService {
         return results
           .map((result) => {
             const content = result.content.toLowerCase()
-            let rerankScore = result.score
+            let rerankScore = result.score || 0
 
             // Boost shorter, more relevant content
             if (content.length < 500) {
