@@ -228,26 +228,9 @@ export class SearchService implements ISearchService {
   ): Promise<SearchResult[]> {
     let processedResults = [...results]
 
-    // Apply score threshold
+    // Apply score threshold only
     if (options.scoreThreshold !== undefined) {
       processedResults = processedResults.filter((r) => r.score >= options.scoreThreshold!)
-    }
-
-    // Apply file type filters
-    if (options.fileTypes && options.fileTypes.length > 0) {
-      processedResults = processedResults.filter((r) => {
-        const fileType = r.metadata.fileType || 'unknown'
-        return options.fileTypes!.includes(fileType)
-      })
-    }
-
-    // Apply metadata filters
-    if (options.metadataFilters) {
-      processedResults = processedResults.filter((r) => {
-        return Object.entries(options.metadataFilters!).every(([key, value]) => {
-          return r.metadata[key] === value
-        })
-      })
     }
 
     // Limit results
@@ -329,8 +312,6 @@ export class SearchService implements ISearchService {
         const vectorSearchOptions = {
           topK: options?.topK || 10,
           scoreThreshold: options?.scoreThreshold,
-          fileTypes: options?.fileTypes,
-          metadataFilters: options?.metadataFilters,
         }
 
         const vectorResults = await this.vectorStore.search(query.original, vectorSearchOptions)
@@ -341,7 +322,7 @@ export class SearchService implements ISearchService {
             score: result.score || 0,
             semanticScore: result.score || 0,
             metadata: result.metadata,
-            chunkIndex: result.metadata?.chunkIndex || result.chunk_id || 0,
+            chunkIndex: result.chunkIndex || result.metadata?.chunkIndex || 0,
           })
         )
       },
@@ -357,8 +338,6 @@ export class SearchService implements ISearchService {
         const vectorSearchOptions = {
           topK: (options?.topK || 10) * 2, // Get more results for filtering
           scoreThreshold: 0.1, // Lower threshold for keyword matching
-          fileTypes: options?.fileTypes,
-          metadataFilters: options?.metadataFilters,
         }
 
         const vectorResults = await this.vectorStore.search(query.original, vectorSearchOptions)

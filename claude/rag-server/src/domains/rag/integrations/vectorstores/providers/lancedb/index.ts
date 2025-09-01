@@ -25,8 +25,8 @@ import {
   RAGDocumentRecord,
   RAGSearchResult,
   createSimpleLanceDBSchema,
-  convertSearchResultToLegacy,
-  buildSimpleWhereClause,
+  convertVectorDocumentToRAGRecord,
+  convertRAGResultToVectorSearchResult,
   type SearchFilters,
 } from './types.js'
 
@@ -258,19 +258,17 @@ export class LanceDBProvider implements VectorStoreProvider {
         const contents = batch.map((doc) => doc.content)
         const embeddings = await this.embeddingBridge.embed(contents)
 
-        // GPT 방식의 간단한 레코드 생성
+        // 새로운 변환 함수 사용
         for (let j = 0; j < batch.length; j++) {
           const doc = batch[j]!
           const embedding = embeddings[j]!
 
-          // VectorDocument는 이미 새로운 구조를 가지고 있으므로 직접 사용
-          records.push({
+          // VectorDocument를 RAGDocumentRecord로 변환
+          const ragRecord = convertVectorDocumentToRAGRecord({
+            ...doc,
             vector: embedding,
-            text: doc.content || doc.text, // content 또는 text 필드 사용
-            doc_id: doc.doc_id,
-            chunk_id: doc.chunk_id,
-            metadata: doc.metadata, // 이미 JSON 문자열
-          } as RAGDocumentRecord)
+          })
+          records.push(ragRecord)
         }
       }
 
@@ -332,20 +330,8 @@ export class LanceDBProvider implements VectorStoreProvider {
         { timeoutMs: 15000, operation: 'generate_query_embedding' }
       )
 
-      // 2. GPT 방식의 간단한 검색
+      // 2. GPT 방식의 간단한 검색 (필터링 없음)
       let searchQuery = this.table.search(queryEmbedding).limit(options.topK || 10)
-
-      // 메타데이터 필터링 (간소화된 방식)
-      if (options.metadataFilters) {
-        const filters: SearchFilters = {
-          fileTypes: options.fileTypes,
-          // 기타 필터 변환...
-        }
-        const whereClause = buildSimpleWhereClause(filters)
-        if (whereClause) {
-          searchQuery = searchQuery.where(whereClause)
-        }
-      }
 
       // 3. 검색 실행
       const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
@@ -353,12 +339,23 @@ export class LanceDBProvider implements VectorStoreProvider {
         { timeoutMs: 30000, operation: 'lancedb_search' }
       )
 
-      // 4. 결과 변환 (하위 호환성)
-      let results = rawResults.map(convertSearchResultToLegacy)
+      logger.info('🔍 LanceDB raw search results', {
+        query: query.substring(0, 100),
+        rawResultsCount: rawResults.length,
+        component: 'LanceDBProvider',
+      })
 
-      // 5. 스코어 필터링
+      // 4. 결과 변환 (새로운 core 타입으로)
+      let results = rawResults.map(convertRAGResultToVectorSearchResult)
+
+      // 5. 스코어 필터링 (단순화)
       if (options.scoreThreshold) {
         results = results.filter((result) => result.score >= options.scoreThreshold!)
+        logger.info('📊 After score filtering', {
+          scoreThreshold: options.scoreThreshold,
+          filteredCount: results.length,
+          component: 'LanceDBProvider',
+        })
       }
 
       logger.info('✅ Simplified LanceDB search completed', {
@@ -490,23 +487,24 @@ export class LanceDBProvider implements VectorStoreProvider {
 
     try {
       const results = await this.table
-        .search([]) // 빈 벡터로 모든 문서 조회
+        .query() // 빈 벡터로 모든 문서 조회
         .where(`doc_id = '${fileId}'`)
         .limit(1)
         .toArray()
 
       if (results.length > 0) {
-        const result = results[0] as RAGSearchResult
+        const result = results[0]
+        const metadata = JSON.parse(result.metadata)
         return {
           fileId: result.doc_id,
-          fileName: result.metadata.fileName,
-          filePath: result.metadata.filePath,
-          fileType: result.metadata.fileType,
-          size: result.metadata.fileSize,
-          fileHash: result.metadata.fileHash,
-          modifiedAt: result.metadata.modifiedAt,
-          createdAt: result.metadata.createdAt,
-          processedAt: result.metadata.processedAt,
+          fileName: metadata.fileName,
+          filePath: metadata.filePath,
+          fileType: metadata.fileType,
+          size: metadata.fileSize,
+          fileHash: metadata.fileHash,
+          modifiedAt: metadata.modifiedAt,
+          createdAt: metadata.createdAt,
+          processedAt: metadata.processedAt,
         }
       }
       return null
@@ -532,7 +530,7 @@ export class LanceDBProvider implements VectorStoreProvider {
     try {
       // 모든 문서의 메타데이터만 조회
       const results = await this.table
-        .search([]) // 빈 벡터로 모든 문서 조회
+        .query() // 빈 벡터로 모든 문서 조회
         .select(['doc_id', 'metadata'])
         .toArray()
 
@@ -540,7 +538,7 @@ export class LanceDBProvider implements VectorStoreProvider {
       for (const result of results) {
         const docId = result.doc_id
         if (docId && !fileMetadataMap.has(docId)) {
-          const metadata = result.metadata
+          const metadata = JSON.parse(result.metadata)
           fileMetadataMap.set(docId, {
             fileId: docId,
             fileName: metadata.fileName || 'unknown',

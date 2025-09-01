@@ -5,7 +5,7 @@
 
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { StructuredError, ErrorCode } from '@/shared/errors/index.js'
-import { IFileProcessingService } from '../../core/types.js'
+import { IFileProcessingService, VectorDocument } from '../../core/types.js'
 import { FileReader } from './reader.js'
 import { ChunkingService } from '../chunking.js'
 import { extractFileMetadata } from '@/shared/utils/file-metadata.js'
@@ -38,7 +38,7 @@ export class DocumentProcessor implements IFileProcessingService {
   async processFile(filePath: string): Promise<void> {
     const endTiming = startTiming('document_processing', {
       file: filePath,
-      component: 'DocumentProcessor'
+      component: 'DocumentProcessor',
     })
 
     try {
@@ -51,11 +51,17 @@ export class DocumentProcessor implements IFileProcessingService {
       this.processingQueue.add(filePath)
 
       logger.info(`📄 Processing file (simplified): ${filePath}`, {
-        component: 'DocumentProcessor'
+        component: 'DocumentProcessor',
       })
 
       // 1. 파일 메타데이터 추출
       const fileMetadata = await extractFileMetadata(filePath)
+
+      logger.info('------------------metameta1---------------------')
+
+      logger.info('metameta', fileMetadata)
+
+      logger.info('--------------------metameta2-------------------')
 
       // 2. 파일 내용 읽기
       const content = await this.fileReader.readFile(filePath)
@@ -63,6 +69,12 @@ export class DocumentProcessor implements IFileProcessingService {
         logger.warn(`Empty file content: ${filePath}`)
         return
       }
+
+      logger.info('---------------------------------------')
+
+      logger.info(content)
+
+      logger.info('---------------------------------------')
 
       // 3. 청킹 (간단한 설정)
       const chunks = await this.textChunker.chunkText(content, {
@@ -72,43 +84,49 @@ export class DocumentProcessor implements IFileProcessingService {
 
       // 4. 문서 벡터화 및 저장 (중앙 집중식 스키마 사용)
       // VectorDocument 타입에 맞춰 생성 (내부적으로 RAGDocumentRecord 구조 사용)
-      const documents = chunks.map((chunk: any, index: number) => ({
-        // RAGDocumentRecord 필드들
-        vector: [], // 빈 배열로 초기화, VectorStore에서 임베딩 생성
-        text: chunk.text,
-        doc_id: fileMetadata.id,
-        chunk_id: index,
-        metadata: JSON.stringify({
-          fileName: fileMetadata.name,
-          filePath: fileMetadata.path,
-          fileType: fileMetadata.fileType,
-          fileSize: fileMetadata.size,
-          fileHash: fileMetadata.hash,
-          chunkIndex: index,
-          totalChunks: chunks.length,
-          createdAt: fileMetadata.createdAt,
-          modifiedAt: fileMetadata.modifiedAt,
-          processedAt: new Date().toISOString(),
-        }),
-        // VectorDocument 추가 필드들 (하위 호환성)
-        id: `${fileMetadata.id}_chunk_${index}`,
-        content: chunk.text,
-      }))
+      const documents: VectorDocument[] = chunks.map(
+        (chunk: any, index: number) =>
+          ({
+            // RAGDocumentRecord 필드들
+            vector: [], // 빈 배열로 초기화, VectorStore에서 임베딩 생성
+            text: chunk.text,
+            doc_id: fileMetadata.id,
+            chunk_id: index,
+            metadata: {
+              fileName: fileMetadata.name,
+              filePath: fileMetadata.path,
+              fileType: fileMetadata.fileType,
+              fileSize: fileMetadata.size,
+              fileHash: fileMetadata.hash,
+              chunkIndex: index,
+              totalChunks: chunks.length,
+              createdAt: fileMetadata.createdAt,
+              modifiedAt: fileMetadata.modifiedAt,
+              processedAt: new Date().toISOString(),
+            },
+            // VectorDocument 추가 필드들 (하위 호환성)
+            id: `${fileMetadata.id}_chunk_${index}`,
+            content: chunk.text,
+          } as VectorDocument)
+      )
 
       // 5. Vector Store에 추가
       await this.vectorStoreProvider.addDocuments(documents)
 
       logger.info(`✅ File processed successfully: ${filePath}`, {
         chunks: chunks.length,
-        component: 'DocumentProcessor'
+        component: 'DocumentProcessor',
       })
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error(`❌ Failed to process file: ${filePath}`, error instanceof Error ? error : new Error(errorMessage), {
-        component: 'DocumentProcessor'
-      })
-      
+      logger.error(
+        `❌ Failed to process file: ${filePath}`,
+        error instanceof Error ? error : new Error(errorMessage),
+        {
+          component: 'DocumentProcessor',
+        }
+      )
+
       errorMonitor.recordError(
         error instanceof StructuredError
           ? error
@@ -127,7 +145,7 @@ export class DocumentProcessor implements IFileProcessingService {
   async removeFile(filePath: string): Promise<void> {
     try {
       logger.info(`🗑️ Removing file from vector store: ${filePath}`, {
-        component: 'DocumentProcessor'
+        component: 'DocumentProcessor',
       })
 
       // 파일 ID 생성 (extractFileMetadata와 동일한 방식)
@@ -137,13 +155,17 @@ export class DocumentProcessor implements IFileProcessingService {
       await this.vectorStoreProvider.removeDocumentsByFileId(fileId)
 
       logger.info(`✅ File removed successfully: ${filePath}`, {
-        component: 'DocumentProcessor'
+        component: 'DocumentProcessor',
       })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error(`❌ Failed to remove file: ${filePath}`, error instanceof Error ? error : new Error(errorMessage), {
-        component: 'DocumentProcessor'
-      })
+      logger.error(
+        `❌ Failed to remove file: ${filePath}`,
+        error instanceof Error ? error : new Error(errorMessage),
+        {
+          component: 'DocumentProcessor',
+        }
+      )
       throw error
     }
   }
@@ -168,16 +190,20 @@ export class DocumentProcessor implements IFileProcessingService {
   async removeAllDocuments(): Promise<void> {
     try {
       logger.info('🗑️ Removing all documents', {
-        component: 'DocumentProcessor'
+        component: 'DocumentProcessor',
       })
       await this.vectorStoreProvider.removeAllDocuments()
       logger.info('✅ All documents removed', {
-        component: 'DocumentProcessor'
+        component: 'DocumentProcessor',
       })
     } catch (error) {
-      logger.error('❌ Failed to remove all documents', error instanceof Error ? error : new Error(String(error)), {
-        component: 'DocumentProcessor'
-      })
+      logger.error(
+        '❌ Failed to remove all documents',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'DocumentProcessor',
+        }
+      )
       throw error
     }
   }

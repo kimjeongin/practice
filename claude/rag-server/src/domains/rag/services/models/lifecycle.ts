@@ -108,16 +108,27 @@ export class ModelCompatibilityService {
       
       // Create metadata document compatible with new 5-field LanceDB schema
       const metadataDocument = {
-        // New 5-field structure
+        // Core VectorDocument structure
         id: `metadata_${metadata.configHash}`,
         content: this.METADATA_KEY, // Searchable content
         vector: [], // Will be filled by VectorStore
         doc_id: `system_metadata_${metadata.configHash}`,
         chunk_id: 0,
-        metadata: JSON.stringify({
-          // System metadata fields
+        metadata: {
+          // Core fields (VectorDocumentMetadata)
+          fileName: 'embedding_metadata.json',
+          filePath: '/system/embedding_metadata.json',
+          fileType: 'system_metadata',
+          fileSize: JSON.stringify(metadata).length,
+          fileHash: metadata.configHash,
+          createdAt: metadata.createdAt.toISOString(),
+          modifiedAt: metadata.lastUsedAt.toISOString(),
+          processedAt: now,
+          chunkIndex: 0,
+          
+          // System metadata fields (additional)
           type: 'embedding_metadata',
-          id: metadata.id,
+          system_id: metadata.id,
           modelName: metadata.modelName,
           serviceName: metadata.serviceName,
           dimensions: metadata.dimensions,
@@ -126,20 +137,8 @@ export class ModelCompatibilityService {
           isActive: metadata.isActive,
           totalDocuments: metadata.totalDocuments,
           totalVectors: metadata.totalVectors,
-          createdAt: metadata.createdAt.toISOString(),
-          lastUsedAt: metadata.lastUsedAt.toISOString(),
-          
-          // File metadata fields (system dummy values)
-          fileName: 'embedding_metadata.json',
-          filePath: '/system/embedding_metadata.json',
-          fileType: 'system_metadata',
-          fileSize: JSON.stringify(metadata).length,
-          fileHash: metadata.configHash,
-          processedAt: now,
           sourceType: 'system'
-        }),
-        // Backward compatibility field
-        text: this.METADATA_KEY
+        }
       }
 
       await this.vectorStore.addDocuments([metadataDocument])

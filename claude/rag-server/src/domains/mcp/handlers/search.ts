@@ -9,8 +9,6 @@ export interface SearchArgs {
   query: string
   search_type?: 'semantic' | 'hybrid' | 'keyword'
   limit?: number
-  sources?: string[]
-  metadata_filters?: Record<string, string>
 }
 
 export interface SearchSimilarArgs {
@@ -23,7 +21,6 @@ export interface SearchSimilarArgs {
 export interface SearchByQuestionArgs {
   question: string
   context_limit?: number
-  sources?: string[]
   search_method?: 'semantic' | 'hybrid'
 }
 
@@ -31,7 +28,7 @@ export class SearchHandler {
   constructor(private searchService: SearchService, private config: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
-    const { query, search_type = 'semantic', limit = 5, sources, metadata_filters } = args
+    const { query, search_type = 'semantic', limit = 5 } = args
 
     if (!query) {
       return {
@@ -54,13 +51,11 @@ export class SearchHandler {
     }
 
     try {
-      // Use SearchService with advanced search options
+      // Use SearchService with simplified search options
       const searchOptions: SearchOptions = {
         topK: Math.max(1, Math.min(limit, 50)), // Clamp between 1-50
         searchType: search_type,
         semanticWeight: search_type === 'hybrid' ? 0.7 : 1.0,
-        fileTypes: sources,
-        metadataFilters: metadata_filters,
         scoreThreshold: 0.1,
       }
 
@@ -258,7 +253,7 @@ export class SearchHandler {
   }
 
   async handleSearchByQuestion(args: SearchByQuestionArgs) {
-    const { question, context_limit = 5, sources, search_method = 'semantic' } = args
+    const { question, context_limit = 5, search_method = 'semantic' } = args
 
     if (!question || question.trim().length === 0) {
       return {
@@ -287,7 +282,6 @@ export class SearchHandler {
         scoreThreshold: 0.1, // Lower threshold for information extraction
         searchType: search_method,
         semanticWeight: search_method === 'hybrid' ? 0.7 : 1.0,
-        fileTypes: sources,
       }
 
       const searchResults = await this.searchService.search(question, searchOptions)
@@ -354,7 +348,6 @@ export class SearchHandler {
                 search_info: {
                   total_context_chunks: searchResults.length,
                   search_method: search_method,
-                  sources_searched: sources ? sources.join(', ') : 'all',
                   context_limit: context_limit,
                 },
                 context_found: true,
@@ -513,16 +506,6 @@ export class SearchHandler {
               minimum: 1,
               maximum: 50,
             },
-            sources: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Filter by specific file types or sources',
-            },
-            metadata_filters: {
-              type: 'object',
-              description: 'Filter by custom metadata key-value pairs',
-              additionalProperties: { type: 'string' },
-            },
           },
           required: ['query'],
         },
@@ -576,11 +559,6 @@ export class SearchHandler {
               default: 5,
               minimum: 1,
               maximum: 20,
-            },
-            sources: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Filter by specific file types or sources',
             },
             search_method: {
               type: 'string',

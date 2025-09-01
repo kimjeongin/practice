@@ -118,7 +118,11 @@ async function initializeServices(config: any) {
   const { VectorStoreFactory } = await import('@/domains/rag/integrations/vectorstores/index.js')
 
   // IMPORTANT: Create only ONE provider instance and reuse it everywhere
-  const vectorStoreProvider = VectorStoreFactory.createProvider(config.vectorStore, config)
+  // Pass full config as first parameter, vector store URI as option
+  const vectorStoreProvider = VectorStoreFactory.createProvider(config, { 
+    uri: config.vectorStore.config.uri,
+    tableName: 'documents'
+  })
 
   // Initialize SearchService with abstraction layer
   const { SearchService } = await import('@/domains/rag/services/search/search-service.js')

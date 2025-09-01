@@ -16,21 +16,21 @@ export const AVAILABLE_MODELS: Record<string, EmbeddingModelConfig> = {
   'all-minilm-l6-v2': {
     modelId: 'Xenova/all-MiniLM-L6-v2',
     dimensions: 384,
-    maxTokens: 256,
+    maxTokens: 512,  // 토큰 단위: 512 tokens (≈ 2048 characters)
     description: 'Fast and efficient, good for general use',
     recommendedBatchSize: 20,
   },
   'paraphrase-multilingual-MiniLM-L12-v2': {
     modelId: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
     dimensions: 384,
-    maxTokens: 128,
+    maxTokens: 512,  // 토큰 단위: 512 tokens (≈ 2048 characters)
     description: 'Multilingual model supporting 50+ languages, excellent for semantic similarity',
     recommendedBatchSize: 15,
   },
   'multilingual-e5-base': {
     modelId: 'Xenova/multilingual-e5-base',
     dimensions: 768,
-    maxTokens: 512,
+    maxTokens: 512,  // 토큰 단위: 512 tokens (≈ 2048 characters)
     description: 'High-quality multilingual embedding model supporting 100+ languages',
     recommendedBatchSize: 10,
   },
@@ -271,14 +271,17 @@ export class TransformersEmbeddings extends Embeddings {
    * Truncate text to model's maximum token limit
    */
   private truncateText(text: string): string {
-    // Simple approximation: ~4 characters per token
-    const maxChars = this.modelConfig.maxTokens * 4
+    // 토큰→문자 변환 비율 개선
+    // 영어: 1 token ≈ 4 characters
+    // 한국어/중국어/일본어: 1 token ≈ 2-3 characters  
+    // 보수적으로 3.5를 사용하여 안전 마진 확보
+    const maxChars = Math.floor(this.modelConfig.maxTokens * 3.5)
 
     if (text.length <= maxChars) {
       return text
     }
 
-    logger.warn(`⚠️  Truncating text from ${text.length} to ${maxChars} characters`)
+    logger.warn(`⚠️  Truncating text from ${text.length} to ${maxChars} characters (${this.modelConfig.maxTokens} tokens limit)`)
     return text.substring(0, maxChars)
   }
 

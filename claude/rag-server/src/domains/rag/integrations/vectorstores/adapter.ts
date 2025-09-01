@@ -27,8 +27,6 @@ export class VectorStoreAdapter implements IVectorStoreService {
     const vectorSearchOptions: VectorSearchOptions = {
       topK: options?.topK,
       scoreThreshold: options?.scoreThreshold,
-      fileTypes: options?.fileTypes,
-      metadataFilters: options?.metadataFilters,
     }
 
     return await this.provider.search(query, vectorSearchOptions)
@@ -100,51 +98,6 @@ export class VectorStoreAdapter implements IVectorStoreService {
     }
     return null
   }
-
-  /**
-   * 인덱스 통계 조회 (고급 기능)
-   */
-  getIndexStats(): {
-    total: number
-    occupied: number
-    sparsity: number
-    needsCompaction: boolean
-  } | null {
-    if (this.provider.getIndexStats) {
-      return this.provider.getIndexStats()
-    }
-    return null
-  }
-
-  /**
-   * 인덱스 압축 (고급 기능)
-   */
-  async compactIndex(): Promise<void> {
-    if (this.provider.compactIndex) {
-      await this.provider.compactIndex()
-    }
-  }
-
-  /**
-   * 자동 압축 (고급 기능)
-   */
-  async autoCompactIfNeeded(): Promise<boolean> {
-    if (this.provider.autoCompactIfNeeded) {
-      return await this.provider.autoCompactIfNeeded()
-    }
-    return false
-  }
-
-  /**
-   * Provider 정보
-   */
-  getProviderInfo(): { name: string; capabilities: any } {
-    return {
-      name: this.getProviderName(),
-      capabilities: this.provider.capabilities || {},
-    }
-  }
-
   private getProviderName(): string {
     return this.provider.constructor.name.toLowerCase().replace('provider', '')
   }

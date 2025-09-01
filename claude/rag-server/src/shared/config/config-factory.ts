@@ -355,7 +355,7 @@ export class ConfigFactory {
       nodeEnv: process.env['NODE_ENV'] || 'development',
       documentsDir,
       dataDir,
-      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1024', 10),
+      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1500', 10), // 임베딩 모델 토큰 제한에 맞게 조정 (512 tokens ≈ 1792 chars)
       chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '20', 10),
       similarityTopK: parseInt(process.env['SIMILARITY_TOP_K'] || '5', 10),
       embeddingModel,

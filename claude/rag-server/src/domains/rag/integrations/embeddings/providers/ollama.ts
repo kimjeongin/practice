@@ -16,7 +16,7 @@ export const AVAILABLE_OLLAMA_MODELS: Record<string, OllamaModelConfig> = {
   'nomic-embed-text': {
     modelId: 'nomic-embed-text',
     dimensions: 768,
-    maxTokens: 8192,
+    maxTokens: 2048,  // 토큰 단위: 2048 tokens (≈ 7168 characters with 3.5x ratio)
     description: 'Nomic Embed - Recommended general-purpose embedding model',
     recommendedBatchSize: 8,
   },

@@ -13,8 +13,8 @@ export type {
 
 export {
   createSimpleLanceDBSchema,
-  convertToRAGDocument,
-  convertSearchResultToLegacy,
+  convertVectorDocumentToRAGRecord,
+  convertRAGResultToVectorSearchResult,
   buildSimpleWhereClause
 } from './simple-schema.js'
 
