@@ -8,10 +8,23 @@ interface AgentHostState {
   loading: boolean
   error: string | null
   servers: ServerConnection[]
-  status: any
+  status: unknown
 }
 
-export function useClientHost() {
+export function useClientHost(): {
+  loading: boolean
+  error: string | null
+  servers: ServerConnection[]
+  status: unknown
+  loadServers: () => Promise<ServerConnection[]>
+  addServer: (serverConfig: Omit<MCPServerConfig, 'id'>) => Promise<MCPServerConfig | null>
+  removeServer: (serverId: string) => Promise<boolean>
+  updateServer: (serverId: string, updates: Partial<MCPServerConfig>) => Promise<boolean>
+  connectServer: (serverId: string) => Promise<boolean>
+  disconnectServer: (serverId: string) => Promise<boolean>
+  loadStatus: () => Promise<unknown>
+  clearError: () => void
+} {
   const [state, setState] = useState<AgentHostState>({
     loading: true,
     error: null,
@@ -20,7 +33,7 @@ export function useClientHost() {
   })
 
   // Error handling helper
-  const handleError = useCallback((error: any, context: string) => {
+  const handleError = useCallback((error: unknown, context: string) => {
     const message = error instanceof Error ? error.message : `${context} failed`
     setState((prev) => ({ ...prev, error: message, loading: false }))
     console.error(`${context} error:`, error)
@@ -63,7 +76,10 @@ export function useClientHost() {
     async (serverConfig: Omit<MCPServerConfig, 'id'>) => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }))
-        const response = await window.api.agent.addMCPServer(serverConfig)
+        const response = await window.api.agent.addMCPServer({
+          ...serverConfig,
+          id: crypto.randomUUID(),
+        })
 
         if (response.success && response.data) {
           // Reload servers to get updated list

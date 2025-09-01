@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { getLangGraphAgent, initializeAgentSystem, cleanupAgentSystem } from '../index'
 import { AgentConfig } from '../types/agent.types'
 import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
-import { getMCPLoaderService } from '../services/mcp-loader.service'
+import { getMCPLoaderService, MCPServerConfig } from '../services/mcp-loader.service'
 
 /**
  * IPC Handlers for Agent System
@@ -105,7 +105,7 @@ ipcMain.handle(
 )
 
 // Get available tools
-ipcMain.handle(AGENT_IPC_CHANNELS.GET_AVAILABLE_TOOLS, async (_event) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.GET_AVAILABLE_TOOLS, async () => {
   try {
     const agent = getLangGraphAgent()
     const tools = agent.getAvailableTools()
@@ -124,7 +124,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.GET_AVAILABLE_TOOLS, async (_event) => {
 })
 
 // Update agent configuration
-ipcMain.handle(AGENT_IPC_CHANNELS.UPDATE_CONFIG, async (_event, config: Partial<AgentConfig>) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.UPDATE_CONFIG, async (_, config: Partial<AgentConfig>) => {
   try {
     const agent = getLangGraphAgent()
     agent.updateConfig(config)
@@ -143,7 +143,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.UPDATE_CONFIG, async (_event, config: Partial<
 })
 
 // Get agent configuration
-ipcMain.handle(AGENT_IPC_CHANNELS.GET_CONFIG, async (_event) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.GET_CONFIG, async () => {
   try {
     const agent = getLangGraphAgent()
     const config = agent.getConfig()
@@ -162,7 +162,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.GET_CONFIG, async (_event) => {
 })
 
 // Health check
-ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async (_event) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async () => {
   console.log('🔌 IPC: Health check requested')
 
   try {
@@ -194,8 +194,8 @@ ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async (_event) => {
             ),
           ])
           if (modelsResponse.ok) {
-            const modelsData = await modelsResponse.json()
-            availableModels = modelsData.models?.map((m: any) => m.name) || []
+            const modelsData = await modelsResponse.json() as { models?: Array<{ name: string }> }
+            availableModels = modelsData.models?.map((m) => m.name) || []
             console.log('🏥 IPC: Available models:', availableModels.length)
           }
         } catch (modelsError) {
@@ -244,7 +244,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async (_event) => {
 })
 
 // Cleanup agent system
-ipcMain.handle(AGENT_IPC_CHANNELS.CLEANUP, async (_event) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.CLEANUP, async () => {
   try {
     await cleanupAgentSystem()
     return {
@@ -260,7 +260,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.CLEANUP, async (_event) => {
 })
 
 // Get MCP servers status
-ipcMain.handle('agent:get-mcp-servers', async (_event) => {
+ipcMain.handle('agent:get-mcp-servers', async () => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -286,7 +286,7 @@ ipcMain.handle('agent:get-mcp-servers', async (_event) => {
 })
 
 // Add MCP server
-ipcMain.handle('agent:add-mcp-server', async (_event, serverConfig) => {
+ipcMain.handle('agent:add-mcp-server', async (_, serverConfig: MCPServerConfig) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -306,7 +306,7 @@ ipcMain.handle('agent:add-mcp-server', async (_event, serverConfig) => {
 })
 
 // Remove MCP server
-ipcMain.handle('agent:remove-mcp-server', async (_event, serverId: string) => {
+ipcMain.handle('agent:remove-mcp-server', async (_, serverId: string) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -326,7 +326,7 @@ ipcMain.handle('agent:remove-mcp-server', async (_event, serverId: string) => {
 })
 
 // Connect to MCP server
-ipcMain.handle('agent:connect-mcp-server', async (_event, serverId: string) => {
+ipcMain.handle('agent:connect-mcp-server', async (_, serverId: string) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -346,7 +346,7 @@ ipcMain.handle('agent:connect-mcp-server', async (_event, serverId: string) => {
 })
 
 // Disconnect from MCP server
-ipcMain.handle('agent:disconnect-mcp-server', async (_event, serverId: string) => {
+ipcMain.handle('agent:disconnect-mcp-server', async (_, serverId: string) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -366,7 +366,7 @@ ipcMain.handle('agent:disconnect-mcp-server', async (_event, serverId: string) =
 })
 
 // Update MCP server
-ipcMain.handle('agent:update-mcp-server', async (_event, serverId: string, updates) => {
+ipcMain.handle('agent:update-mcp-server', async (_, serverId: string, updates: Partial<MCPServerConfig>) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -386,7 +386,7 @@ ipcMain.handle('agent:update-mcp-server', async (_event, serverId: string, updat
 })
 
 // Test simple query (without conversation persistence)
-ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_event, query: string) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_, query: string) => {
   try {
     // Simple test using direct Ollama call
     const response = await fetch('http://localhost:11434/api/generate', {

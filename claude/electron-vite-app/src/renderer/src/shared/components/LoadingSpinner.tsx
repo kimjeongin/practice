@@ -12,7 +12,7 @@ export function LoadingSpinner({
   className = '',
   text,
   color = 'blue',
-}: LoadingSpinnerProps) {
+}: LoadingSpinnerProps): React.JSX.Element {
   const sizeClasses = {
     sm: 'h-4 w-4',
     md: 'h-8 w-8',
@@ -59,7 +59,7 @@ export function LoadingOverlay({
   children,
   text = 'Loading...',
   className = '',
-}: LoadingOverlayProps) {
+}: LoadingOverlayProps): React.JSX.Element {
   if (!isLoading) {
     return <>{children}</>
   }

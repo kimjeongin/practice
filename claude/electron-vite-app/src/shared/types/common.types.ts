@@ -33,7 +33,7 @@ export interface ServerConfig {
 }
 
 // IPC Response wrapper
-export interface IPCResponse<T = any> {
+export interface IPCResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string

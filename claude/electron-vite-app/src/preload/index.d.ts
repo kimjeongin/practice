@@ -16,8 +16,8 @@ interface AgentExecutionResult {
   toolsUsed: Array<{
     toolName: string
     serverId: string
-    parameters: Record<string, any>
-    result: any
+    parameters: Record<string, unknown>
+    result: unknown
     executionTime: number
   }>
   totalExecutionTime: number
@@ -30,6 +30,37 @@ interface AgentHealthStatus {
   availableModels: string[]
   availableTools: number
   config?: AgentConfig
+  timestamp: string
+  agentInitialized: boolean
+}
+
+interface MCPServerConfig {
+  id: string
+  name: string
+  description?: string
+  transport: 'stdio' | 'http' | 'sse'
+  command?: string
+  args?: string[]
+  url?: string
+  cwd?: string
+  env?: Record<string, string>
+  enabled?: boolean
+}
+
+interface MCPServer {
+  id: string
+  name: string
+  status: string
+  toolCount: number
+  connectedAt?: Date
+  lastError?: string
+}
+
+interface MCPServersData {
+  servers: MCPServer[]
+  totalServers: number
+  connectedServers: number
+  totalTools: number
 }
 
 interface AgentAPI {
@@ -47,7 +78,7 @@ interface AgentAPI {
   testQuery: (query: string) => Promise<IPCResponse<AgentExecutionResult>>
 
   // Get available tools
-  getAvailableTools: () => Promise<IPCResponse<any[]>>
+  getAvailableTools: () => Promise<IPCResponse<Array<{ name: string; description: string }>>>
 
   // Configuration
   updateConfig: (config: Partial<AgentConfig>) => Promise<IPCResponse<AgentConfig>>
@@ -57,14 +88,14 @@ interface AgentAPI {
   healthCheck: () => Promise<IPCResponse<AgentHealthStatus>>
 
   // Get MCP server connections status
-  getMCPServers: () => Promise<IPCResponse<any>>
+  getMCPServers: () => Promise<IPCResponse<MCPServersData>>
 
   // MCP Server Management
-  addMCPServer: (serverConfig: any) => Promise<IPCResponse<any>>
-  removeMCPServer: (serverId: string) => Promise<IPCResponse<any>>
-  connectMCPServer: (serverId: string) => Promise<IPCResponse<any>>
-  disconnectMCPServer: (serverId: string) => Promise<IPCResponse<any>>
-  updateMCPServer: (serverId: string, updates: any) => Promise<IPCResponse<any>>
+  addMCPServer: (serverConfig: MCPServerConfig) => Promise<IPCResponse<MCPServerConfig>>
+  removeMCPServer: (serverId: string) => Promise<IPCResponse<{ serverId: string }>>
+  connectMCPServer: (serverId: string) => Promise<IPCResponse<{ serverId: string; connected: boolean }>>
+  disconnectMCPServer: (serverId: string) => Promise<IPCResponse<{ serverId: string; connected: boolean }>>
+  updateMCPServer: (serverId: string, updates: Partial<MCPServerConfig>) => Promise<IPCResponse<{ serverId: string; updates: Partial<MCPServerConfig> }>>
 
   // Cleanup
   cleanup: () => Promise<IPCResponse<{ cleaned: boolean }>>

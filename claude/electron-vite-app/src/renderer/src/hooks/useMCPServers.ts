@@ -19,7 +19,16 @@ interface MCPServersData {
 /**
  * React hook for managing MCP servers status
  */
-export function useMCPServers() {
+export function useMCPServers(): {
+  servers: MCPServersData
+  isLoading: boolean
+  error: string | null
+  getServerByStatus: (status: string) => MCPServer[]
+  getConnectedServers: () => MCPServer[]
+  getDisconnectedServers: () => MCPServer[]
+  getServerById: (serverId: string) => MCPServer | undefined
+  refresh: () => void
+} {
   const [servers, setServers] = useState<MCPServersData>({
     servers: [],
     totalServers: 0,

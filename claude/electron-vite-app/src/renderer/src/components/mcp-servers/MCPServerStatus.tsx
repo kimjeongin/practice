@@ -4,7 +4,7 @@ interface MCPServerStatusProps {
   compact?: boolean
 }
 
-export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
+export function MCPServerStatus({ compact = false }: MCPServerStatusProps): React.JSX.Element {
   const { servers, isLoading, error, refresh } = useMCPServers()
 
   if (isLoading && (!servers || servers.servers.length === 0)) {
@@ -28,12 +28,12 @@ export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
     )
   }
 
-  const formatConnectionTime = (date?: Date) => {
+  const formatConnectionTime = (date?: Date): string => {
     if (!date) return 'Never'
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): string => {
     switch (status) {
       case 'connected':
         return 'bg-green-500'
@@ -46,7 +46,7 @@ export function MCPServerStatus({ compact = false }: MCPServerStatusProps) {
     }
   }
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: string): string => {
     switch (status) {
       case 'connected':
         return 'Connected'

@@ -15,8 +15,8 @@ interface AgentExecutionResult {
   toolsUsed: Array<{
     toolName: string
     serverId: string
-    parameters: Record<string, any>
-    result: any
+    parameters: Record<string, unknown>
+    result: unknown
     executionTime: number
   }>
   totalExecutionTime: number
@@ -29,16 +29,67 @@ interface AgentHealthStatus {
   availableModels: string[]
   availableTools: number
   config?: AgentConfig
+  timestamp?: string
+  agentInitialized?: boolean
 }
 
 /**
  * React hook for interacting with the Agent System via IPC
  */
-export function useAgent() {
+export function useAgent(): {
+  isInitialized: boolean
+  isLoading: boolean
+  error: string | null
+  healthStatus: AgentHealthStatus | null
+  initialize: (config?: AgentConfig) => Promise<void>
+  processQuery: (
+    query: string,
+    conversationId?: string,
+    options?: { maxIterations?: number; temperature?: number; model?: string }
+  ) => Promise<AgentExecutionResult | null>
+  testQuery: (query: string) => Promise<unknown>
+  getAvailableTools: () => Promise<Array<{ name: string; description: string }>>
+  updateConfig: (config: Partial<AgentConfig>) => Promise<void>
+  getConfig: () => Promise<AgentConfig | null>
+  checkHealth: () => Promise<AgentHealthStatus | null>
+  cleanup: () => Promise<void>
+  clearError: () => void
+} {
   const [isInitialized, setIsInitialized] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [healthStatus, setHealthStatus] = useState<AgentHealthStatus | null>(null)
+
+  // Health check
+  const checkHealth = useCallback(async () => {
+    try {
+      const result = await window.api.agent.healthCheck()
+
+      if (result.success) {
+        setHealthStatus(result.data || null)
+        return result.data || null
+      } else {
+        setHealthStatus({
+          ollamaHealthy: false,
+          availableModels: [],
+          availableTools: 0,
+          agentInitialized: false,
+        })
+        setError(result.error || 'Health check failed')
+        return null
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      setError(errorMessage)
+      setHealthStatus({
+        ollamaHealthy: false,
+        availableModels: [],
+        availableTools: 0,
+        agentInitialized: false,
+      })
+      return null
+    }
+  }, [])
 
   // Initialize agent system
   const initialize = useCallback(async (config?: AgentConfig) => {
@@ -60,7 +111,7 @@ export function useAgent() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [checkHealth])
 
   // Process user query
   const processQuery = useCallback(
@@ -123,7 +174,7 @@ export function useAgent() {
           console.error('❌ Query processing failed:', errorMsg)
 
           // Check if we should reinitialize based on server response
-          if ((result as any).metadata?.shouldReinitialize) {
+          if ((result as { metadata?: { shouldReinitialize?: boolean } }).metadata?.shouldReinitialize) {
             console.warn('🔄 Server suggests reinitialization, marking as uninitialized')
             setIsInitialized(false)
           }
@@ -229,35 +280,6 @@ export function useAgent() {
       return null
     }
   }, [isInitialized])
-
-  // Health check
-  const checkHealth = useCallback(async () => {
-    try {
-      const result = await window.api.agent.healthCheck()
-
-      if (result.success) {
-        setHealthStatus(result.data || null)
-        return result.data || null
-      } else {
-        setHealthStatus({
-          ollamaHealthy: false,
-          availableModels: [],
-          availableTools: 0,
-        })
-        setError(result.error || 'Health check failed')
-        return null
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      setError(errorMessage)
-      setHealthStatus({
-        ollamaHealthy: false,
-        availableModels: [],
-        availableTools: 0,
-      })
-      return null
-    }
-  }, [])
 
   // Cleanup
   const cleanup = useCallback(async () => {

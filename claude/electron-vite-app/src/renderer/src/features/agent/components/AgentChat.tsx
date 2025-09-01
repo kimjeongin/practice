@@ -3,6 +3,23 @@ import { useAgent } from '../hooks/useAgent'
 import { useMCPServers } from '../../../hooks/useMCPServers'
 import { MCPServerStatus } from '../../../components/mcp-servers/MCPServerStatus'
 
+// Import interface for type  
+interface AgentExecutionResult {
+  success: boolean
+  response: string
+  conversationId: string
+  toolsUsed: Array<{
+    toolName: string
+    serverId: string
+    parameters: Record<string, unknown>
+    result: unknown
+    executionTime: number
+  }>
+  totalExecutionTime: number
+  iterations: number
+  error?: string
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant' | 'thinking'
@@ -26,7 +43,7 @@ interface ThinkingStatus {
   reasoning?: string
 }
 
-export function AgentChat() {
+export function AgentChat(): React.JSX.Element {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -47,19 +64,11 @@ export function AgentChat() {
     clearError,
   } = useAgent()
 
-  useEffect(() => {
-    initializeSystem()
-  }, [])
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  const scrollToBottom = () => {
+  const scrollToBottom = (): void => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const initializeSystem = async () => {
+  const initializeSystem = useCallback(async (): Promise<void> => {
     try {
       console.log('🚀 Initializing Agent System...')
 
@@ -135,7 +144,15 @@ Please check the console for more details and ensure all required services are r
 
       setMessages([errorMessage])
     }
-  }
+  }, [initialize, error, isInitialized, healthStatus, mcpServers])
+
+  useEffect(() => {
+    initializeSystem()
+  }, [initializeSystem])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
 
   // Agent thinking status handler
   const handleAgentThinking = useCallback((status: ThinkingStatus) => {
@@ -144,7 +161,7 @@ Please check the console for more details and ensure all required services are r
   }, [])
 
   // Simulated streaming response handler with improved cleanup
-  const streamResponse = useCallback((content: string, messageId: string) => {
+  const streamResponse = useCallback((content: string, messageId: string): (() => void) => {
     console.log('🎬 Starting response streaming for message:', messageId)
     const words = content.split(' ')
     let wordIndex = 0
@@ -244,8 +261,8 @@ Please check the console for more details and ensure all required services are r
     }
   }
 
-  const processActualQuery = async (query: string) => {
-    let queryResult: any = null
+  const processActualQuery = async (query: string): Promise<void> => {
+    let queryResult: AgentExecutionResult | null = null
 
     try {
       console.log('🔍 Processing query:', query.substring(0, 100))
@@ -330,7 +347,7 @@ Please check the console for more details and ensure all required services are r
   //   }
   // }
 
-  const clearConversation = () => {
+  const clearConversation = (): void => {
     console.log('🧹 Clearing conversation and resetting all states')
     setMessages([])
     setConversationId(null)
@@ -461,7 +478,7 @@ Please check the console for more details and ensure all required services are r
                         .flatMap((server) =>
                           Array(server.toolCount)
                             .fill(null)
-                            .map(() => ({ serverId: server.id, serverName: server.name }))
+                            .map((): { serverId: string; serverName: string } => ({ serverId: server.id, serverName: server.name }))
                         )
                         .find((t) => t.serverId)
 

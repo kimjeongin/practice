@@ -20,6 +20,12 @@ export {
   initializeMCPLoaderService,
 } from './services/mcp-loader.service'
 
+// Import types for internal use
+import type { LangGraphAgentService } from './services/langgraph-agent.service'
+import type { MCPLoaderService } from './services/mcp-loader.service'
+import type { ConversationManager } from './services/conversation-manager.service'
+import type { AgentConfig } from './types/agent.types'
+
 // Types
 export type {
   OllamaModel,
@@ -42,13 +48,14 @@ export type { MCPServerConfig } from './services/mcp-loader.service'
  * Initialize the complete agent system with LangGraph
  */
 export async function initializeAgentSystem(config?: {
-  agent?: {
-    type?: 'main' | 'reasoning' | 'fast'
-    model?: string
-    temperature?: number
-    maxTokens?: number
+  agent?: AgentConfig
+}): Promise<{
+  agent: LangGraphAgentService
+  services: {
+    mcp: MCPLoaderService
+    conversation: ConversationManager
   }
-}) {
+}> {
   console.log('🚀 Initializing LangGraph Agent System...')
 
   try {
@@ -64,7 +71,7 @@ export async function initializeAgentSystem(config?: {
 
     // Initialize LangGraph agent
     const { initializeLangGraphAgent } = await import('./services/langgraph-agent.service')
-    const agent = await initializeLangGraphAgent(config?.agent as any)
+    const agent = await initializeLangGraphAgent(config?.agent)
 
     console.log('✅ LangGraph Agent System initialized successfully')
 
