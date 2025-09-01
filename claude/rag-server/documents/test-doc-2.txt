@@ -1,12 +1,27 @@
-Test Document 2 - Migration Testing
+Neural Networks and Deep Learning
 
-This document tests embedding model migration functionality.
+Deep learning is a subset of machine learning that uses artificial neural networks with multiple layers to model and understand complex patterns in data.
 
-Key Features Being Tested:
-1. Embedding metadata tracking
-2. Model compatibility checking  
-3. Automatic vector store clearing
-4. Re-embedding with new model
-5. Database synchronization
+Neural Network Components:
+- Input layer: Receives raw data
+- Hidden layers: Process information through weighted connections
+- Output layer: Produces final predictions
+- Activation functions: Introduce non-linearity
+- Weights and biases: Parameters learned during training
 
-The RAG system should handle model changes gracefully without losing document data.
+Types of Neural Networks:
+1. Feedforward Neural Networks
+2. Convolutional Neural Networks (CNNs)  
+3. Recurrent Neural Networks (RNNs)
+4. Long Short-Term Memory (LSTM)
+5. Transformer networks
+
+Applications:
+- Image recognition and computer vision
+- Natural language processing
+- Speech recognition
+- Autonomous vehicles
+- Medical diagnosis
+- Recommendation systems
+
+Deep learning has revolutionized many fields by automatically learning hierarchical representations from raw data.

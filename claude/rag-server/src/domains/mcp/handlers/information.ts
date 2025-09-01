@@ -1,4 +1,4 @@
-import { VectorStoreProvider } from '@/domains/rag/integrations/vectorstores/adapter.js'
+import { LanceDBProvider } from '@/domains/rag/integrations/vectorstores/providers/lancedb/index.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
 
@@ -7,7 +7,7 @@ export interface ListSourcesArgs {
 }
 
 export class InformationHandler {
-  constructor(private vectorStoreProvider: VectorStoreProvider) {}
+  constructor(private vectorStoreProvider: LanceDBProvider) {}
 
   async handleListSources(args: ListSourcesArgs = {}) {
     const { limit = 100 } = args

@@ -10,4 +10,4 @@ export * from './services/document/processor.js'
 // - workflow.ts (replaced with direct VectorStore operations)
 // - repositories/* (eliminated entirely)
 export * from './integrations/embeddings/index.js'
-export * from './integrations/vectorstores/adapter.js'
+export * from './integrations/vectorstores/index.js'

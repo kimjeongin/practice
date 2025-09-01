@@ -11,7 +11,7 @@ import { ChunkingService } from '../chunking.js'
 import { extractFileMetadata } from '@/shared/utils/file-metadata.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
-import { VectorStoreProvider } from '../../integrations/vectorstores/adapter.js'
+import { LanceDBProvider } from '../../integrations/vectorstores/providers/lancedb/index.js'
 import { ModelCompatibilityService } from '../models/index.js'
 
 /**
@@ -24,7 +24,7 @@ export class DocumentProcessor implements IFileProcessingService {
   private textChunker: ChunkingService
 
   constructor(
-    private vectorStoreProvider: VectorStoreProvider,
+    private vectorStoreProvider: LanceDBProvider,
     private modelCompatibilityService: ModelCompatibilityService,
     private config: ServerConfig
   ) {
@@ -57,24 +57,12 @@ export class DocumentProcessor implements IFileProcessingService {
       // 1. 파일 메타데이터 추출
       const fileMetadata = await extractFileMetadata(filePath)
 
-      logger.info('------------------metameta1---------------------')
-
-      logger.info('metameta', fileMetadata)
-
-      logger.info('--------------------metameta2-------------------')
-
       // 2. 파일 내용 읽기
       const content = await this.fileReader.readFile(filePath)
       if (!content || content.trim().length === 0) {
         logger.warn(`Empty file content: ${filePath}`)
         return
       }
-
-      logger.info('---------------------------------------')
-
-      logger.info(content)
-
-      logger.info('---------------------------------------')
 
       // 3. 청킹 (간단한 설정)
       const chunks = await this.textChunker.chunkText(content, {

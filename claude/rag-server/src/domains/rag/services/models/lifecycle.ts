@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import { EmbeddingMetadataModel } from '../../core/models.js'
 import { ModelInfo } from '@/domains/rag/core/types.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
-import { VectorStoreProvider } from '../../integrations/vectorstores/adapter.js'
+import { LanceDBProvider } from '../../integrations/vectorstores/providers/lancedb/index.js'
 import { logger } from '@/shared/logger/index.js'
 
 export interface ModelCompatibilityResult {
@@ -20,7 +20,7 @@ export interface ModelCompatibilityResult {
 export class ModelCompatibilityService {
   private readonly METADATA_KEY = 'embedding_metadata'
 
-  constructor(private vectorStore: VectorStoreProvider) {}
+  constructor(private vectorStore: LanceDBProvider) {}
 
   /**
    * Generate a unique hash for the current embedding configuration

@@ -114,17 +114,14 @@ async function checkAndHandleModelMigration(modelCompatibilityService: any, conf
 async function initializeServices(config: any) {
   // Initialize services with config passed directly
 
-  // Initialize vector store and search service
-  const { VectorStoreFactory } = await import('@/domains/rag/integrations/vectorstores/index.js')
-
-  // IMPORTANT: Create only ONE provider instance and reuse it everywhere
-  // Pass full config as first parameter, vector store URI as option
-  const vectorStoreProvider = VectorStoreFactory.createProvider(config, {
+  // Initialize LanceDB provider directly
+  const { LanceDBProvider } = await import('@/domains/rag/integrations/vectorstores/providers/lancedb/index.js')
+  
+  const vectorStoreProvider = new LanceDBProvider(config, {
     uri: config.vectorStore.config.uri,
-    tableName: 'documents',
-  })
+  }, 'documents')
 
-  // Initialize SearchService with abstraction layer
+  // Initialize SearchService with direct LanceDB provider
   const { SearchService } = await import('@/domains/rag/services/search/search-service.js')
   const searchService = new SearchService(vectorStoreProvider)
 
