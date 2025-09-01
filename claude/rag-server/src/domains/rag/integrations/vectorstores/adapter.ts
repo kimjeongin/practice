@@ -98,6 +98,14 @@ export class VectorStoreAdapter implements IVectorStoreService {
     }
     return null
   }
+
+  async getAllFileMetadata(limit?: number): Promise<Map<string, any>> {
+    if (this.provider.getAllFileMetadata) {
+      return await this.provider.getAllFileMetadata()
+    }
+    return new Map()
+  }
+
   private getProviderName(): string {
     return this.provider.constructor.name.toLowerCase().replace('provider', '')
   }

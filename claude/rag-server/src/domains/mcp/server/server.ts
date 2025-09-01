@@ -56,16 +56,6 @@ export class MCPServer {
           case 'search':
             result = await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'))
             break
-          case 'search_similar':
-            result = await this.searchHandler.handleSearchSimilar(
-              this.validateAndCastArgs(args, 'search_similar')
-            )
-            break
-          case 'search_by_question':
-            result = await this.searchHandler.handleSearchByQuestion(
-              this.validateAndCastArgs(args, 'search_by_question')
-            )
-            break
           case 'list_sources':
             result = await this.informationHandler.handleListSources(
               this.validateAndCastArgs(args, 'list_sources')

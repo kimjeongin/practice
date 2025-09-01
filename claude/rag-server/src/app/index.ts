@@ -119,9 +119,9 @@ async function initializeServices(config: any) {
 
   // IMPORTANT: Create only ONE provider instance and reuse it everywhere
   // Pass full config as first parameter, vector store URI as option
-  const vectorStoreProvider = VectorStoreFactory.createProvider(config, { 
+  const vectorStoreProvider = VectorStoreFactory.createProvider(config, {
     uri: config.vectorStore.config.uri,
-    tableName: 'documents'
+    tableName: 'documents',
   })
 
   // Initialize SearchService with abstraction layer
@@ -228,8 +228,8 @@ async function initializeServices(config: any) {
   }
 
   // Initialize MCP handlers with SearchService (high-level abstraction)
-  const searchHandler = new SearchHandler(searchService, config)
-  const informationHandler = new InformationHandler(vectorStoreProvider, config)
+  const searchHandler = new SearchHandler(searchService)
+  const informationHandler = new InformationHandler(vectorStoreProvider)
 
   // Create MCP Server
   const mcpServer = new MCPServer(searchHandler, informationHandler, config)

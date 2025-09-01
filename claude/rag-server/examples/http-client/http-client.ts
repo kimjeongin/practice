@@ -164,8 +164,7 @@ async function testStreamableHTTPClient(): Promise<void> {
         const sourcesResult = await client.callTool({
           name: 'list_sources',
           arguments: {
-            group_by: 'file_type',
-            include_stats: true,
+            limit: 10,
           },
         })
         console.log(sourcesResult)
