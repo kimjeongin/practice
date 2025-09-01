@@ -126,9 +126,26 @@ export function convertRAGResultToVectorSearchResult(result: any): {
   metadata: any
   chunkIndex: number
 } {
-  const score = result._distance ? 1 - result._distance : result.score || 0
+  // 코사인 유사도를 위한 스코어 계산
+  // LanceDB 코사인 거리는 [0, 2] 범위, 0에 가까울수록 유사
+  // 유사도로 변환: 1 - (distance / 2) 또는 간단히 1 - distance (정규화된 벡터의 경우)
+  let score: number
+  if (result._distance !== undefined) {
+    // 코사인 거리를 유사도로 변환 (0~1 범위)
+    score = Math.max(0, 1 - result._distance / 2)
+  } else if (result.score !== undefined) {
+    score = result.score
+  } else {
+    score = 0
+  }
 
-  logger.info('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', result)
+  logger.info('🔍 LanceDB search result conversion:', {
+    rawDistance: result._distance,
+    calculatedScore: score,
+    originalScore: result.score,
+    docId: result.doc_id,
+    chunkId: result.chunk_id,
+  })
   // JSON 문자열 메타데이터 파싱
   let parsedMetadata: DocumentMetadata
   try {

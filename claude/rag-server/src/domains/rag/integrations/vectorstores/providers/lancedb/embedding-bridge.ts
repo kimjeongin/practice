@@ -8,6 +8,26 @@ import { EmbeddingAdapter } from '../../../embeddings/adapter.js'
 import type { IEmbeddingService } from '@/domains/rag/core/types.js'
 
 /**
+ * 벡터 정규화 유틸리티 함수 (L2 Norm)
+ * 코사인 유사도를 위한 벡터 정규화
+ */
+function normalizeVector(vector: number[]): number[] {
+  const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0))
+  if (magnitude === 0) {
+    logger.warn('Zero vector detected during normalization')
+    return vector
+  }
+  return vector.map(val => val / magnitude)
+}
+
+/**
+ * 배치 벡터 정규화
+ */
+function normalizeBatchVectors(vectors: number[][]): number[][] {
+  return vectors.map(normalizeVector)
+}
+
+/**
  * LanceDB 호환 임베딩 함수 인터페이스
  * LanceDB의 EmbeddingFunction을 TypeScript로 구현
  */
@@ -89,7 +109,15 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
         this._embeddingDimension = embeddings[0].length
       }
 
-      return embeddings
+      // 코사인 유사도를 위한 벡터 정규화
+      const normalizedEmbeddings = normalizeBatchVectors(embeddings)
+      
+      logger.debug(`📏 Vectors normalized for cosine similarity`, {
+        originalMagnitudes: embeddings.slice(0, 3).map(vec => Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0))),
+        normalizedMagnitudes: normalizedEmbeddings.slice(0, 3).map(vec => Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0)))
+      })
+
+      return normalizedEmbeddings
     } catch (error) {
       logger.error('❌ Failed to generate embeddings in LanceDB bridge:', error instanceof Error ? error : new Error(String(error)))
       throw error
@@ -123,7 +151,15 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
       cached: false,
     })
 
-    // 캐시에 저장 (LRU)
+    // 코사인 유사도를 위한 벡터 정규화
+    const normalizedEmbedding = normalizeVector(embedding)
+    
+    logger.debug(`📏 Query vector normalized for cosine similarity`, {
+      originalMagnitude: Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0)),
+      normalizedMagnitude: Math.sqrt(normalizedEmbedding.reduce((sum, val) => sum + val * val, 0))
+    })
+
+    // 캐시에 저장 (정규화된 벡터를 저장)
     if (this.cacheEnabled) {
       // 캐시 크기 제한
       if (this.queryCache.size >= this.maxCacheSize) {
@@ -133,13 +169,13 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
           this.queryCache.delete(firstKey)
         }
       }
-      this.queryCache.set(query, embedding)
+      this.queryCache.set(query, normalizedEmbedding)
       logger.debug(
-        `📦 Cached query embedding (cache size: ${this.queryCache.size}/${this.maxCacheSize})`
+        `📦 Cached normalized query embedding (cache size: ${this.queryCache.size}/${this.maxCacheSize})`
       )
     }
 
-    return embedding
+    return normalizedEmbedding
   }
 
   /**

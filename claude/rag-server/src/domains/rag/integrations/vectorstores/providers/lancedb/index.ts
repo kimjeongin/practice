@@ -330,8 +330,10 @@ export class LanceDBProvider implements VectorStoreProvider {
         { timeoutMs: 15000, operation: 'generate_query_embedding' }
       )
 
-      // 2. GPT 방식의 간단한 검색 (필터링 없음)
-      let searchQuery = this.table.search(queryEmbedding).limit(options.topK || 10)
+      // 2. GPT 방식의 간단한 검색 - 코사인 유사도 사용
+      let searchQuery = (this.table.search(queryEmbedding) as any)
+        .distanceType('cosine') // 코사인 유사도 사용
+        .limit(options.topK || 10)
 
       // 3. 검색 실행
       const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
