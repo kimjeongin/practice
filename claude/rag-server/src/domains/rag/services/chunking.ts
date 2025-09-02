@@ -10,13 +10,7 @@ import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 import { extname } from 'path'
 
-export interface ChunkingOptions {
-  chunkSize: number
-  overlap: number
-  fileType: string
-}
-
-export interface TextChunk {
+interface TextChunk {
   content: string
   index: number
   metadata?: Record<string, any>

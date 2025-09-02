@@ -28,7 +28,6 @@ import {
   createLanceDBSchema,
   convertVectorDocumentToRAGRecord,
   convertRAGResultToVectorSearchResult,
-  buildWhereClause,
 } from './schema.js'
 
 import {
@@ -524,5 +523,4 @@ export {
   createLanceDBSchema,
   convertVectorDocumentToRAGRecord,
   convertRAGResultToVectorSearchResult,
-  buildWhereClause,
 } from './schema.js'

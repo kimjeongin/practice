@@ -58,14 +58,6 @@ export interface DocumentChunk {
   metadata?: DocumentMetadata
 }
 
-/**
- * Custom metadata (simplified)
- */
-export interface CustomMetadata {
-  fileId: string
-  key: string
-  value: string
-}
 
 // ========================================
 // Vector Store Types
@@ -211,61 +203,15 @@ export interface ModelInfo {
   model?: string
 }
 
-export interface IndexInfo {
-  documentCount: number
-  indexPath?: string
-}
 
-/**
- * Embedding model metadata
- */
-export interface EmbeddingMetadataModel {
-  id: string
-  modelName: string
-  serviceName: string
-  dimensions: number
-  modelVersion?: string
-  configHash: string
-  isActive: boolean
-  totalDocuments: number
-  totalVectors: number
-  createdAt: Date
-  lastUsedAt: Date
-}
 
 // ========================================
 // Event Types
 // ========================================
 
-/**
- * File change event
- */
-export class FileChangeEvent {
-  constructor(
-    public readonly type: 'added' | 'changed' | 'removed',
-    public readonly path: string
-  ) {}
-}
 
-/**
- * Processing status
- */
-export class ProcessingStatus {
-  constructor(
-    public readonly isProcessing: boolean,
-    public readonly queueSize: number,
-    public readonly lastProcessedFile?: string
-  ) {}
-}
 
 // ========================================
 // Constants
 // ========================================
 
-/**
- * Default table options for LanceDB
- */
-export const DEFAULT_TABLE_OPTIONS: LanceDBTableOptions = {
-  tableName: 'documents',
-  mode: 'create',
-}

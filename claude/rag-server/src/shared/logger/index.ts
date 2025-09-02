@@ -349,13 +349,5 @@ export class Logger {
 // 전역 로거 인스턴스
 export const logger = Logger.getInstance()
 
-// 편의 함수들
-export const logInfo = (message: string, context?: LogContext) => logger.info(message, context)
-export const logDebug = (message: string, context?: LogContext) => logger.debug(message, context)
-export const logWarn = (message: string, context?: LogContext) => logger.warn(message, context)
-export const logError = (message: string, error?: Error | StructuredError, context?: LogContext) =>
-  logger.error(message, error, context)
-export const logFatal = (message: string, error?: Error | StructuredError, context?: LogContext) =>
-  logger.fatal(message, error, context)
 export const startTiming = (operation: string, context?: LogContext) =>
   logger.startTiming(operation, context)

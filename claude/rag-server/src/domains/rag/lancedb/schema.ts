@@ -136,7 +136,7 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
  * Build simple WHERE clause for filtering
  * Direct access to metadata object fields
  */
-export function buildWhereClause(filters?: SearchFilters): string | undefined {
+function buildWhereClause(filters?: SearchFilters): string | undefined {
   if (!filters) return undefined
 
   const conditions: string[] = []

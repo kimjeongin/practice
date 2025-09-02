@@ -9,11 +9,10 @@ import type {
   VectorDocument,
   VectorSearchResult,
   ModelInfo,
-  IndexInfo,
 } from './types.js'
 
 // Re-export types that are used in interfaces
-export type { ModelInfo, IndexInfo } from './types.js'
+export type { ModelInfo } from './types.js'
 
 /**
  * Search Service Interface
@@ -58,13 +57,3 @@ export interface IVectorStoreProvider {
   getAllFileMetadata(): Promise<Map<string, any>>
 }
 
-/**
- * Vector Store Capabilities
- */
-export interface VectorStoreCapabilities {
-  supportsHybridSearch: boolean
-  supportsMetadataFiltering: boolean
-  supportsFullTextSearch: boolean
-  maxVectorDimensions: number
-  supportedDistanceMetrics: string[]
-}
