@@ -13,26 +13,12 @@ export interface EmbeddingModelConfig {
 }
 
 export const AVAILABLE_MODELS: Record<string, EmbeddingModelConfig> = {
-  'all-minilm-l6-v2': {
-    modelId: 'Xenova/all-MiniLM-L6-v2',
-    dimensions: 384,
-    maxTokens: 512,  // 토큰 단위: 512 tokens (≈ 2048 characters)
-    description: 'Fast and efficient, good for general use',
-    recommendedBatchSize: 20,
-  },
-  'paraphrase-multilingual-MiniLM-L12-v2': {
-    modelId: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
-    dimensions: 384,
-    maxTokens: 512,  // 토큰 단위: 512 tokens (≈ 2048 characters)
-    description: 'Multilingual model supporting 50+ languages, excellent for semantic similarity',
-    recommendedBatchSize: 15,
-  },
-  'multilingual-e5-base': {
-    modelId: 'Xenova/multilingual-e5-base',
+  'gte-multilingual-base': {
+    modelId: 'onnx-community/gte-multilingual-base',
     dimensions: 768,
-    maxTokens: 512,  // 토큰 단위: 512 tokens (≈ 2048 characters)
-    description: 'High-quality multilingual embedding model supporting 100+ languages',
-    recommendedBatchSize: 10,
+    maxTokens: 8192,
+    description: 'High-quality multilingual embedding model from Alibaba with strong performance',
+    recommendedBatchSize: 16,
   },
 }
 
@@ -46,18 +32,9 @@ export class TransformersEmbeddings extends Embeddings {
   protected modelConfig: EmbeddingModelConfig
   protected isInitialized = false
   protected initPromise: Promise<void> | null = null
-  protected downloadProgress: Map<string, { loaded: number; total: number; percentage: number }> =
-    new Map()
-  protected isLazyLoading: boolean
 
   constructor(private config: BaseServerConfig) {
     super({})
-
-    // Enable lazy loading in production or when explicitly set
-    this.isLazyLoading =
-      process.env['TRANSFORMERS_LAZY_LOADING'] !== 'false' &&
-      (process.env['NODE_ENV'] === 'production' ||
-        process.env['TRANSFORMERS_LAZY_LOADING'] === 'true')
 
     // Configure transformers.js environment
     env.allowRemoteModels = true
@@ -65,8 +42,8 @@ export class TransformersEmbeddings extends Embeddings {
     env.cacheDir = config.transformersCacheDir || './data/.transformers-cache'
 
     // Get model configuration
-    const modelName = config.embeddingModel || 'paraphrase-multilingual-MiniLM-L12-v2'
-    const defaultModel = AVAILABLE_MODELS['paraphrase-multilingual-MiniLM-L12-v2']
+    const modelName = config.embeddingModel || 'gte-multilingual-base'
+    const defaultModel = AVAILABLE_MODELS['gte-multilingual-base']
     if (!defaultModel) {
       throw new Error('Default embedding model configuration not found')
     }
@@ -76,8 +53,7 @@ export class TransformersEmbeddings extends Embeddings {
       model: this.modelConfig.modelId,
       dimensions: this.modelConfig.dimensions,
       maxTokens: this.modelConfig.maxTokens,
-      lazyLoading: this.isLazyLoading,
-      component: 'TransformersEmbeddings'
+      component: 'TransformersEmbeddings',
     })
   }
 
@@ -98,46 +74,39 @@ export class TransformersEmbeddings extends Embeddings {
 
   private async _doInitialize(): Promise<void> {
     try {
-      if (this.isLazyLoading && !(await this.isModelCached())) {
-        logger.info('⚡ Lazy loading enabled - model will download when first used')
-        logger.info(`📦 Model: ${this.modelConfig.modelId}`)
-        logger.info(`📊 Estimated size: ${this.getEstimatedDownloadSize().formatted}`)
-        logger.info('💡 Use download_model MCP tool to pre-download')
-
-        // Don't initialize pipeline yet - will be done on first use
-        this.isInitialized = true
-        return
-      }
-
+      // Always download and initialize the model
       await this._downloadAndInitialize()
     } catch (error) {
-      logger.error('❌ Failed to initialize TransformersEmbeddings:', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        '❌ Failed to initialize TransformersEmbeddings:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       throw error
     }
   }
 
   private async _downloadAndInitialize(): Promise<void> {
-    logger.info(`🔄 Loading embedding model: ${this.modelConfig.modelId}...`)
-    const downloadInfo = this.getEstimatedDownloadSize()
-    logger.info(`📦 Estimated download size: ${downloadInfo.formatted}`)
+    // Check if model is already cached
+    const isCached = await this.isModelCached()
+    if (isCached) {
+      logger.info(`📂 Using cached model: ${this.modelConfig.modelId}`)
+      logger.info(`💾 Cache location: ${env.cacheDir}`)
+    } else {
+      logger.info(`🔄 Model not cached, downloading: ${this.modelConfig.modelId}...`)
+      const downloadInfo = this.getEstimatedDownloadSize()
+      logger.info(`📦 Estimated download size: ${downloadInfo.formatted}`)
+    }
 
     const startTime = Date.now()
     let lastProgress = 0
 
-    // Create feature extraction pipeline with detailed progress tracking
+    // Create feature extraction pipeline with progress tracking
     this.pipeline = await pipeline('feature-extraction', this.modelConfig.modelId, {
       progress_callback: (progress: any) => {
         if (progress.status === 'downloading') {
           const percent = Math.round((progress.loaded / progress.total) * 100)
           const currentMB = this.formatBytes(progress.loaded)
           const totalMB = this.formatBytes(progress.total)
-
-          // Update internal progress tracking
-          this.downloadProgress.set(progress.file, {
-            loaded: progress.loaded,
-            total: progress.total,
-            percentage: percent,
-          })
 
           // Only log every 10% to avoid spam
           if (percent >= lastProgress + 10 || percent === 100) {
@@ -153,8 +122,12 @@ export class TransformersEmbeddings extends Embeddings {
     })
 
     const loadTime = Date.now() - startTime
-    logger.info(`✅ Model loaded successfully in ${loadTime}ms`)
-    logger.info(`💾 Model cached in: ${env.cacheDir}`)
+    if (isCached) {
+      logger.info(`✅ Cached model loaded successfully in ${loadTime}ms`)
+    } else {
+      logger.info(`✅ Model downloaded and loaded successfully in ${loadTime}ms`)
+      logger.info(`💾 Model cached in: ${env.cacheDir}`)
+    }
     logger.info(`🚀 Ready for embeddings (${this.modelConfig.description})`)
 
     this.isInitialized = true
@@ -165,12 +138,6 @@ export class TransformersEmbeddings extends Embeddings {
    */
   async embedQuery(query: string): Promise<number[]> {
     await this.initialize()
-
-    // Lazy loading: download model if not available
-    if (this.isLazyLoading && !this.pipeline) {
-      logger.info('🔄 First embedding request - downloading model now...')
-      await this._downloadAndInitialize()
-    }
 
     if (!this.pipeline) {
       throw new Error('Embedding pipeline not initialized')
@@ -197,7 +164,10 @@ export class TransformersEmbeddings extends Embeddings {
 
       return embedding
     } catch (error) {
-      logger.error('❌ Error generating query embedding:', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        '❌ Error generating query embedding:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       throw error
     }
   }
@@ -207,12 +177,6 @@ export class TransformersEmbeddings extends Embeddings {
    */
   async embedDocuments(documents: string[]): Promise<number[][]> {
     await this.initialize()
-
-    // Lazy loading: download model if not available
-    if (this.isLazyLoading && !this.pipeline) {
-      logger.info('🔄 First embedding request - downloading model now...')
-      await this._downloadAndInitialize()
-    }
 
     if (!this.pipeline) {
       throw new Error('Embedding pipeline not initialized')
@@ -262,7 +226,10 @@ export class TransformersEmbeddings extends Embeddings {
 
       return embeddings
     } catch (error) {
-      logger.error('❌ Error generating document embeddings:', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        '❌ Error generating document embeddings:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       throw error
     }
   }
@@ -271,17 +238,18 @@ export class TransformersEmbeddings extends Embeddings {
    * Truncate text to model's maximum token limit
    */
   private truncateText(text: string): string {
-    // 토큰→문자 변환 비율 개선
-    // 영어: 1 token ≈ 4 characters
-    // 한국어/중국어/일본어: 1 token ≈ 2-3 characters  
-    // 보수적으로 3.5를 사용하여 안전 마진 확보
-    const maxChars = Math.floor(this.modelConfig.maxTokens * 3.5)
+    // GTE multilingual model은 8192 토큰 지원
+    // 토큰→문자 변환 비율: 다국어 기준 1 token ≈ 3-4 characters
+    // 보수적으로 3를 사용하여 안전 마진 확보
+    const maxChars = Math.floor(this.modelConfig.maxTokens * 3)
 
     if (text.length <= maxChars) {
       return text
     }
 
-    logger.warn(`⚠️  Truncating text from ${text.length} to ${maxChars} characters (${this.modelConfig.maxTokens} tokens limit)`)
+    logger.warn(
+      `⚠️  Truncating text from ${text.length} to ${maxChars} characters (${this.modelConfig.maxTokens} tokens limit)`
+    )
     return text.substring(0, maxChars)
   }
 
@@ -296,7 +264,10 @@ export class TransformersEmbeddings extends Embeddings {
       const testEmbedding = await this.embedQuery('test')
       return Array.isArray(testEmbedding) && testEmbedding.length === this.modelConfig.dimensions
     } catch (error) {
-      logger.error('❌ Health check failed:', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        '❌ Health check failed:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       return false
     }
   }
@@ -323,7 +294,13 @@ export class TransformersEmbeddings extends Embeddings {
   /**
    * Get model information (ModelInfo 인터페이스 호환)
    */
-  getModelInfo(): { name: string; model: string; service: string; dimensions: number; description?: string } {
+  getModelInfo(): {
+    name: string
+    model: string
+    service: string
+    dimensions: number
+    description?: string
+  } {
     return {
       name: this.modelConfig.modelId,
       model: this.modelConfig.modelId,
@@ -351,70 +328,24 @@ export class TransformersEmbeddings extends Embeddings {
   }
 
   /**
-   * List available models
+   * Get available model (single model)
    */
   static getAvailableModels(): Record<string, EmbeddingModelConfig> {
     return AVAILABLE_MODELS
   }
 
   /**
-   * Get model configuration by name
-   */
-  static getModelConfig(modelName: string): EmbeddingModelConfig | null {
-    return AVAILABLE_MODELS[modelName] || null
-  }
-
-  /**
-   * Get dimensions for a specific model
-   */
-  static getModelDimensions(modelName: string): number {
-    const config = TransformersEmbeddings.getModelConfig(modelName)
-    return config?.dimensions || 384 // fallback to default
-  }
-
-  /**
-   * Get recommended batch size for a specific model
-   */
-  static getModelBatchSize(modelName: string): number {
-    const config = TransformersEmbeddings.getModelConfig(modelName)
-    return config?.recommendedBatchSize || 10 // fallback to default
-  }
-
-  /**
    * Estimate memory usage for the model
    */
   estimateMemoryUsage(): string {
-    const modelSizes: Record<string, string> = {
-      'all-minilm-l6-v2': '~23MB',
-      'paraphrase-multilingual-MiniLM-L12-v2': '~45MB',
-      'multilingual-e5-base': '~109MB',
-    }
-
-    const modelName = Object.keys(AVAILABLE_MODELS).find((key) => {
-      const model = AVAILABLE_MODELS[key]
-      return model && model.modelId === this.modelConfig.modelId
-    })
-
-    return modelSizes[modelName || 'paraphrase-multilingual-MiniLM-L12-v2'] || '~45MB'
+    return '~300MB'
   }
 
   /**
    * Get estimated download size for current model
    */
   getEstimatedDownloadSize(): { size: number; formatted: string } {
-    const modelSizes: Record<string, number> = {
-      'all-minilm-l6-v2': 23_000_000, // 23MB
-      'paraphrase-multilingual-MiniLM-L12-v2': 45_000_000, // 45MB
-      'multilingual-e5-base': 109_000_000, // 109MB
-    }
-
-    const modelName = Object.keys(AVAILABLE_MODELS).find((key) => {
-      const model = AVAILABLE_MODELS[key]
-      return model && model.modelId === this.modelConfig.modelId
-    })
-
-    const size = modelSizes[modelName || 'paraphrase-multilingual-MiniLM-L12-v2'] || 45_000_000
-
+    const size = 300_000_000 // 300MB
     return {
       size,
       formatted: this.formatBytes(size),
@@ -437,60 +368,6 @@ export class TransformersEmbeddings extends Embeddings {
     } catch {
       return false
     }
-  }
-
-  /**
-   * Get current download progress
-   */
-  getDownloadProgress(): Record<string, { loaded: number; total: number; percentage: number }> {
-    return Object.fromEntries(this.downloadProgress)
-  }
-
-  /**
-   * Force download model
-   */
-  async downloadModel(): Promise<void> {
-    if (await this.isModelCached()) {
-      logger.info('✅ Model already cached, skipping download')
-      return
-    }
-
-    logger.info('🔄 Starting model download...')
-    await this._downloadAndInitialize()
-  }
-
-  /**
-   * Switch to a different model
-   */
-  async switchModel(modelName: string): Promise<void> {
-    if (!(modelName in AVAILABLE_MODELS)) {
-      throw new Error(
-        `Unknown model: ${modelName}. Available models: ${Object.keys(AVAILABLE_MODELS).join(', ')}`
-      )
-    }
-
-    const newModelConfig = AVAILABLE_MODELS[modelName]
-    if (!newModelConfig) {
-      throw new Error(`Model configuration not found for: ${modelName}`)
-    }
-
-    logger.info(`🔄 Switching from ${this.modelConfig.modelId} to ${newModelConfig.modelId}...`)
-
-    // Update model configuration
-    this.modelConfig = newModelConfig
-
-    // Reset pipeline
-    this.pipeline = null
-    this.isInitialized = false
-    this.initPromise = null
-    this.downloadProgress.clear()
-
-    // Initialize new model
-    if (!this.isLazyLoading) {
-      await this.initialize()
-    }
-
-    logger.info(`✅ Model switched to ${this.modelConfig.modelId}`)
   }
 
   /**
@@ -538,7 +415,10 @@ export class TransformersEmbeddings extends Embeddings {
         const { stdout } = await execAsync(`du -sh "${cacheDir}"`)
         cacheSize = stdout.split('\t')[0]
       } catch (error) {
-        logger.warn('Could not get cache size:', error instanceof Error ? error : new Error(String(error)))
+        logger.warn(
+          'Could not get cache size:',
+          error instanceof Error ? error : new Error(String(error))
+        )
       }
 
       // Count cached models and list them

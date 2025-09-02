@@ -100,8 +100,20 @@ export class EmbeddingFactory {
    */
   private static async testEmbeddingService(embeddings: Embeddings): Promise<boolean> {
     try {
+      // For TransformersEmbeddings, ensure it's fully initialized
+      if (embeddings instanceof TransformersEmbeddings) {
+        await (embeddings as any).initialize()
+        logger.info('🔄 TransformersEmbeddings initialization completed for health check')
+      }
+      
       const testEmbedding = await embeddings.embedQuery('test')
-      return Array.isArray(testEmbedding) && testEmbedding.length > 0
+      const isValid = Array.isArray(testEmbedding) && testEmbedding.length > 0
+      
+      if (isValid) {
+        logger.info(`✅ Embedding service health check passed (dimension: ${testEmbedding.length})`)
+      }
+      
+      return isValid
     } catch (error) {
       logger.error('Embedding service test failed:', error instanceof Error ? error : new Error(String(error)))
       return false
