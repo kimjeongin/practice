@@ -56,10 +56,8 @@ export class MCPServer {
           case 'search':
             result = await this.searchHandler.handleSearch(this.validateAndCastArgs(args, 'search'))
             break
-          case 'list_sources':
-            result = await this.informationHandler.handleListSources(
-              this.validateAndCastArgs(args, 'list_sources')
-            )
+          case 'get_vectordb_info':
+            result = await this.informationHandler.handleVectorDBInfo()
             break
           default:
             // Graceful handling of unknown tools instead of crashing the service

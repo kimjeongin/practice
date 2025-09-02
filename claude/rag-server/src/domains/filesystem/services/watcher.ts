@@ -3,11 +3,11 @@ import { basename, extname } from 'path'
 import { stat, lstatSync, realpathSync } from 'fs'
 import { stat as statAsync } from 'fs/promises'
 import { EventEmitter } from 'events'
-import { FileMetadata } from '@/domains/rag/core/models.js'
 import { extractFileMetadata } from '@/shared/utils/file-metadata.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { glob } from 'glob'
 import { DocumentProcessor } from '@/domains/rag/services/processor.js'
+import { FileMetadata } from '../../rag/core/types.js'
 
 export interface FileChangeEvent {
   type: 'added' | 'changed' | 'deleted'

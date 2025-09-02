@@ -16,7 +16,7 @@ export interface ChunkingOptions {
   fileType: string
 }
 
-export interface DocumentChunk {
+export interface TextChunk {
   content: string
   index: number
   metadata?: Record<string, any>
@@ -110,7 +110,7 @@ export class ChunkingService {
     })
   }
 
-  async chunkText(text: string, filePath?: string): Promise<DocumentChunk[]> {
+  async chunkText(text: string, filePath?: string): Promise<TextChunk[]> {
     if (!text.trim()) {
       return []
     }
@@ -136,7 +136,7 @@ export class ChunkingService {
       const splitDocs = await splitter.splitDocuments([document])
 
       // Convert to our chunk format
-      const chunks: DocumentChunk[] = splitDocs.map((doc, index) => ({
+      const chunks: TextChunk[] = splitDocs.map((doc, index) => ({
         content: doc.pageContent,
         index,
         metadata: doc.metadata,

@@ -157,32 +157,32 @@ async function testStreamableHTTPClient(): Promise<void> {
       console.log('')
     }
 
-    // 8. Test list_sources tool
-    if (toolsResult.tools.some((t) => t.name === 'list_sources')) {
-      console.log('📂 Testing list_sources tool...')
+    // 8. Test get_vectordb_info tool
+    if (toolsResult.tools.some((t) => t.name === 'get_vectordb_info')) {
+      console.log('🗄️  Testing get_vectordb_info tool...')
       try {
-        const sourcesResult = await client.callTool({
-          name: 'list_sources',
-          arguments: {
-            limit: 10,
-          },
+        const vectordbResult = await client.callTool({
+          name: 'get_vectordb_info',
+          arguments: {},
         })
-        console.log(sourcesResult)
+        console.log(vectordbResult)
 
         if (
-          sourcesResult.content &&
-          sourcesResult.content[0] &&
-          'text' in sourcesResult.content[0]
+          vectordbResult.content &&
+          vectordbResult.content[0] &&
+          'text' in vectordbResult.content[0]
         ) {
-          const result = JSON.parse((sourcesResult.content[0] as any).text) as any
-          console.log('🎯 Sources list results:', {
-            totalSources: result.total_sources,
-            fileTypes: Object.keys(result.sources_by_type || {}),
-            firstSource: result.sources?.[0]?.name || 'No sources',
+          const result = JSON.parse((vectordbResult.content[0] as any).text) as any
+          console.log('🎯 VectorDB info results:', {
+            vectordb: result.vectordb_info?.vectordb || 'unknown',
+            totalFiles: result.vectordb_info?.totalFiles || 0,
+            totalVectors: result.vectordb_info?.totalVectors || 0,
+            dimensions: result.vectordb_info?.dimensions || 0,
+            modelName: result.vectordb_info?.modelName || 'unknown',
           })
         }
       } catch (error) {
-        console.log('⚠️  list_sources test failed:', (error as Error).message)
+        console.log('⚠️  get_vectordb_info test failed:', (error as Error).message)
       }
       console.log('')
     }

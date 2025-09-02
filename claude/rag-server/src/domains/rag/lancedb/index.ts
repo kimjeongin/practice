@@ -401,7 +401,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
       return {
         totalVectors: countResult,
         dimensions: this.embeddingDimensions,
-        lastUpdated: new Date(),
+        modelName: this.embeddingService?.getModelInfo().name || 'unknown',
       }
     } catch (error) {
       logger.error(
@@ -423,7 +423,8 @@ export class LanceDBProvider implements IVectorStoreProvider {
     }
 
     try {
-      return await this.table.countRows()
+      const rows = await this.table.query().select(['doc_id']).toArray()
+      return [...new Set(rows.map((r) => r.doc_id))].length
     } catch (error) {
       logger.error(
         '❌ Failed to get document count',

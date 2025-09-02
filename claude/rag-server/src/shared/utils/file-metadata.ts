@@ -2,8 +2,8 @@ import { basename } from 'path'
 import { stat } from 'fs/promises'
 import { createHash } from 'crypto'
 import { calculateFileHash } from './crypto.js'
-import { FileMetadata } from '@/domains/rag/core/models.js'
 import { logger } from '@/shared/logger/index.js'
+import { FileMetadata } from '../../domains/rag/core/types.js'
 
 export async function extractFileId(filePath: string): Promise<string> {
   return createHash('sha256').update(filePath).digest('hex').substring(0, 16)
