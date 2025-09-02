@@ -80,14 +80,6 @@ export interface ServerConfig extends BaseServerConfig {
     rerankingEnabled: boolean
   }
 
-  // Model migration and compatibility settings
-  modelMigration: {
-    enableAutoMigration: boolean
-    enableIncompatibilityDetection: boolean
-    clearVectorsOnModelChange: boolean
-    backupEmbeddingsBeforeMigration: boolean
-    migrationTimeout: number
-  }
 
   // MCP Transport configuration
   mcp: MCPTransportConfig
@@ -131,14 +123,6 @@ export class ConfigFactory {
         semanticWeight: 0.7,
         rerankingEnabled: false,
       },
-      modelMigration: {
-        enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
-        enableIncompatibilityDetection: process.env['ENABLE_INCOMPATIBILITY_DETECTION'] !== 'false',
-        clearVectorsOnModelChange: process.env['CLEAR_VECTORS_ON_MODEL_CHANGE'] !== 'false',
-        backupEmbeddingsBeforeMigration:
-          process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] === 'true', // False by default in dev
-        migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '300000'), // 5 minutes
-      },
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'stdio',
         port: parseInt(process.env['MCP_PORT'] || '3000'),
@@ -181,14 +165,6 @@ export class ConfigFactory {
         enableQueryRewriting: process.env['ENABLE_QUERY_REWRITING'] !== 'false',
         semanticWeight: parseFloat(process.env['SEMANTIC_WEIGHT'] || '0.7'),
         rerankingEnabled: process.env['ENABLE_RERANKING'] !== 'false',
-      },
-      modelMigration: {
-        enableAutoMigration: process.env['ENABLE_AUTO_MIGRATION'] !== 'false',
-        enableIncompatibilityDetection: process.env['ENABLE_INCOMPATIBILITY_DETECTION'] !== 'false',
-        clearVectorsOnModelChange: process.env['CLEAR_VECTORS_ON_MODEL_CHANGE'] !== 'false',
-        backupEmbeddingsBeforeMigration:
-          process.env['BACKUP_EMBEDDINGS_BEFORE_MIGRATION'] !== 'false', // True by default in production
-        migrationTimeout: parseInt(process.env['MIGRATION_TIMEOUT'] || '600000'), // 10 minutes in production
       },
       mcp: {
         type: (process.env['MCP_TRANSPORT'] as any) || 'streamable-http',
@@ -234,13 +210,6 @@ export class ConfigFactory {
         enableQueryRewriting: false,
         semanticWeight: 0.7,
         rerankingEnabled: false,
-      },
-      modelMigration: {
-        enableAutoMigration: false, // Disabled in tests to avoid interference
-        enableIncompatibilityDetection: false,
-        clearVectorsOnModelChange: false,
-        backupEmbeddingsBeforeMigration: false,
-        migrationTimeout: 30000, // Short timeout for tests
       },
       mcp: {
         type: 'stdio',
@@ -339,7 +308,7 @@ export class ConfigFactory {
 
   private static createBaseConfig(): Omit<
     ServerConfig,
-    'vectorStore' | 'pipeline' | 'search' | 'modelMigration' | 'mcp'
+    'vectorStore' | 'pipeline' | 'search' | 'mcp'
   > {
     const service = process.env['EMBEDDING_SERVICE'] || 'transformers'
     const dataDir = resolve(process.env['DATA_DIR'] || './.data')

@@ -9,11 +9,14 @@ export enum ErrorCode {
   FILE_PARSE_ERROR = 'FILE_PARSE_ERROR',
   FILE_NOT_FOUND = 'FILE_NOT_FOUND',
   DOCUMENT_PROCESSING_ERROR = 'DOCUMENT_PROCESSING_ERROR',
+  PROCESSING_ERROR = 'PROCESSING_ERROR',
+  DELETE_ERROR = 'DELETE_ERROR',
 
   // Vector Store Errors
   VECTOR_STORE_ERROR = 'VECTOR_STORE_ERROR',
   EMBEDDING_ERROR = 'EMBEDDING_ERROR',
   SEARCH_ERROR = 'SEARCH_ERROR',
+  WRITE_ERROR = 'WRITE_ERROR',
 
   // Database Errors
   DATABASE_ERROR = 'DATABASE_ERROR',
@@ -27,6 +30,9 @@ export enum ErrorCode {
   // Configuration Errors
   CONFIG_ERROR = 'CONFIG_ERROR',
   VALIDATION_ERROR = 'VALIDATION_ERROR',
+
+  // Initialization Errors
+  INITIALIZATION_ERROR = 'INITIALIZATION_ERROR',
 
   // Generic Errors
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
@@ -49,25 +55,27 @@ export interface ErrorContext {
  */
 export class StructuredError extends Error {
   public readonly code: ErrorCode
-  public readonly statusCode: number
+  public readonly severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
   public readonly context: ErrorContext
   public readonly isOperational: boolean
   public readonly timestamp: Date
+  public override readonly cause?: Error
 
   constructor(
     message: string,
     code: ErrorCode = ErrorCode.UNKNOWN_ERROR,
-    statusCode: number = 500,
+    severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'HIGH',
     context: ErrorContext = {},
-    isOperational: boolean = true
+    cause?: Error
   ) {
     super(message)
     this.name = 'StructuredError'
     this.code = code
-    this.statusCode = statusCode
+    this.severity = severity
     this.context = { ...context, timestamp: new Date() }
-    this.isOperational = isOperational
+    this.isOperational = true
     this.timestamp = new Date()
+    this.cause = cause
 
     // Maintain proper stack trace for where our error was thrown
     if (Error.captureStackTrace) {
@@ -80,10 +88,11 @@ export class StructuredError extends Error {
       name: this.name,
       message: this.message,
       code: this.code,
-      statusCode: this.statusCode,
+      severity: this.severity,
       context: this.context,
       isOperational: this.isOperational,
       timestamp: this.timestamp,
+      cause: this.cause,
       stack: this.stack || undefined,
     }
   }
@@ -94,12 +103,12 @@ export class StructuredError extends Error {
  */
 export class FileProcessingError extends StructuredError {
   constructor(message: string, filePath: string, operation: string, originalError?: Error) {
-    super(message, ErrorCode.FILE_PARSE_ERROR, 500, {
+    super(message, ErrorCode.FILE_PARSE_ERROR, 'HIGH', {
       filePath,
       operation,
       originalError: originalError?.message,
       stack: originalError?.stack,
-    })
+    }, originalError)
     this.name = 'FileProcessingError'
   }
 }
@@ -114,12 +123,12 @@ export class VectorStoreError extends StructuredError {
     context: ErrorContext = {},
     originalError?: Error
   ) {
-    super(message, ErrorCode.VECTOR_STORE_ERROR, 500, {
+    super(message, ErrorCode.VECTOR_STORE_ERROR, 'HIGH', {
       ...context,
       operation,
       originalError: originalError?.message,
       stack: originalError?.stack,
-    })
+    }, originalError)
     this.name = 'VectorStoreError'
   }
 }
@@ -134,12 +143,12 @@ export class SearchError extends StructuredError {
     searchType: 'semantic' | 'keyword' | 'hybrid',
     originalError?: Error
   ) {
-    super(message, ErrorCode.SEARCH_ERROR, 500, {
+    super(message, ErrorCode.SEARCH_ERROR, 'HIGH', {
       query,
       searchType,
       originalError: originalError?.message,
       stack: originalError?.stack,
-    })
+    }, originalError)
     this.name = 'SearchError'
   }
 }
@@ -149,7 +158,7 @@ export class SearchError extends StructuredError {
  */
 export class TimeoutError extends StructuredError {
   constructor(operation: string, timeoutMs: number, context: ErrorContext = {}) {
-    super(`Operation '${operation}' timed out after ${timeoutMs}ms`, ErrorCode.TIMEOUT_ERROR, 408, {
+    super(`Operation '${operation}' timed out after ${timeoutMs}ms`, ErrorCode.TIMEOUT_ERROR, 'MEDIUM', {
       ...context,
       operation,
       timeoutMs,
@@ -163,11 +172,11 @@ export class TimeoutError extends StructuredError {
  */
 export class DatabaseError extends StructuredError {
   constructor(message: string, operation: string, originalError?: Error) {
-    super(message, ErrorCode.DATABASE_ERROR, 500, {
+    super(message, ErrorCode.DATABASE_ERROR, 'HIGH', {
       operation,
       originalError: originalError?.message,
       stack: originalError?.stack,
-    })
+    }, originalError)
     this.name = 'DatabaseError'
   }
 }
@@ -177,11 +186,11 @@ export class DatabaseError extends StructuredError {
  */
 export class EmbeddingError extends StructuredError {
   constructor(message: string, model: string, originalError?: Error) {
-    super(message, ErrorCode.EMBEDDING_ERROR, 500, {
+    super(message, ErrorCode.EMBEDDING_ERROR, 'HIGH', {
       model,
       originalError: originalError?.message,
       stack: originalError?.stack,
-    })
+    }, originalError)
     this.name = 'EmbeddingError'
   }
 }
@@ -194,12 +203,11 @@ export class ConfigurationError extends StructuredError {
     super(
       message,
       ErrorCode.CONFIG_ERROR,
-      400,
+      'CRITICAL',
       {
         configKey,
         expectedType,
-      },
-      false // Configuration errors are not operational
+      }
     )
     this.name = 'ConfigurationError'
   }

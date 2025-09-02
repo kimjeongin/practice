@@ -5,6 +5,10 @@ import { calculateFileHash } from './crypto.js'
 import { FileMetadata } from '@/domains/rag/core/models.js'
 import { logger } from '@/shared/logger/index.js'
 
+export async function extractFileId(filePath: string): Promise<string> {
+  return createHash('sha256').update(filePath).digest('hex').substring(0, 16)
+}
+
 /**
  * Extract comprehensive file metadata with consistent ID and hash generation
  * Used by both DocumentProcessor and FileWatcher for consistency
@@ -16,14 +20,17 @@ export async function extractFileMetadata(filePath: string): Promise<FileMetadat
     const fileExtension = fileName.split('.').pop()?.toLowerCase() || ''
 
     // Generate consistent file ID based on path (deterministic)
-    const fileId = createHash('sha256').update(filePath).digest('hex').substring(0, 16)
+    const fileId = await extractFileId(filePath)
 
     // Calculate actual file hash for content-based change detection
     let fileHash: string
     try {
       fileHash = calculateFileHash(filePath).substring(0, 16)
     } catch (error) {
-      logger.warn(`Failed to calculate file hash for ${filePath}, using fallback`, { filePath, error: error instanceof Error ? error : new Error(String(error)) })
+      logger.warn(`Failed to calculate file hash for ${filePath}, using fallback`, {
+        filePath,
+        error: error instanceof Error ? error : new Error(String(error)),
+      })
       // Use path + size + mtime as fallback hash for consistency
       const fallback = `${filePath}_${stats.size}_${stats.mtime.getTime()}`
       fileHash = createHash('sha256').update(fallback).digest('hex').substring(0, 16)

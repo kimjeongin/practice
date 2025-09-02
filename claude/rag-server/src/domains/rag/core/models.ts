@@ -16,7 +16,7 @@ export interface FileMetadata {
 }
 
 // VectorDB에 저장되는 문서 메타데이터 (새로운 통합된 메타데이터 타입)
-import type { DocumentMetadata as ImportedDocumentMetadata } from '../integrations/vectorstores/providers/lancedb/simple-schema.js'
+import type { DocumentMetadata as ImportedDocumentMetadata } from './types.js'
 
 // 새로운 메타데이터 타입 re-export
 export type DocumentMetadata = ImportedDocumentMetadata

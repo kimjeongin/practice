@@ -1,4 +1,4 @@
-import { LanceDBProvider } from '@/domains/rag/integrations/vectorstores/providers/lancedb/index.js'
+import { LanceDBProvider } from '@/domains/rag/lancedb/index.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
 
@@ -78,28 +78,19 @@ export class InformationHandler {
    */
   private async extractBasicFileInfo(limit: number = 1000): Promise<any[]> {
     try {
-      // Use getAllFileMetadata if available for efficiency (preferred method)
-      if (this.vectorStoreProvider.getAllFileMetadata) {
-        logger.debug('Using getAllFileMetadata for efficient source extraction')
-        const fileMetadataMap = await this.vectorStoreProvider.getAllFileMetadata()
-
-        const files: any[] = []
-        for (const [, metadata] of fileMetadataMap) {
-          const fileType = metadata.fileType || this.guessFileType(metadata.fileName || '')
-
-          files.push({
-            name: metadata.fileName || 'unknown',
-            path: metadata.filePath || metadata.fileName || 'unknown',
-            file_type: fileType,
-            size: metadata.size || 0,
-          })
-        }
-
-        return files.slice(0, limit)
-      } else {
-        logger.warn('getAllFileMetadata not found')
-        return []
-      }
+      // Get basic info about the vector store
+      const indexStats = await this.vectorStoreProvider.getIndexStats()
+      const documentCount = await this.vectorStoreProvider.getDocumentCount()
+      
+      return [{
+        name: 'Vector Store Documents',
+        path: 'vector_store',
+        type: 'collection',
+        size: documentCount || 0,
+        totalVectors: indexStats?.totalVectors || 0,
+        dimensions: indexStats?.dimensions || 0,
+        lastUpdated: indexStats?.lastUpdated || new Date(),
+      }]
     } catch (error) {
       logger.warn(
         'Failed to extract sources from VectorStore',

@@ -1,13 +1,21 @@
-// RAG Domain Exports
+/**
+ * RAG Domain - Main Export
+ * Consolidated exports for the refactored RAG domain
+ */
+
+// Core types and interfaces
 export * from './core/types.js'
-export * from './core/models.js'
-export * from './services/chunking.js'
-export * from './services/models/index.js'
-export * from './services/document/reader.js'
-export * from './services/search/search-service.js'
-export * from './services/document/processor.js'
-// Services with database dependencies removed (VectorStore-only architecture):
-// - workflow.ts (replaced with direct VectorStore operations)
-// - repositories/* (eliminated entirely)
-export * from './integrations/embeddings/index.js'
-export * from './integrations/vectorstores/index.js'
+export * from './core/interfaces.js'
+
+// LanceDB implementation
+export { LanceDBProvider } from './lancedb/index.js'
+
+// Services
+export { SearchService } from './services/search.js'
+export { DocumentProcessor } from './services/processor.js'
+export { FileReader } from './services/reader.js'
+export { ChunkingService } from './services/chunking.js'
+
+// Embeddings
+export { EmbeddingFactory, EmbeddingAdapter } from './embeddings/index.js'
+

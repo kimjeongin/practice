@@ -1,10 +1,10 @@
 /**
- * LanceDB 설정 (간소화 버전)
- * GPT Best Practice 방식에 맞는 간단한 설정
+ * LanceDB Configuration - Simplified
+ * Simple configuration following GPT Best Practices
  */
 
 /**
- * LanceDB 기본 상수들
+ * LanceDB default constants
  */
 export const LANCEDB_CONSTANTS = {
   DEFAULT_VECTOR_DIMENSIONS: 768,
@@ -15,14 +15,15 @@ export const LANCEDB_CONSTANTS = {
 } as const
 
 /**
- * 간소화된 테이블 설정
+ * Simplified table configuration
  */
 export interface LanceDBTableConfig {
   name: string
   embeddingDimensions: number
 }
+
 /**
- * 연결 옵션
+ * Connection options
  */
 export interface LanceDBConnectionOptions {
   uri: string
@@ -33,7 +34,7 @@ export interface LanceDBConnectionOptions {
 }
 
 /**
- * 기본 연결 설정
+ * Default connection configuration
  */
 export const DEFAULT_CONNECTION_OPTIONS: LanceDBConnectionOptions = {
   uri: './.data/lancedb',

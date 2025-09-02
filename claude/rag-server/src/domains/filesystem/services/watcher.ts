@@ -7,7 +7,7 @@ import { FileMetadata } from '@/domains/rag/core/models.js'
 import { extractFileMetadata } from '@/shared/utils/file-metadata.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { glob } from 'glob'
-import { DocumentProcessor } from '@/domains/rag/services/document/processor.js'
+import { DocumentProcessor } from '@/domains/rag/services/processor.js'
 
 export interface FileChangeEvent {
   type: 'added' | 'changed' | 'deleted'
@@ -155,7 +155,10 @@ export class FileWatcher extends EventEmitter {
           await this.handleFileChanged(path)
         }
       } catch (error) {
-        logger.error('Error processing file ${path}:', error instanceof Error ? error : new Error(String(error)))
+        logger.error(
+          'Error processing file ${path}:',
+          error instanceof Error ? error : new Error(String(error))
+        )
         this.emit('error', error)
       }
     }, this.DEBOUNCE_DELAY)
@@ -172,7 +175,10 @@ export class FileWatcher extends EventEmitter {
       const metadata = await this.getFileMetadata(path)
       this.emit('change', { type: 'added', path, metadata })
     } catch (error) {
-      logger.error('Error handling file added: ${path}', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        'Error handling file added: ${path}',
+        error instanceof Error ? error : new Error(String(error))
+      )
       this.emit('error', error)
     }
   }
@@ -186,7 +192,10 @@ export class FileWatcher extends EventEmitter {
       const metadata = await this.getFileMetadata(path)
       this.emit('change', { type: 'changed', path, metadata })
     } catch (error) {
-      logger.error('Error handling file changed: ${path}', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        'Error handling file changed: ${path}',
+        error instanceof Error ? error : new Error(String(error))
+      )
       this.emit('error', error)
     }
   }
@@ -195,7 +204,10 @@ export class FileWatcher extends EventEmitter {
     try {
       this.emit('change', { type: 'deleted', path })
     } catch (error) {
-      logger.error('Error handling file removed: ${path}', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        'Error handling file removed: ${path}',
+        error instanceof Error ? error : new Error(String(error))
+      )
       this.emit('error', error)
     }
   }
@@ -243,7 +255,7 @@ export class FileWatcher extends EventEmitter {
 
       // Get vector store provider from document processor
       const vectorStoreProvider = (this.documentProcessor as any).vectorStoreProvider
-      
+
       if (!vectorStoreProvider || !vectorStoreProvider.getAllFileMetadata) {
         logger.warn(
           'getAllFileMetadata not supported by vector store provider, performing full sync instead'
@@ -398,13 +410,15 @@ export class FileWatcher extends EventEmitter {
         }
       }
 
+      const resultsFils = await vectorStoreProvider.getAllFileMetadata()
+
       logger.info('✅ Smart directory synchronization completed', {
-        totalFiles: currentFilePaths.length,
+        totalFiles: resultsFils.length,
         newFiles,
         updatedFiles,
         skippedFiles,
         deletedFiles,
-        vectorStoreFiles: existingFiles.size,
+        vectorStoreFiles: resultsFils.size,
         component: 'FileWatcher',
       })
     } catch (error) {
@@ -424,7 +438,10 @@ export class FileWatcher extends EventEmitter {
    * Check if file should be processed based on changes
    * Returns true if file needs processing, false if unchanged
    */
-  private async shouldProcessFile(currentMetadata: FileMetadata, vectorStoreProvider: any): Promise<boolean> {
+  private async shouldProcessFile(
+    currentMetadata: FileMetadata,
+    vectorStoreProvider: any
+  ): Promise<boolean> {
     try {
       // Get existing metadata from vector store
       if (!vectorStoreProvider.getFileMetadata) {

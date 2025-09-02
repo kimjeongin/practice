@@ -1,5 +1,5 @@
-import { SearchService } from '@/domains/rag/services/search/search-service.js'
-import { SearchOptions } from '@/domains/rag/core/types.js'
+import { SearchService } from '@/domains/rag/services/search.js'
+import type { SearchOptions } from '@/domains/rag/core/types.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
 

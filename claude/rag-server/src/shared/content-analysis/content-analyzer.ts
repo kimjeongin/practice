@@ -11,7 +11,7 @@
  */
 
 import { logger } from '@/shared/logger/index.js'
-import { DocumentMetadata } from '@/domains/rag/integrations/vectorstores/providers/lancedb/simple-schema.js'
+import { DocumentMetadata } from '@/domains/rag/core/types.js'
 
 /**
  * Content analysis configuration

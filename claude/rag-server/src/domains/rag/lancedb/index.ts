@@ -1,34 +1,35 @@
 /**
- * LanceDB Provider - 간소화 버전 (GPT Best Practice 방식)
- * 복잡한 77개 필드를 5개 필드로 간소화
- * 직접적인 LanceDB 네이티브 API 사용
+ * LanceDB Provider - Simplified Version
+ * GPT Best Practice approach: 5 fields instead of 77 complex fields
+ * Direct LanceDB native API usage
  */
 
 import * as lancedb from '@lancedb/lancedb'
-import { VectorStoreProvider, VectorStoreCapabilities } from '../../core/interfaces.js'
-import {
+import type { IVectorStoreProvider } from '@/domains/rag/core/interfaces.js'
+import type {
   VectorDocument,
   VectorSearchResult,
   VectorSearchOptions,
   IndexStats,
-} from '../../core/types.js'
-import { EmbeddingAdapter } from '../../../embeddings/adapter.js'
-import { EmbeddingFactory } from '../../../embeddings/index.js'
-import { ServerConfig } from '@/shared/config/config-factory.js'
+  RAGDocumentRecord,
+  SearchFilters,
+  RAGSearchResult,
+} from '@/domains/rag/core/types.js'
+import { EmbeddingAdapter } from '@/domains/rag/embeddings/adapter.js'
+import { EmbeddingFactory } from '@/domains/rag/embeddings/index.js'
+import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { TimeoutWrapper } from '@/shared/utils/resilience.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
 import { StructuredError, ErrorCode } from '@/shared/errors/index.js'
 
-// 새로운 간소화된 타입들
+// Import simplified schema functions
 import {
-  RAGDocumentRecord,
-  RAGSearchResult,
-  createSimpleLanceDBSchema,
+  createLanceDBSchema,
   convertVectorDocumentToRAGRecord,
   convertRAGResultToVectorSearchResult,
-  type SearchFilters,
-} from './types.js'
+  buildWhereClause,
+} from './schema.js'
 
 import {
   LanceDBEmbeddingBridge,
@@ -37,7 +38,7 @@ import {
 
 import { LANCEDB_CONSTANTS, type LanceDBConnectionOptions } from './config.js'
 
-export class LanceDBProvider implements VectorStoreProvider {
+export class LanceDBProvider implements IVectorStoreProvider {
   private db: lancedb.Connection | null = null
   private table: lancedb.Table | null = null
   private embeddingService: EmbeddingAdapter | null = null
@@ -48,15 +49,6 @@ export class LanceDBProvider implements VectorStoreProvider {
   private connectionOptions: LanceDBConnectionOptions
   private tableName: string
   private embeddingDimensions: number
-
-  public readonly capabilities: VectorStoreCapabilities = {
-    supportsMetadataFiltering: true,
-    supportsHybridSearch: true,
-    supportsReranking: true,
-    supportsRealTimeUpdates: true,
-    supportsBatchOperations: true,
-    supportsIndexCompaction: false,
-  }
 
   constructor(
     private config: ServerConfig,
@@ -99,136 +91,78 @@ export class LanceDBProvider implements VectorStoreProvider {
         component: 'LanceDBProvider',
       })
 
-      // 1. LanceDB 연결 (간단한 설정)
+      // Connect to LanceDB
       this.db = await lancedb.connect(this.connectionOptions.uri)
 
-      // 2. 임베딩 서비스 초기화
-      await this.initializeEmbeddingService()
+      // Initialize embedding service
+      this.embeddingService = await EmbeddingFactory.createEmbeddingAdapter(this.config)
+      this.embeddingDimensions = this.embeddingService.getModelInfo().dimensions
 
-      // 3. 테이블 초기화 (GPT 방식)
-      await this.initializeSimpleTable()
+      // Create embedding bridge
+      this.embeddingBridge = createLanceDBEmbeddingBridgeFromService(this.embeddingService)
+
+      // Create or open table
+      await this._initializeTable()
 
       this.isInitialized = true
-
-      logger.info('✅ Simplified LanceDB initialization completed', {
+      logger.info('✅ LanceDB Provider initialized successfully', {
         uri: this.connectionOptions.uri,
         tableName: this.tableName,
-        embeddingDimensions: this.embeddingDimensions,
+        dimensions: this.embeddingDimensions,
         component: 'LanceDBProvider',
       })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error(
-        '❌ LanceDB initialization failed',
-        error instanceof Error ? error : new Error(errorMessage),
-        {
-          uri: this.connectionOptions.uri,
-          component: 'LanceDBProvider',
-        }
+      const structuredError = new StructuredError(
+        'Failed to initialize LanceDB provider',
+        ErrorCode.INITIALIZATION_ERROR,
+        'CRITICAL',
+        { uri: this.connectionOptions.uri },
+        error instanceof Error ? error : new Error(String(error))
       )
-      errorMonitor.recordError(
-        error instanceof StructuredError
-          ? error
-          : new StructuredError(errorMessage, ErrorCode.VECTOR_STORE_ERROR)
-      )
-      throw error
+      errorMonitor.recordError(structuredError)
+      logger.error('❌ LanceDB Provider initialization failed', structuredError)
+      throw structuredError
     } finally {
       endTiming()
     }
   }
 
-  private async initializeEmbeddingService(): Promise<void> {
-    try {
-      logger.info('🧠 Initializing embedding service...', {
-        component: 'LanceDBProvider',
-      })
-
-      const { embeddings, actualService } = await EmbeddingFactory.createWithFallback(this.config)
-      this.embeddingService = new EmbeddingAdapter(embeddings, actualService)
-      this.embeddingBridge = createLanceDBEmbeddingBridgeFromService(this.embeddingService, 'text')
-
-      // 차원 수 업데이트
-      this.embeddingDimensions = this.embeddingBridge.ndims()
-
-      // 간단한 워밍업
-      await this.embeddingService.embedQuery('warmup test')
-
-      logger.info('✅ Embedding service initialized', {
-        service: actualService,
-        dimensions: this.embeddingDimensions,
-        component: 'LanceDBProvider',
-      })
-    } catch (error) {
-      logger.error(
-        '❌ Failed to initialize embedding service',
-        error instanceof Error ? error : new Error(String(error)),
-        {
-          component: 'LanceDBProvider',
-        }
-      )
-      throw error
-    }
-  }
-
-  /**
-   * GPT 방식의 간단한 테이블 초기화
-   */
-  private async initializeSimpleTable(): Promise<void> {
-    if (!this.db) {
-      throw new Error('Database connection not initialized')
+  private async _initializeTable(): Promise<void> {
+    if (!this.db || !this.embeddingBridge) {
+      throw new Error('Database connection or embedding bridge not initialized')
     }
 
     try {
-      logger.info('🔄 Initializing simple LanceDB table...', {
-        tableName: this.tableName,
-        embeddingDimensions: this.embeddingDimensions,
-        component: 'LanceDBProvider',
-      })
-
-      // GPT 방식: 간단한 스키마 정의
-      const schema = createSimpleLanceDBSchema(this.embeddingDimensions)
-
-      // 기존 테이블 확인
+      // Check if table exists
       const tableNames = await this.db.tableNames()
-      const tableExists = tableNames.includes(this.tableName)
 
-      if (tableExists) {
-        logger.info('📋 Opening existing table', {
-          tableName: this.tableName,
-          component: 'LanceDBProvider',
-        })
+      if (tableNames.includes(this.tableName)) {
+        // Open existing table
         this.table = await this.db.openTable(this.tableName)
-      } else {
-        logger.info('🆕 Creating new table with simple schema', {
+        logger.info('📂 Opened existing LanceDB table', {
           tableName: this.tableName,
           component: 'LanceDBProvider',
         })
+      } else {
+        // Create new table with simplified schema
+        const schema = createLanceDBSchema(this.embeddingDimensions)
 
-        // 빈 테이블 생성 (GPT 방식)
-        this.table = await this.db.createTable(this.tableName, [], { schema })
-      }
+        // Create table with empty data (will add documents later)
+        const emptyData: RAGDocumentRecord[] = []
 
-      logger.info('✅ Simple table initialization completed', {
-        tableName: this.tableName,
-        existed: tableExists,
-        component: 'LanceDBProvider',
-      })
-    } catch (error) {
-      logger.error(
-        '❌ Failed to initialize simple table',
-        error instanceof Error ? error : new Error(String(error)),
-        {
+        this.table = await this.db.createTable(this.tableName, emptyData, { schema })
+
+        logger.info('🆕 Created new LanceDB table', {
           tableName: this.tableName,
+          dimensions: this.embeddingDimensions,
           component: 'LanceDBProvider',
-        }
-      )
-      throw error
+        })
+      }
+    } catch (error) {
+      throw new Error(`Failed to initialize table ${this.tableName}: ${error}`)
     }
   }
 
-  /**
-   * GPT 방식의 간소화된 문서 추가
-   */
   async addDocuments(documents: VectorDocument[]): Promise<void> {
     await this.initialize()
 
@@ -246,6 +180,8 @@ export class LanceDBProvider implements VectorStoreProvider {
         count: documents.length,
         component: 'LanceDBProvider',
       })
+
+      const currentModelName = this.embeddingService?.getModelInfo().name || 'unknown'
 
       // 배치 처리
       const batchSize = LANCEDB_CONSTANTS.DEFAULT_BATCH_SIZE
@@ -267,6 +203,7 @@ export class LanceDBProvider implements VectorStoreProvider {
           const ragRecord = convertVectorDocumentToRAGRecord({
             ...doc,
             vector: embedding,
+            modelName: doc.modelName || currentModelName,
           })
           records.push(ragRecord)
         }
@@ -300,10 +237,6 @@ export class LanceDBProvider implements VectorStoreProvider {
       endTiming()
     }
   }
-
-  /**
-   * GPT 방식의 간소화된 벡터 검색
-   */
   async search(query: string, options: VectorSearchOptions = {}): Promise<VectorSearchResult[]> {
     await this.initialize()
 
@@ -388,49 +321,29 @@ export class LanceDBProvider implements VectorStoreProvider {
     }
   }
 
-  /**
-   * 문서 삭제 (간소화)
-   */
-  async deleteDocuments(ids: string[]): Promise<void> {
-    await this.initialize()
-    if (!this.table) {
-      throw new Error('LanceDB table not initialized')
-    }
-
-    try {
-      logger.info('🗑️ Deleting documents', { count: ids.length, component: 'LanceDBProvider' })
-
-      // GPT 방식: 간단한 ID 기반 삭제
-      const idsString = ids.map((id) => `'${id}'`).join(', ')
-      await this.table.delete(`doc_id IN (${idsString})`)
-
-      logger.info('✅ Documents deleted', { count: ids.length, component: 'LanceDBProvider' })
-    } catch (error) {
-      logger.error(
-        '❌ Failed to delete documents',
-        error instanceof Error ? error : new Error(String(error)),
-        {
-          documentCount: ids.length,
-          component: 'LanceDBProvider',
-        }
-      )
-      throw error
-    }
-  }
-
   async removeDocumentsByFileId(fileId: string): Promise<void> {
     await this.initialize()
+
     if (!this.table) {
-      throw new Error('LanceDB table not initialized')
+      throw new Error('Table not initialized')
     }
 
     try {
-      logger.info('🗑️ Removing documents by fileId', { fileId, component: 'LanceDBProvider' })
+      logger.info('🗑️ Removing documents by file ID', {
+        fileId,
+        component: 'LanceDBProvider',
+      })
+
+      // Delete documents with matching doc_id
       await this.table.delete(`doc_id = '${fileId}'`)
-      logger.info('✅ Documents removed by fileId', { fileId, component: 'LanceDBProvider' })
+
+      logger.info('✅ Documents removed successfully', {
+        fileId,
+        component: 'LanceDBProvider',
+      })
     } catch (error) {
       logger.error(
-        '❌ Failed to remove documents by fileId',
+        '❌ Failed to remove documents',
         error instanceof Error ? error : new Error(String(error)),
         {
           fileId,
@@ -443,14 +356,22 @@ export class LanceDBProvider implements VectorStoreProvider {
 
   async removeAllDocuments(): Promise<void> {
     await this.initialize()
+
     if (!this.table) {
-      throw new Error('LanceDB table not initialized')
+      throw new Error('Table not initialized')
     }
 
     try {
-      logger.info('🗑️ Removing all documents', { component: 'LanceDBProvider' })
-      await this.table.delete('true') // 모든 행 삭제
-      logger.info('✅ All documents removed', { component: 'LanceDBProvider' })
+      logger.info('🗑️ Removing all documents from LanceDB', {
+        component: 'LanceDBProvider',
+      })
+
+      // Delete all documents
+      await this.table.delete('true')
+
+      logger.info('✅ All documents removed successfully', {
+        component: 'LanceDBProvider',
+      })
     } catch (error) {
       logger.error(
         '❌ Failed to remove all documents',
@@ -463,60 +384,79 @@ export class LanceDBProvider implements VectorStoreProvider {
     }
   }
 
-  getIndexInfo(): IndexStats {
-    return {
-      totalVectors: 0, // 실제 구현에서는 this.table.countRows() 사용
-      dimensions: this.embeddingDimensions,
-      indexSize: 0,
-      lastUpdated: new Date(),
-    }
-  }
-
   isHealthy(): boolean {
     return this.isInitialized && this.db !== null && this.table !== null
   }
 
-  getDocumentCount(): number {
-    return 0 // 실제 구현에서는 this.table.countRows() 사용
-  }
-
-  /**
-   * 파일 메타데이터 조회 (간소화)
-   */
-  async getFileMetadata(fileId: string): Promise<any | null> {
+  async getIndexStats(): Promise<IndexStats> {
     await this.initialize()
-    if (!this.table) return null
+
+    if (!this.table) {
+      throw new Error('Table not initialized')
+    }
 
     try {
-      const results = await this.table
-        .query() // 빈 벡터로 모든 문서 조회
-        .where(`doc_id = '${fileId}'`)
-        .limit(1)
-        .toArray()
+      const countResult = await this.table.countRows()
 
-      if (results.length > 0) {
-        const result = results[0]
-        const metadata = JSON.parse(result.metadata)
-        return {
-          fileId: result.doc_id,
-          fileName: metadata.fileName,
-          filePath: metadata.filePath,
-          fileType: metadata.fileType,
-          size: metadata.fileSize,
-          fileHash: metadata.fileHash,
-          modifiedAt: metadata.modifiedAt,
-          createdAt: metadata.createdAt,
-          processedAt: metadata.processedAt,
-        }
+      return {
+        totalVectors: countResult,
+        dimensions: this.embeddingDimensions,
+        lastUpdated: new Date(),
       }
-      return null
     } catch (error) {
-      logger.warn('Failed to retrieve file metadata', {
-        fileId,
-        error: error instanceof Error ? error.message : String(error),
-        component: 'LanceDBProvider',
-      })
-      return null
+      logger.error(
+        '❌ Failed to get index stats',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'LanceDBProvider',
+        }
+      )
+      throw error
+    }
+  }
+
+  async getDocumentCount(): Promise<number> {
+    await this.initialize()
+
+    if (!this.table) {
+      return 0
+    }
+
+    try {
+      return await this.table.countRows()
+    } catch (error) {
+      logger.error(
+        '❌ Failed to get document count',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'LanceDBProvider',
+        }
+      )
+      return 0
+    }
+  }
+
+  async hasDocumentsForFileId(fileId: string): Promise<boolean> {
+    await this.initialize()
+
+    if (!this.table) {
+      return false
+    }
+
+    try {
+      const results = await this.table.query().where(`doc_id = '${fileId}'`).toArray()
+
+      return results.length > 0
+    } catch (error) {
+      logger.error(
+        '❌ Failed to check documents for file ID',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          fileId,
+          component: 'LanceDBProvider',
+        }
+      )
+      return false
     }
   }
 
@@ -572,3 +512,16 @@ export class LanceDBProvider implements VectorStoreProvider {
     }
   }
 }
+
+// Export for external use
+export {
+  LanceDBEmbeddingBridge,
+  createLanceDBEmbeddingBridgeFromService,
+} from './embedding-bridge.js'
+export { LANCEDB_CONSTANTS, type LanceDBConnectionOptions } from './config.js'
+export {
+  createLanceDBSchema,
+  convertVectorDocumentToRAGRecord,
+  convertRAGResultToVectorSearchResult,
+  buildWhereClause,
+} from './schema.js'

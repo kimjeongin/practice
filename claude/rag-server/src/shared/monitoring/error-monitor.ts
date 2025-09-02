@@ -449,14 +449,13 @@ export function setupGlobalErrorHandling() {
     const error = new StructuredError(
       `Unhandled Promise Rejection: ${reason?.message || reason}`,
       ErrorCode.UNKNOWN_ERROR,
-      500,
+      'CRITICAL',
       {
         component: 'global',
         operation: 'unhandled_rejection',
         promise: promise.toString(),
         reason: reason?.toString(),
-      },
-      false // Not operational
+      }
     )
 
     errorMonitor.recordError(error)
@@ -468,14 +467,14 @@ export function setupGlobalErrorHandling() {
     const structuredError = new StructuredError(
       `Uncaught Exception: ${error.message}`,
       ErrorCode.UNKNOWN_ERROR,
-      500,
+      'CRITICAL',
       {
         component: 'global',
         operation: 'uncaught_exception',
         originalError: error.message,
         stack: error.stack,
       },
-      false // Not operational
+      error
     )
 
     errorMonitor.recordError(structuredError)

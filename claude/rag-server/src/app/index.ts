@@ -12,101 +12,6 @@ import { InformationHandler } from '@/domains/mcp/handlers/information.js'
 // SearchService and RAGWorkflow removed as part of VectorStore-only architecture
 // These will be refactored in Phase 7 to work with VectorStore-only architecture
 
-/**
- * Check model compatibility and handle migration if needed
- */
-async function checkAndHandleModelMigration(modelCompatibilityService: any, config: any) {
-  try {
-    // Create model info based on config and service type
-    const modelInfo = {
-      name: config.embeddingModel,
-      service: config.embeddingService,
-      dimensions: config.embeddingDimensions,
-      model: config.embeddingModel,
-    }
-
-    logger.info('🔍 Checking embedding model compatibility on startup', {
-      service: config.embeddingService,
-      model: config.embeddingModel,
-      dimensions: modelInfo.dimensions,
-      autoMigration: config.modelMigration.enableAutoMigration,
-      clearOnChange: config.modelMigration.clearVectorsOnModelChange,
-    })
-
-    // Check compatibility
-    const compatibility = await modelCompatibilityService.checkModelCompatibility(config, modelInfo)
-
-    logger.info('📋 Model compatibility check result', {
-      isCompatible: compatibility.isCompatible,
-      requiresReindexing: compatibility.requiresReindexing,
-      issues: compatibility.issues,
-      hasCurrentMetadata: !!compatibility.currentMetadata,
-      currentMetadataInfo: compatibility.currentMetadata
-        ? {
-            modelName: compatibility.currentMetadata.modelName,
-            serviceName: compatibility.currentMetadata.serviceName,
-            dimensions: compatibility.currentMetadata.dimensions,
-            configHash: compatibility.currentMetadata.configHash,
-          }
-        : null,
-    })
-
-    if (!compatibility.isCompatible || compatibility.requiresReindexing) {
-      if (config.modelMigration.enableAutoMigration) {
-        logger.warn('🔄 Auto-migration enabled - handling model changes', {
-          issues: compatibility.issues,
-          requiresReindexing: compatibility.requiresReindexing,
-          willClearVectors: config.modelMigration.clearVectorsOnModelChange,
-        })
-
-        await modelCompatibilityService.handleModelMigration(compatibility, config)
-        logger.info('✅ Model migration completed successfully')
-      } else {
-        logger.warn('⚠️ Model incompatibility detected but auto-migration disabled', {
-          issues: compatibility.issues,
-          suggestion: 'Enable AUTO_MIGRATION=true to handle automatically or run manual migration',
-          currentConfig: {
-            service: config.embeddingService,
-            model: config.embeddingModel,
-            dimensions: config.embeddingDimensions,
-          },
-        })
-      }
-    } else {
-      logger.info('✅ Model configuration is compatible, no migration needed')
-    }
-
-    // Update or create metadata
-    const metadataId = await modelCompatibilityService.createOrUpdateMetadata(config, modelInfo, {
-      documents: 0, // Will be updated as documents are processed
-      vectors: 0,
-    })
-
-    logger.info('📝 Model metadata updated', {
-      metadataId,
-      modelName: modelInfo.name,
-      serviceName: modelInfo.service,
-    })
-  } catch (error) {
-    logger.error(
-      '❌ Failed to check model compatibility',
-      error instanceof Error ? error : new Error(String(error)),
-      {
-        service: config.embeddingService,
-        model: config.embeddingModel,
-        autoMigrationEnabled: config.modelMigration.enableAutoMigration,
-      }
-    )
-
-    if (config.modelMigration.enableIncompatibilityDetection) {
-      logger.warn(
-        '⚠️ Model compatibility check failed - proceeding with caution. This may cause issues with vector search.'
-      )
-    } else {
-      logger.info('ℹ️ Model compatibility detection is disabled, continuing startup')
-    }
-  }
-}
 
 /**
  * Initialize all dependencies and create MCPServer instance
@@ -115,28 +20,21 @@ async function initializeServices(config: any) {
   // Initialize services with config passed directly
 
   // Initialize LanceDB provider directly
-  const { LanceDBProvider } = await import('@/domains/rag/integrations/vectorstores/providers/lancedb/index.js')
+  const { LanceDBProvider } = await import('@/domains/rag/lancedb/index.js')
   
   const vectorStoreProvider = new LanceDBProvider(config, {
     uri: config.vectorStore.config.uri,
   }, 'documents')
 
   // Initialize SearchService with direct LanceDB provider
-  const { SearchService } = await import('@/domains/rag/services/search/search-service.js')
+  const { SearchService } = await import('@/domains/rag/services/search.js')
   const searchService = new SearchService(vectorStoreProvider)
 
-  // Initialize ModelCompatibilityService for model migration
-  const { ModelCompatibilityService } = await import('@/domains/rag/services/models/index.js')
-  const modelCompatibilityService = new ModelCompatibilityService(vectorStoreProvider)
-
-  // Check model compatibility and handle migration if needed
-  await checkAndHandleModelMigration(modelCompatibilityService, config)
 
   // Initialize DocumentProcessor for file processing
-  const { DocumentProcessor } = await import('@/domains/rag/services/document/processor.js')
+  const { DocumentProcessor } = await import('@/domains/rag/services/processor.js')
   const documentProcessor = new DocumentProcessor(
     vectorStoreProvider,
-    modelCompatibilityService,
     config
   )
 
