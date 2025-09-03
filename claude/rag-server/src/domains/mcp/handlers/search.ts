@@ -6,15 +6,14 @@ import { logger } from '@/shared/logger/index.js'
 // Search tool arguments
 export interface SearchArgs {
   query: string
-  search_type?: 'semantic' | 'hybrid' | 'keyword'
-  limit?: number
+  topK?: number
 }
 
 export class SearchHandler {
   constructor(private searchService: SearchService) {}
 
   async handleSearch(args: SearchArgs) {
-    const { query, search_type = 'semantic', limit = 5 } = args
+    const { query, topK = 5 } = args
 
     if (!query) {
       return {
@@ -39,9 +38,7 @@ export class SearchHandler {
     try {
       // Use SearchService with simplified search options
       const searchOptions: SearchOptions = {
-        topK: limit ? Math.max(1, Math.min(limit, 50)) : 5, // Clamp between 1-50
-        searchType: search_type,
-        semanticWeight: search_type === 'hybrid' ? 0.7 : 1.0,
+        topK: topK ? Math.max(1, Math.min(topK, 50)) : 5, // Clamp between 1-50
         scoreThreshold: 0.75,
       }
 
@@ -54,15 +51,11 @@ export class SearchHandler {
             text: JSON.stringify(
               {
                 query,
-                search_type,
                 results_count: results.length,
                 results: results.map((result, index) => ({
                   rank: index + 1,
                   content: result.content,
                   relevance_score: result.score,
-                  semantic_score: result.semanticScore,
-                  keyword_score: result.keywordScore,
-                  hybrid_score: result.hybridScore,
                   source: {
                     filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
                     filepath: result.metadata?.filePath || result.metadata?.path || 'unknown',
@@ -73,8 +66,8 @@ export class SearchHandler {
                 })),
                 search_info: {
                   total_results: results.length,
-                  search_method: search_type,
-                  max_requested: limit,
+                  search_method: 'semantic',
+                  max_requested: topK,
                 },
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
@@ -110,7 +103,7 @@ export class SearchHandler {
       {
         name: 'search',
         description:
-          'Search through indexed documents using natural language queries with multiple search types',
+          'Search through indexed documents using semantic search with natural language queries',
         inputSchema: {
           type: 'object',
           properties: {
@@ -118,14 +111,7 @@ export class SearchHandler {
               type: 'string',
               description: 'The search query in natural language',
             },
-            search_type: {
-              type: 'string',
-              enum: ['semantic', 'hybrid', 'keyword'],
-              description:
-                'Search method: semantic (embeddings), hybrid (semantic+keyword), keyword (keyword only)',
-              default: 'semantic',
-            },
-            limit: {
+            topK: {
               type: 'number',
               description: 'Maximum number of results to return',
               default: 5,

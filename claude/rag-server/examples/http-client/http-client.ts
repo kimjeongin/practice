@@ -71,7 +71,6 @@ async function testStreamableHTTPClient(): Promise<void> {
             limit: 3,
           },
         })
-        console.log(searchResult)
 
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
@@ -89,70 +88,6 @@ async function testStreamableHTTPClient(): Promise<void> {
         }
       } catch (error) {
         console.log('⚠️  Search test failed:', (error as Error).message)
-      }
-      console.log('')
-    }
-
-    // 6. Test search_similar tool
-    if (toolsResult.tools.some((t) => t.name === 'search_similar')) {
-      console.log('🔍 Testing search_similar tool...')
-      try {
-        const similarResult = await client.callTool({
-          name: 'search_similar',
-          arguments: {
-            reference_text: 'deep learning neural networks',
-            limit: 2,
-          },
-        })
-        console.log(similarResult)
-
-        if (
-          similarResult.content &&
-          similarResult.content[0] &&
-          'text' in similarResult.content[0]
-        ) {
-          const result = JSON.parse((similarResult.content[0] as any).text) as any
-          console.log('🎯 Similar search results:', {
-            totalResults: result.similar_documents?.length || 0,
-            referenceText: result.reference_text,
-            firstResult: result.similar_documents?.[0]?.source?.filename || 'No results',
-          })
-        }
-      } catch (error) {
-        console.log('⚠️  search_similar test failed:', (error as Error).message)
-      }
-      console.log('')
-    }
-
-    // 7. Test search_by_question tool
-    if (toolsResult.tools.some((t) => t.name === 'search_by_question')) {
-      console.log('❓ Testing search_by_question tool...')
-      try {
-        const questionResult = await client.callTool({
-          name: 'search_by_question',
-          arguments: {
-            question: 'What are the key components of neural networks?',
-            context_limit: 3,
-          },
-        })
-        console.log(questionResult)
-
-        if (
-          questionResult.content &&
-          questionResult.content[0] &&
-          'text' in questionResult.content[0]
-        ) {
-          const result = JSON.parse((questionResult.content[0] as any).text) as any
-          console.log('🎯 Question-based search results:', {
-            question: result.question,
-            confidence: result.confidence,
-            contextChunks: result.context_chunks?.length || 0,
-            contextFound: result.context_found,
-            firstChunk: result.context_chunks?.[0]?.source?.filename || 'No context',
-          })
-        }
-      } catch (error) {
-        console.log('⚠️  search_by_question test failed:', (error as Error).message)
       }
       console.log('')
     }
@@ -186,29 +121,6 @@ async function testStreamableHTTPClient(): Promise<void> {
       }
       console.log('')
     }
-
-    // 9. Test prompts
-    console.log('💬 Testing prompts/list...')
-    try {
-      const promptsResult = await client.listPrompts()
-      console.log('📝 Available prompts:', promptsResult.prompts?.map((p) => p.name) || [])
-
-      if (promptsResult.prompts?.length > 0) {
-        const promptName = promptsResult.prompts[0].name
-        console.log(`🎭 Testing prompt: ${promptName}...`)
-
-        const promptResult = await client.getPrompt({
-          name: promptName,
-          arguments: {
-            query: 'What is machine learning?',
-          },
-        })
-        console.log('💡 Prompt result messages:', promptResult.messages?.length || 0)
-      }
-    } catch (error) {
-      console.log('⚠️  Prompts test failed:', (error as Error).message)
-    }
-    console.log('')
 
     console.log('✅ streamable-http transport test completed successfully!')
   } catch (error) {

@@ -16,8 +16,8 @@ cd "$PROJECT_ROOT"
 
 # Clean LanceDB data
 echo "🧹 Cleaning LanceDB data..."
-if [ -d "data/lancedb" ]; then
-    rm -rf data/lancedb/*
+if [ -d ".data/lancedb" ]; then
+    rm -rf .data/lancedb/*
     echo "✅ LanceDB data cleared"
 else
     echo "ℹ️  No LanceDB data to remove"
@@ -25,8 +25,8 @@ fi
 
 # Clean cache
 echo "🧹 Cleaning cache..."
-if [ -d "data/.cache" ]; then
-    rm -rf data/.cache/*
+if [ -d ".data/.cache" ]; then
+    rm -rf .data/.cache/*
     echo "✅ Cache cleared"
 fi
 

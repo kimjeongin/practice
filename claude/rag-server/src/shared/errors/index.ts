@@ -140,7 +140,7 @@ export class SearchError extends StructuredError {
   constructor(
     message: string,
     query: string,
-    searchType: 'semantic' | 'keyword' | 'hybrid',
+    searchType: 'semantic',
     originalError?: Error
   ) {
     super(message, ErrorCode.SEARCH_ERROR, 'HIGH', {

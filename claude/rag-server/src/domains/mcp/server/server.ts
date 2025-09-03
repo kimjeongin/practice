@@ -4,8 +4,6 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 
 import { SearchHandler } from '../handlers/search.js'
@@ -30,14 +28,12 @@ export class MCPServer {
         capabilities: {
           tools: {},
           resources: {},
-          prompts: {},
         },
       }
     )
 
     this.setupTools()
     this.setupResources()
-    this.setupPrompts()
   }
 
   private setupTools(): void {
@@ -174,75 +170,6 @@ export class MCPServer {
     })
   }
 
-  private setupPrompts(): void {
-    this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
-      return {
-        prompts: [
-          {
-            name: 'rag_search',
-            description: 'Perform a RAG search and provide contextual information',
-            arguments: [
-              { name: 'query', description: 'Search query', required: true },
-              { name: 'context_length', description: 'Number of context results', required: false },
-            ],
-          },
-        ],
-      }
-    })
-
-    this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params
-
-      switch (name) {
-        case 'rag_search': {
-          const query = typeof args?.['query'] === 'string' ? args['query'] : undefined
-          const contextLength = Number(args?.['context_length']) || 3
-
-          if (!query) {
-            throw new Error('Query is required for rag_search prompt')
-          }
-
-          const results = await this.searchHandler.handleSearch({
-            query,
-            limit: contextLength,
-          })
-
-          let contextText = 'No results found'
-          if (results.content && results.content[0] && 'text' in results.content[0]) {
-            try {
-              const parsedResults = JSON.parse(results.content[0].text as string)
-              if (parsedResults.results && Array.isArray(parsedResults.results)) {
-                contextText = parsedResults.results
-                  .map(
-                    (result: any) =>
-                      `**${result.source.filename}** (Score: ${result.relevance_score.toFixed(
-                        4
-                      )}):\n${result.content}`
-                  )
-                  .join('\n\n---\n\n')
-              }
-            } catch (e) {
-              contextText = 'Error parsing search results'
-            }
-          }
-
-          return {
-            messages: [
-              {
-                role: 'user',
-                content: {
-                  type: 'text',
-                  text: `Based on the following context, please answer: "${query}"\n\n**Context:**\n${contextText}`,
-                },
-              },
-            ],
-          }
-        }
-        default:
-          throw new Error(`Unknown prompt: ${name}`)
-      }
-    })
-  }
 
   private getMimeType(fileType: string): string {
     const mimeTypes: Record<string, string> = {

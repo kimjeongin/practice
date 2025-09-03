@@ -175,19 +175,12 @@ export interface SearchOptions {
   topK?: number
   fileTypes?: string[]
   metadataFilters?: Record<string, string>
-  searchType?: 'semantic' | 'hybrid' | 'keyword'
-  useSemanticSearch?: boolean
-  useHybridSearch?: boolean
-  semanticWeight?: number
   scoreThreshold?: number
 }
 
 export interface SearchResult {
   content: string
   score: number
-  semanticScore?: number
-  keywordScore?: number
-  hybridScore?: number
   metadata: Record<string, any>
   chunkIndex: number
 }

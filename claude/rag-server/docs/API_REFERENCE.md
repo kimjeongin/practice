@@ -2,35 +2,29 @@
 
 ## MCP Tools
 
-The RAG MCP Server provides 4 tools for document search and information retrieval.
-
 ### search
 
-Search documents using semantic, hybrid, or fulltext search methods.
+Search through indexed documents using semantic search with natural language queries.
 
-**Parameters:**
+**Request:**
 ```json
 {
-  "query": "machine learning algorithms",
-  "search_type": "semantic",
-  "limit": 5,
-  "sources": ["txt", "md"],
-  "metadata_filters": {"author": "john"}
+  "name": "search",
+  "arguments": {
+    "query": "machine learning algorithms",
+    "topK": 5
+  }
 }
 ```
 
 **Parameter Details:**
 - `query` (required): Search query text
-- `search_type` (optional): `"semantic"` | `"hybrid"` | `"fulltext"` (default: `"semantic"`)
-- `limit` (optional): Max results (1-50, default: 5)
-- `sources` (optional): Filter by file types
-- `metadata_filters` (optional): Key-value metadata filters
+- `topK` (optional): Maximum number of results to return (1-50, default: 5)
 
 **Response:**
 ```json
 {
   "query": "machine learning algorithms",
-  "search_type": "semantic",
   "results_count": 3,
   "results": [
     {
@@ -54,267 +48,131 @@ Search documents using semantic, hybrid, or fulltext search methods.
 }
 ```
 
-### search_similar
+### get_vectordb_info
 
-Find documents similar to provided reference text using semantic similarity.
+Get information about the vector database including document count, model information, and index statistics.
 
-**Parameters:**
+**Request:**
 ```json
 {
-  "reference_text": "Neural networks are computational models...",
-  "limit": 3,
-  "exclude_source": "neural-networks.txt",
-  "similarity_threshold": 0.1
+  "name": "get_vectordb_info",
+  "arguments": {}
 }
 ```
-
-**Parameter Details:**
-- `reference_text` (required): Text to find similar content for
-- `limit` (optional): Max similar documents (1-10, default: 3)
-- `exclude_source` (optional): Exclude specific file by name/path/ID
-- `similarity_threshold` (optional): Min similarity score (0.0-1.0, default: 0.1)
 
 **Response:**
 ```json
 {
-  "reference_text": "Neural networks are computational models...",
-  "similar_documents": [
-    {
-      "rank": 1,
-      "similarity_score": 0.78,
-      "content_preview": "Deep learning is a subset of machine learning...",
-      "full_content": "Deep learning is a subset of machine learning that uses neural networks...",
-      "source": {
-        "filename": "deep-learning.md",
-        "filepath": "./documents/deep-learning.md",
-        "file_type": "text/markdown",
-        "chunk_index": 1,
-        "file_id": "clk123xyz"
-      },
-      "metadata": {}
-    }
-  ],
-  "total_found": 2,
-  "search_info": {
-    "similarity_threshold": 0.1,
-    "excluded_source": "neural-networks.txt",
-    "search_method": "semantic_similarity"
+  "status": "connected",
+  "database_info": {
+    "provider": "lancedb",
+    "uri": "./.data/lancedb",
+    "table_name": "documents"
+  },
+  "index_stats": {
+    "total_vectors": 1250,
+    "dimensions": 768,
+    "model_name": "gte-multilingual-base"
+  },
+  "embedding_info": {
+    "service": "transformers",
+    "model": "gte-multilingual-base",
+    "dimensions": 768
+  },
+  "document_stats": {
+    "total_documents": 45,
+    "total_chunks": 1250,
+    "avg_chunks_per_document": 27.8,
+    "supported_file_types": ["txt", "md", "pdf", "html", "json"]
   }
 }
 ```
 
-### search_by_question
+## MCP Resources
 
-Search for information using natural language questions with context extraction and answer synthesis.
+Resources functionality has been simplified. The server provides basic file reading capability for `file://` URIs.
 
-**Parameters:**
-```json
-{
-  "question": "What is machine learning?",
-  "context_limit": 5,
-  "sources": ["txt", "md"],
-  "search_method": "semantic"
-}
+## Transport Configuration
+
+### stdio Transport (Claude Desktop)
+
+Used for integration with Claude Desktop and other MCP clients that support stdio transport.
+
+**Environment Configuration:**
+```bash
+MCP_TRANSPORT=stdio
 ```
 
-**Parameter Details:**
-- `question` (required): Question or information request
-- `context_limit` (optional): Max context chunks to analyze (1-20, default: 5)
-- `sources` (optional): Filter by file types
-- `search_method` (optional): `"semantic"` | `"hybrid"` (default: `"semantic"`)
-
-**Response:**
+**Claude Desktop Configuration:**
 ```json
 {
-  "question": "What is machine learning?",
-  "extracted_information": {
-    "type": "definition_or_fact",
-    "relevant_excerpts": [
-      "Machine learning is a subset of artificial intelligence...",
-      "ML algorithms learn patterns from data..."
-    ],
-    "definition_candidates": [
-      "Machine learning is a method of data analysis..."
-    ]
-  },
-  "confidence": 85,
-  "context_chunks": [
-    {
-      "rank": 1,
-      "content": "Machine learning is a subset of artificial intelligence...",
-      "relevance_score": 0.92,
-      "source": {
-        "filename": "ml-intro.txt",
-        "filepath": "./documents/ml-intro.txt",
-        "chunk_index": 0
+  "mcpServers": {
+    "rag-server": {
+      "command": "node",
+      "args": ["/path/to/rag-server/dist/app/index.js"],
+      "env": {
+        "MCP_TRANSPORT": "stdio"
       }
     }
-  ],
-  "search_info": {
-    "total_context_chunks": 3,
-    "search_method": "semantic",
-    "sources_searched": "all",
-    "context_limit": 5
-  },
-  "context_found": true,
-  "raw_context": "Machine learning is a subset of artificial intelligence..."
-}
-```
-
-**Information Extraction Types:**
-- `definition_or_fact`: What/define questions
-- `process_or_method`: How questions  
-- `temporal`: When/date questions
-- `location`: Where questions
-- `person_or_entity`: Who questions
-- `explanation_or_reason`: Why questions
-- `general_inquiry`: Other questions
-
-### list_sources
-
-List all indexed documents with metadata, statistics, and filtering options.
-
-**Parameters:**
-```json
-{
-  "include_stats": true,
-  "source_type_filter": ["local_file"],
-  "group_by": "file_type",
-  "limit": 50
-}
-```
-
-**Parameter Details:**
-- `include_stats` (optional): Include collection statistics (default: false)
-- `source_type_filter` (optional): Filter by source types (e.g., `["local_file", "file_upload"]`)
-- `group_by` (optional): `"source_type"` | `"file_type"`
-- `limit` (optional): Max sources to return (1-1000, default: 100)
-
-**Response:**
-```json
-{
-  "total_sources": 15,
-  "returned_sources": 15,
-  "sources": [
-    {
-      "id": "clk123xyz",
-      "name": "machine-learning.txt",
-      "path": "./documents/machine-learning.txt",
-      "file_type": "text/plain",
-      "size": 2048,
-      "source_type": "local_file",
-      "source_method": "file_watcher",
-      "created_at": "2025-08-24T10:00:00Z",
-      "indexed_at": "2025-08-24T10:01:00Z"
-    }
-  ],
-  "grouped_sources": [
-    {
-      "group": "text/plain",
-      "count": 8,
-      "sources": []
-    }
-  ],
-  "statistics": {
-    "total_documents": 15,
-    "total_size_bytes": 1048576,
-    "total_size_mb": 1.0,
-    "file_types": {
-      "text/plain": 8,
-      "text/markdown": 5,
-      "application/json": 2
-    },
-    "source_types": {
-      "local_file": 15
-    },
-    "source_methods": {
-      "file_watcher": 15
-    },
-    "oldest_document": 1692864000000,
-    "newest_document": 1724486400000
   }
 }
 ```
 
-## Error Handling
+### HTTP Transport
 
-All tools return errors in this format:
+Used for HTTP-based MCP clients and testing.
+
+**Environment Configuration:**
+```bash
+MCP_TRANSPORT=streamable-http
+MCP_PORT=3000
+MCP_HOST=localhost
+MCP_ENABLE_CORS=true
+```
+
+**Client Connection:**
+Connect to `http://localhost:3000` using MCP HTTP client libraries.
+
+## Error Responses
+
+All tools return structured error responses when operations fail:
 
 ```json
 {
-  "error": "SearchError",
-  "message": "Search operation failed",
-  "suggestion": "Try a different query or check if documents are indexed"
+  "error": "SearchFailed",
+  "message": "Search operation failed: Connection timeout",
+  "suggestion": "Try a different query or check if documents are indexed properly"
 }
 ```
 
-**Common Error Types:**
+Common error types:
 - `InvalidQuery`: Missing or invalid query parameter
-- `InvalidReferenceText`: Missing reference text for similarity search
-- `InvalidQuestion`: Missing question for question-based search
-- `SearchFailed`: Search operation failed
-- `SimilaritySearchFailed`: Similarity search failed
-- `QuestionSearchFailed`: Question-based search failed
-- `ListSourcesFailed`: Failed to list sources
+- `SearchFailed`: Search operation encountered an error  
+- `UnknownTool`: Requested tool is not available
+- `ToolExecutionFailed`: Tool execution encountered an error
 
-## Usage Examples
+## Performance Notes
 
-### Basic Search
-```typescript
-const result = await mcpClient.request({
-  method: "tools/call",
-  params: {
-    name: "search",
-    arguments: {
-      query: "neural networks",
-      search_type: "semantic",
-      limit: 3
-    }
-  }
-});
-```
+### Search Performance
 
-### Find Similar Content
-```typescript
-const result = await mcpClient.request({
-  method: "tools/call", 
-  params: {
-    name: "search_similar",
-    arguments: {
-      reference_text: "Machine learning algorithms use training data",
-      limit: 5,
-      similarity_threshold: 0.2
-    }
-  }
-});
-```
+- Semantic search typically completes within 100-500ms for small to medium document collections
+- Performance scales with document count and embedding model complexity
+- Results are ranked by semantic similarity score (0-1, higher is more relevant)
 
-### Question Answering
-```typescript
-const result = await mcpClient.request({
-  method: "tools/call",
-  params: {
-    name: "search_by_question", 
-    arguments: {
-      question: "How do neural networks learn?",
-      context_limit: 10,
-      search_method: "hybrid"
-    }
-  }
-});
-```
+### Embedding Models
 
-### List Documents
-```typescript
-const result = await mcpClient.request({
-  method: "tools/call",
-  params: {
-    name: "list_sources",
-    arguments: {
-      include_stats: true,
-      group_by: "file_type",
-      limit: 100
-    }
-  }
-});
-```
+**Local Transformers Models:**
+- Faster startup, no external dependencies
+- Models downloaded and cached locally
+- CPU/GPU acceleration available
+
+**Ollama Models:**  
+- Requires Ollama server running
+- Shared model cache across applications
+- Better for large models and GPU acceleration
+
+### Indexing Performance
+
+- Documents are processed automatically when added to the watched directory
+- Processing speed depends on document size and embedding model
+- Large documents are chunked for optimal search performance

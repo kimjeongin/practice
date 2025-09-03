@@ -1,179 +1,182 @@
 # RAG MCP Server
 
-Local RAG (Retrieval Augmented Generation) server implementing Model Context Protocol (MCP) with document indexing and semantic search capabilities.
+A Model Context Protocol (MCP) server that provides RAG (Retrieval Augmented Generation) capabilities with semantic document search and automatic file processing.
 
 ## Features
 
-- **Local vector search** using LanceDB or Qdrant
-- **Document processing** for text, markdown, JSON, XML, HTML, CSV files
-- **Embedding providers** supporting Transformers.js and Ollama
-- **MCP tools** for document search and information retrieval
-- **Automatic indexing** with file system monitoring
-- **SQLite storage** for document metadata
+- **Semantic Search**: Vector-based document search using embedding models
+- **Automatic File Processing**: Watch directories and process documents automatically
+- **Multiple Embedding Providers**: Support for local Transformers models and Ollama
+- **MCP Protocol**: Compatible with Claude Desktop and other MCP clients
+- **Multiple Transport**: Support for both stdio and HTTP transport
+- **File Processing**: Support for text, markdown, PDF, and other document formats
 
-## Installation
+## Quick Start
+
+### 1. Install Dependencies
 
 ```bash
-# Install dependencies
 yarn install
-
-# Setup database
-yarn db:setup
-
-# Build project
-yarn build
 ```
 
-## Configuration
-
-Copy `.env.example` to `.env` and configure as needed:
+### 2. Setup Environment
 
 ```bash
 cp .env.example .env
 ```
 
-### Key Settings
+Edit `.env` to configure your setup. Key settings:
+- `EMBEDDING_SERVICE`: Choose `transformers` (local) or `ollama` (external)
+- `MCP_TRANSPORT`: Choose `stdio` (for Claude Desktop) or `streamable-http` (for HTTP clients)
+- `DOCUMENTS_DIR`: Directory to watch for documents
 
-- `EMBEDDING_SERVICE`: `transformers` (local) or `ollama` (external)
-- `VECTOR_STORE_PROVIDER`: `lancedb` (local) or `qdrant` (external)
-- `MCP_TRANSPORT`: `stdio` (for MCP) or `streamable-http` (for HTTP)
-- `DOCUMENTS_DIR`: Directory containing documents to index
-
-### Embedding Services
-
-**Transformers.js (Default) - Runs completely locally**
-```env
-EMBEDDING_SERVICE=transformers
-```
-
-Available models (dimensions and batch sizes are auto-configured):
-- `all-MiniLM-L6-v2` - 384 dims, fast, good for general use (~23MB, batch: 20)
-- `all-MiniLM-L12-v2` - 384 dims, more accurate than L6 (~45MB, batch: 15)
-- `bge-small-en` - 384 dims, high quality English embeddings (~67MB, batch: 15)
-- `bge-base-en` - 768 dims, better quality, slower (~109MB, batch: 10)
-- `qwen3-embedding-0.6b` - 1024 dims, MTEB top performer, compact (~150MB, batch: 8)
-- `qwen3-embedding-4b` - 2560 dims, high performance multilingual (~2.1GB, batch: 4)
-
-**Recommended for best performance:**
-```env
-EMBEDDING_SERVICE=transformers
-EMBEDDING_MODEL=qwen3-embedding-0.6b
-# EMBEDDING_DIMENSIONS=1024  # Auto-detected
-# EMBEDDING_BATCH_SIZE=8     # Auto-optimized
-```
-
-**For high-end performance (requires more memory):**
-```env
-EMBEDDING_SERVICE=transformers
-EMBEDDING_MODEL=qwen3-embedding-4b
-# EMBEDDING_DIMENSIONS=2560  # Auto-detected  
-# EMBEDDING_BATCH_SIZE=4     # Auto-optimized
-```
-
-**Ollama (External service) - Auto-configured dimensions and batch sizes**
-```env
-EMBEDDING_SERVICE=ollama
-EMBEDDING_MODEL=nomic-embed-text
-OLLAMA_BASE_URL=http://localhost:11434
-# EMBEDDING_DIMENSIONS=768  # Auto-detected
-# EMBEDDING_BATCH_SIZE=8    # Auto-optimized
-```
-
-Available Ollama models:
-- `nomic-embed-text` - 768 dims, recommended general use (batch: 8)
-- `mxbai-embed-large` - 1024 dims, high quality (batch: 6)
-- `snowflake-arctic-embed` - 1024 dims, good performance (batch: 6)
-- `bge-large` - 1024 dims, multilingual (batch: 6)
-- `dengcao/qwen3-embedding-8b` - 4096 dims, MTEB top performer (batch: 3)
-- `dengcao/qwen3-embedding-4b` - 2560 dims, high performance (batch: 4)
-- `dengcao/qwen3-embedding-0.6b` - 1024 dims, compact (batch: 6)
-
-## Usage
-
-### Start Server
+### 3. Setup Database
 
 ```bash
-# Development
+yarn db:setup
+```
+
+### 4. Add Documents
+
+Place your documents in the `./documents` directory (or the directory specified in `DOCUMENTS_DIR`). The server will automatically process them.
+
+### 5. Start Server
+
+```bash
+# Development mode with file watching
 yarn dev
 
-# Production
-yarn start
+# Production mode
+yarn build && yarn start
 ```
 
-### MCP Tools
+## MCP Client Usage
 
-The server provides 4 MCP tools:
+### Claude Desktop Integration
 
-- `search` - Search documents with semantic/hybrid/fulltext options
-- `search_similar` - Find documents similar to reference text
-- `search_by_question` - Question-answering with context extraction
-- `list_sources` - List indexed documents with metadata
+Add to your Claude Desktop configuration:
 
-See [API_REFERENCE.md](docs/API_REFERENCE.md) for detailed tool specifications.
+```json
+{
+  "mcpServers": {
+    "rag-server": {
+      "command": "node",
+      "args": ["/path/to/rag-server/dist/app/index.js"],
+      "env": {
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}
+```
 
-### Add Documents
+### HTTP Client Usage
 
-Place files in the configured documents directory (default: `./documents`):
+Set `MCP_TRANSPORT=streamable-http` in your `.env` and use HTTP clients:
 
 ```bash
-echo "Machine learning content..." > documents/ml-guide.txt
-echo "# Deep Learning Guide" > documents/dl-guide.md
+# Test with example client
+cd examples/http-client
+npm install
+npm start
 ```
 
-Files are automatically indexed when added or modified.
+## Available Tools
+
+### search
+Search through indexed documents using natural language queries.
+
+**Parameters:**
+- `query` (required): Search query text
+- `topK` (optional): Maximum results to return (1-50, default: 5)
+
+### get_vectordb_info
+Get information about the vector database including document count and model information.
+
+## Configuration
+
+### Environment Variables
+
+Key configuration options:
+
+```bash
+# Basic setup
+NODE_ENV=development
+DOCUMENTS_DIR=./documents
+LOG_LEVEL=info
+
+# Embedding configuration
+EMBEDDING_SERVICE=transformers
+EMBEDDING_MODEL=gte-multilingual-base
+
+# Vector store
+VECTOR_STORE_PROVIDER=lancedb
+LANCEDB_URI=./.data/lancedb
+
+# MCP transport
+MCP_TRANSPORT=stdio
+MCP_PORT=3000
+```
+
+### Embedding Models
+
+**Transformers (Local):**
+- `all-MiniLM-L6-v2`: Fast, general purpose
+- `gte-multilingual-base`: Good multilingual support
+- `bge-base-en`: High quality English embeddings
+
+**Ollama (External):**
+- `nomic-embed-text`: Recommended general use
+- `mxbai-embed-large`: High quality embeddings
 
 ## Development
 
+### Project Structure
+
+```
+src/
+├── app/                 # Application entry point
+├── domains/
+│   ├── mcp/            # MCP protocol implementation
+│   │   ├── handlers/   # Tool handlers (search, information)
+│   │   └── server/     # MCP server
+│   ├── rag/            # RAG domain logic
+│   │   ├── services/   # Search, document processing
+│   │   ├── lancedb/    # Vector store implementation
+│   │   └── embeddings/ # Embedding providers
+│   └── filesystem/     # File watching and processing
+└── shared/             # Shared utilities
+    ├── config/         # Configuration management
+    ├── logger/         # Logging utilities
+    └── utils/          # Common utilities
+```
+
 ### Scripts
 
-- `yarn dev` - Development mode with hot reload
-- `yarn build` - Build TypeScript
-- `yarn test` - Run all tests
-- `yarn typecheck` - Type checking
-- `yarn lint` - Code linting
-
-### Database
-
 ```bash
-yarn db:setup    # Initialize database
-yarn db:reset    # Reset database
-yarn db:studio   # Open Prisma Studio
+# Development
+yarn dev                # Development mode with file watching
+yarn typecheck          # Type checking
+yarn lint               # Linting
+
+# Build
+yarn build              # Build for production
+yarn build:executable   # Create platform-specific binaries
+
+# Database
+yarn db:setup           # Initialize database
+yarn db:reset           # Reset database
 ```
 
 ### Testing
 
 ```bash
-yarn test:unit         # Unit tests
-yarn test:integration  # Integration tests
-yarn test:e2e          # End-to-end tests
+# Test stdio transport
+cd examples/stdio-client && npm start
+
+# Test HTTP transport
+cd examples/http-client && npm start
 ```
-
-## Architecture
-
-```
-src/
-├── app/               # Application entry point
-├── domains/
-│   ├── mcp/          # MCP protocol implementation
-│   │   ├── handlers/ # Tool handlers (search, information)
-│   │   └── server/   # MCP server
-│   └── rag/          # RAG domain logic
-│       ├── services/ # Search, document processing
-│       ├── repositories/ # Data access
-│       ├── workflows/ # RAG workflows
-│       └── integrations/ # Vector stores, embeddings
-└── shared/           # Shared utilities
-    ├── config/       # Configuration management
-    ├── database/     # Database connection
-    └── types/        # TypeScript definitions
-```
-
-### Database Schema
-
-- **File** - Document metadata and indexing status
-- **DocumentChunk** - Text chunks for vector search
-- **FileMetadata** - Custom metadata key-value pairs
-- **EmbeddingMetadata** - Model and embedding configuration tracking
 
 ## Deployment
 
@@ -199,31 +202,23 @@ Generates platform-specific binaries in `deploy/dist/`.
 
 ### Common Issues
 
-**Embedding model not loading**
-- Check `EMBEDDING_SERVICE` configuration
-- For Ollama: verify service is running at `OLLAMA_BASE_URL`
-- For Transformers: check disk space for model downloads
+1. **Documents not being processed**: Check `DOCUMENTS_DIR` path and file permissions
+2. **Search returns no results**: Ensure documents are processed and indexed
+3. **Embedding errors**: Check `EMBEDDING_SERVICE` configuration and model availability
+4. **MCP connection issues**: Verify transport configuration and port availability
 
-**Documents not indexing**
-- Verify `DOCUMENTS_DIR` path exists
-- Check file permissions
-- Enable debug logging: `LOG_LEVEL=debug`
+### Logging
 
-**MCP connection issues**
-- Verify `MCP_TRANSPORT` setting
-- For stdio: check Claude configuration
-- For HTTP: verify port is available
+Set `LOG_LEVEL=debug` for detailed logs. Check logs in `./logs` directory.
 
-### Logs
+### Database Issues
 
 ```bash
-# View application logs
-tail -f logs/rag-server.log
-
-# View error logs  
-tail -f logs/rag-server-error.log
+# Reset database and reprocess all documents
+yarn db:reset
+yarn dev
 ```
 
 ## License
 
-MIT License
+MIT

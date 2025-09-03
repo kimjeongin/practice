@@ -74,9 +74,7 @@ export interface ServerConfig extends BaseServerConfig {
 
   // Search configuration
   search: {
-    enableHybridSearch: boolean
     enableQueryRewriting: boolean
-    semanticWeight: number
     rerankingEnabled: boolean
   }
 
@@ -118,9 +116,7 @@ export class ConfigFactory {
         },
       },
       search: {
-        enableHybridSearch: true,
         enableQueryRewriting: false, // Disable for faster dev iteration
-        semanticWeight: 0.7,
         rerankingEnabled: false,
       },
       mcp: {
@@ -161,9 +157,7 @@ export class ConfigFactory {
         },
       },
       search: {
-        enableHybridSearch: process.env['ENABLE_HYBRID_SEARCH'] !== 'false',
         enableQueryRewriting: process.env['ENABLE_QUERY_REWRITING'] !== 'false',
-        semanticWeight: parseFloat(process.env['SEMANTIC_WEIGHT'] || '0.7'),
         rerankingEnabled: process.env['ENABLE_RERANKING'] !== 'false',
       },
       mcp: {
@@ -206,9 +200,7 @@ export class ConfigFactory {
         },
       },
       search: {
-        enableHybridSearch: true,
         enableQueryRewriting: false,
-        semanticWeight: 0.7,
         rerankingEnabled: false,
       },
       mcp: {
@@ -292,9 +284,6 @@ export class ConfigFactory {
       errors.push('Max concurrent processing must be at least 1')
     }
 
-    if (config.search.semanticWeight < 0 || config.search.semanticWeight > 1) {
-      errors.push('Semantic weight must be between 0 and 1')
-    }
 
     // LanceDB validation
     if (!config.vectorStore.config.uri) {
@@ -355,9 +344,7 @@ export class ConfigFactory {
       description: 'Optimized for maximum performance',
       config: {
         search: {
-          enableHybridSearch: true,
           enableQueryRewriting: true,
-          semanticWeight: 0.8,
           rerankingEnabled: true,
         },
       },
@@ -371,9 +358,7 @@ export class ConfigFactory {
         chunkSize: 512,
         embeddingBatchSize: 5,
         search: {
-          enableHybridSearch: false,
           enableQueryRewriting: false,
-          semanticWeight: 0.5,
           rerankingEnabled: false,
         },
       },

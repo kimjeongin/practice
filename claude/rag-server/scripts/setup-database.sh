@@ -27,9 +27,9 @@ fi
 
 # Create necessary directories for LanceDB
 echo "📁 Creating necessary directories..."
-mkdir -p data
-mkdir -p data/lancedb
-mkdir -p data/.cache
+mkdir -p .data
+mkdir -p .data/lancedb
+mkdir -p .data/.cache
 mkdir -p documents
 mkdir -p logs
 

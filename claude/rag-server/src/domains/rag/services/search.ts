@@ -17,14 +17,12 @@ export class SearchService implements ISearchService {
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     const endTiming = startTiming('search', {
       query: query.substring(0, 50),
-      searchType: options.searchType || 'semantic',
       component: 'SearchService',
     })
 
     try {
       logger.info('🔍 Starting search', {
         query: query.substring(0, 100),
-        searchType: options.searchType || 'semantic',
         topK: options.topK || 10,
         component: 'SearchService',
       })
@@ -52,7 +50,7 @@ export class SearchService implements ISearchService {
         : new SearchError(
             error instanceof Error ? error.message : String(error),
             query.substring(0, 100),
-            options.searchType || 'semantic',
+            'semantic',
             error instanceof Error ? error : undefined
           )
 
@@ -73,7 +71,6 @@ export class SearchService implements ISearchService {
     return vectorResults.map(result => ({
       content: result.content,
       score: result.score,
-      semanticScore: result.score, // For semantic search, score is semantic score
       metadata: result.metadata,
       chunkIndex: result.chunkIndex,
     }))

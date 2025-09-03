@@ -198,28 +198,6 @@ async function testStdioClient(): Promise<void> {
       console.log('')
     }
 
-    // 9. Test prompts
-    console.log('💬 Testing prompts/list...')
-    try {
-      const promptsResult = await client.listPrompts()
-      console.log('📝 Available prompts:', promptsResult.prompts?.map(p => p.name) || [])
-      
-      if (promptsResult.prompts?.length > 0) {
-        const promptName = promptsResult.prompts[0].name
-        console.log(`🎭 Testing prompt: ${promptName}...`)
-        
-        const promptResult = await client.getPrompt({
-          name: promptName,
-          arguments: {
-            query: 'What is machine learning?'
-          }
-        })
-        console.log('💡 Prompt result messages:', promptResult.messages?.length || 0)
-      }
-    } catch (error) {
-      console.log('⚠️  Prompts test failed:', (error as Error).message)
-    }
-    console.log('')
 
     console.log('✅ stdio transport test completed successfully!')
 
