@@ -45,6 +45,12 @@ export interface ServerConfig {
   ollamaBaseUrl?: string
   transformersCacheDir?: string
 
+  // Reranking configuration
+  rerankingEnabled: boolean
+  rerankingService: 'transformers'
+  rerankingModel: string
+  rerankingTopK: number
+
   // Vector store
   vectorStore: VectorStoreConfig
 
@@ -90,6 +96,12 @@ export class ConfigFactory {
       embeddingDimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || '768'),
       ollamaBaseUrl: process.env['OLLAMA_BASE_URL'],
       transformersCacheDir: process.env['TRANSFORMERS_CACHE_DIR'],
+
+      // Reranking configuration
+      rerankingEnabled: process.env['RERANKING_ENABLED'] !== 'false',
+      rerankingService: 'transformers',
+      rerankingModel: process.env['RERANKING_MODEL'] || 'gte-multilingual-reranker-base',
+      rerankingTopK: parseInt(process.env['RERANKING_TOP_K'] || '5'),
 
       // Vector store
       vectorStore: {

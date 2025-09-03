@@ -186,6 +186,42 @@ export interface SearchResult {
 }
 
 // ========================================
+// Reranking Types
+// ========================================
+
+/**
+ * Reranking options for fine-tuning the reranking process
+ */
+export interface RerankingOptions {
+  topK?: number // maximum number of results after reranking
+  model?: string // reranking model to use
+}
+
+/**
+ * Input for reranking process
+ */
+export interface RerankingInput {
+  query: string
+  documents: VectorSearchResult[]
+}
+
+/**
+ * Result after reranking process
+ */
+export interface RerankingResult {
+  // Document info (same as VectorSearchResult)
+  id: string
+  content: string
+  metadata: DocumentMetadata
+  chunkIndex: number
+
+  // Reranking scores
+  originalScore: number // original vector search score
+  rerankScore: number // reranking model score  
+  score: number // final combined/normalized score
+}
+
+// ========================================
 // Model Information Types
 // ========================================
 
@@ -207,4 +243,3 @@ export interface ModelInfo {
 // ========================================
 // Constants
 // ========================================
-

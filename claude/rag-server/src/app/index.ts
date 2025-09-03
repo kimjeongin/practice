@@ -26,9 +26,9 @@ async function initializeServices(config: any) {
     uri: config.vectorStore.config.uri,
   }, 'documents')
 
-  // Initialize SearchService with direct LanceDB provider
+  // Initialize SearchService with direct LanceDB provider and config
   const { SearchService } = await import('@/domains/rag/services/search.js')
-  const searchService = new SearchService(vectorStoreProvider)
+  const searchService = new SearchService(vectorStoreProvider, config)
 
 
   // Initialize DocumentProcessor for file processing

@@ -9,6 +9,9 @@ import type {
   VectorDocument,
   VectorSearchResult,
   ModelInfo,
+  RerankingInput,
+  RerankingResult,
+  RerankingOptions,
 } from './types.js'
 
 // Re-export types that are used in interfaces
@@ -55,5 +58,20 @@ export interface IVectorStoreProvider {
   getDocumentCount(): Promise<number>
   hasDocumentsForFileId(fileId: string): Promise<boolean>
   getAllFileMetadata(): Promise<Map<string, any>>
+}
+
+/**
+ * Reranking Service Interface
+ */
+export interface IRerankingService {
+  // Core reranking operation
+  rerank(input: RerankingInput, options?: RerankingOptions): Promise<RerankingResult[]>
+  
+  // Model and health info
+  getModelInfo(): ModelInfo
+  isReady(): boolean
+  
+  // Health check
+  healthCheck(): Promise<boolean>
 }
 

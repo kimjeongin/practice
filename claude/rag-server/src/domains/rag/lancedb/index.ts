@@ -512,15 +512,3 @@ export class LanceDBProvider implements IVectorStoreProvider {
     }
   }
 }
-
-// Export for external use
-export {
-  LanceDBEmbeddingBridge,
-  createLanceDBEmbeddingBridgeFromService,
-} from './embedding-bridge.js'
-export { LANCEDB_CONSTANTS, type LanceDBConnectionOptions } from './config.js'
-export {
-  createLanceDBSchema,
-  convertVectorDocumentToRAGRecord,
-  convertRAGResultToVectorSearchResult,
-} from './schema.js'
