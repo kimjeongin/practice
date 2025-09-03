@@ -26,6 +26,7 @@ cp .env.example .env
 ```
 
 Edit `.env` to configure your setup. Key settings:
+
 - `EMBEDDING_SERVICE`: Choose `transformers` (local) or `ollama` (external)
 - `MCP_TRANSPORT`: Choose `stdio` (for Claude Desktop) or `streamable-http` (for HTTP clients)
 - `DOCUMENTS_DIR`: Directory to watch for documents
@@ -84,13 +85,16 @@ npm start
 ## Available Tools
 
 ### search
+
 Search through indexed documents using natural language queries.
 
 **Parameters:**
+
 - `query` (required): Search query text
 - `topK` (optional): Maximum results to return (1-50, default: 5)
 
 ### get_vectordb_info
+
 Get information about the vector database including document count and model information.
 
 ## Configuration
@@ -121,13 +125,12 @@ MCP_PORT=3000
 ### Embedding Models
 
 **Transformers (Local):**
-- `all-MiniLM-L6-v2`: Fast, general purpose
+
 - `gte-multilingual-base`: Good multilingual support
-- `bge-base-en`: High quality English embeddings
 
 **Ollama (External):**
+
 - `nomic-embed-text`: Recommended general use
-- `mxbai-embed-large`: High quality embeddings
 
 ## Development
 

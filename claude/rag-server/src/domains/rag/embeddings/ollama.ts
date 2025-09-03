@@ -1,6 +1,6 @@
 import { Embeddings } from '@langchain/core/embeddings'
 import fetch from 'node-fetch'
-import { BaseServerConfig } from '@/shared/config/config-factory.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
 import { ModelInfo } from '@/domains/rag/core/types.js'
 import { logger } from '@/shared/logger/index.js'
 
@@ -16,7 +16,7 @@ export const AVAILABLE_OLLAMA_MODELS: Record<string, OllamaModelConfig> = {
   'nomic-embed-text': {
     modelId: 'nomic-embed-text',
     dimensions: 768,
-    maxTokens: 2048,  // 토큰 단위: 2048 tokens (≈ 7168 characters with 3.5x ratio)
+    maxTokens: 2048, // 토큰 단위: 2048 tokens (≈ 7168 characters with 3.5x ratio)
     description: 'Nomic Embed - Recommended general-purpose embedding model',
     recommendedBatchSize: 8,
   },
@@ -32,7 +32,7 @@ export class OllamaEmbeddings extends Embeddings {
   private requestOptions: Record<string, any>
   private cachedDimensions: number | null = null
 
-  constructor(config: BaseServerConfig) {
+  constructor(config: ServerConfig) {
     super({})
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
     this.model = config.embeddingModel
@@ -77,7 +77,10 @@ export class OllamaEmbeddings extends Embeddings {
 
       return data.embedding
     } catch (error) {
-      logger.error('Error generating Ollama embedding for query:', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        'Error generating Ollama embedding for query:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       throw error
     }
   }
@@ -115,7 +118,10 @@ export class OllamaEmbeddings extends Embeddings {
             )
           }
         } catch (error) {
-          logger.error(`Error in batch ${i}-${i + concurrency}:`, error instanceof Error ? error : new Error(String(error)))
+          logger.error(
+            `Error in batch ${i}-${i + concurrency}:`,
+            error instanceof Error ? error : new Error(String(error))
+          )
           throw error
         }
       }
@@ -123,7 +129,10 @@ export class OllamaEmbeddings extends Embeddings {
       logger.info(`Successfully generated ${embeddings.length} embeddings`)
       return embeddings
     } catch (error) {
-      logger.error('Error generating Ollama embeddings for documents:', error instanceof Error ? error : new Error(String(error)))
+      logger.error(
+        'Error generating Ollama embeddings for documents:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       throw error
     }
   }
@@ -144,7 +153,10 @@ export class OllamaEmbeddings extends Embeddings {
       clearTimeout(timeoutId)
       return response.ok
     } catch (error) {
-      logger.warn('Ollama health check failed:', error instanceof Error ? error : new Error(String(error)))
+      logger.warn(
+        'Ollama health check failed:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       return false
     }
   }
@@ -167,7 +179,10 @@ export class OllamaEmbeddings extends Embeddings {
         (model) => model.name === this.model || model.name.startsWith(this.model + ':')
       )
     } catch (error) {
-      logger.warn('Error checking Ollama model availability:', error instanceof Error ? error : new Error(String(error)))
+      logger.warn(
+        'Error checking Ollama model availability:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       return false
     }
   }
@@ -184,7 +199,10 @@ export class OllamaEmbeddings extends Embeddings {
         model: this.model,
       }
     } catch (error) {
-      logger.warn('Error getting model info:', error instanceof Error ? error : new Error(String(error)))
+      logger.warn(
+        'Error getting model info:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       return {
         name: this.model || 'unknown',
         service: 'ollama',
@@ -245,7 +263,10 @@ export class OllamaEmbeddings extends Embeddings {
 
       return modelMap
     } catch (error) {
-      logger.warn('Could not fetch available models from Ollama:', error instanceof Error ? error : new Error(String(error)))
+      logger.warn(
+        'Could not fetch available models from Ollama:',
+        error instanceof Error ? error : new Error(String(error))
+      )
       // 기본값 반환
       return {
         [this.model]: {
@@ -329,7 +350,7 @@ export class OllamaEmbeddings extends Embeddings {
     for (const [key, config] of Object.entries(AVAILABLE_OLLAMA_MODELS)) {
       const keyParts = key.split(':')
       const slashParts = key.split('/')
-      
+
       if (keyParts[0] && modelName.includes(keyParts[0])) {
         return config
       }

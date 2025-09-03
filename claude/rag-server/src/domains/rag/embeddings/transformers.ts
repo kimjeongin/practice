@@ -1,7 +1,7 @@
 import { pipeline, env } from '@huggingface/transformers'
 import type { FeatureExtractionPipeline } from '@huggingface/transformers'
 import { Embeddings } from '@langchain/core/embeddings'
-import { BaseServerConfig } from '@/shared/config/config-factory.js'
+import { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 
 export interface EmbeddingModelConfig {
@@ -33,7 +33,7 @@ export class TransformersEmbeddings extends Embeddings {
   protected isInitialized = false
   protected initPromise: Promise<void> | null = null
 
-  constructor(private config: BaseServerConfig) {
+  constructor(private config: ServerConfig) {
     super({})
 
     // Configure transformers.js environment
