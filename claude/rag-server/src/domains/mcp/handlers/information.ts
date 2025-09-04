@@ -75,10 +75,10 @@ export class InformationHandler {
         {
           name: 'Vector Store Documents',
           vectordb: 'lancedb',
-          totalFiles: documentCount || 0,
-          totalVectors: indexStats?.totalVectors || 0,
+          total_files: documentCount || 0,
+          total_vectors: indexStats?.totalVectors || 0,
           dimensions: indexStats?.dimensions || 0,
-          modelName: indexStats?.modelName || 'unknown',
+          embedding_odel: indexStats?.embeddingModel || 'unknown',
         },
       ]
     } catch (error) {

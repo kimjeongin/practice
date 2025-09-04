@@ -2,6 +2,7 @@ import { SearchService } from '@/domains/rag/services/search.js'
 import type { SearchOptions } from '@/domains/rag/core/types.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
+import type { ServerConfig } from '@/shared/config/config-factory.js'
 
 // Search tool arguments
 export interface SearchArgs {
@@ -10,7 +11,7 @@ export interface SearchArgs {
 }
 
 export class SearchHandler {
-  constructor(private searchService: SearchService) {}
+  constructor(private searchService: SearchService, private config?: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
     const { query, topK = 5 } = args
@@ -44,6 +45,9 @@ export class SearchHandler {
 
       const results = await this.searchService.search(query, searchOptions)
 
+      // Detect if reranking was used by checking if any result has rerank scores
+      const rerankingUsed = results.some((result) => result.rerankingScore !== undefined)
+
       return {
         content: [
           {
@@ -55,7 +59,8 @@ export class SearchHandler {
                 results: results.map((result, index) => ({
                   rank: index + 1,
                   content: result.content,
-                  relevance_score: result.score,
+                  vector_score: result.vectorScore,
+                  reranking_score: result.rerankingScore,
                   source: {
                     filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
                     filepath: result.metadata?.filePath || result.metadata?.path || 'unknown',
@@ -66,7 +71,7 @@ export class SearchHandler {
                 })),
                 search_info: {
                   total_results: results.length,
-                  search_method: 'semantic',
+                  search_method: rerankingUsed ? '2-stage (vector + rerank)' : 'vector search',
                   max_requested: topK,
                 },
               },

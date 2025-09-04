@@ -58,7 +58,6 @@ export interface DocumentChunk {
   metadata?: DocumentMetadata
 }
 
-
 // ========================================
 // Vector Store Types
 // ========================================
@@ -112,7 +111,8 @@ export interface IndexStats {
   totalVectors: number // total vector count
   dimensions: number // vector dimensions
   indexSize?: number // index size (bytes)
-  modelName?: string // embedding model name
+  embeddingModel?: string // embedding model name
+  rerankingModel?: string // reranking model name
 }
 
 // ========================================
@@ -183,6 +183,10 @@ export interface SearchResult {
   score: number
   metadata: Record<string, any>
   chunkIndex: number
+
+  // Reranking information
+  rerankingScore?: number // Only present if reranking was used
+  vectorScore?: number // Vector search score (when reranking is used)
 }
 
 // ========================================
@@ -217,7 +221,7 @@ export interface RerankingResult {
 
   // Reranking scores
   originalScore: number // original vector search score
-  rerankScore: number // reranking model score  
+  rerankScore: number // reranking model score
   score: number // final combined/normalized score
 }
 
@@ -232,13 +236,9 @@ export interface ModelInfo {
   model?: string
 }
 
-
-
 // ========================================
 // Event Types
 // ========================================
-
-
 
 // ========================================
 // Constants

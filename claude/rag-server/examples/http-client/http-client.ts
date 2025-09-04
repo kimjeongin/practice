@@ -46,24 +46,11 @@ async function testStreamableHTTPClient(): Promise<void> {
     console.log('📋 Available tools:', toolsResult.tools)
     console.log('')
 
-    // 4. Test resources
-    console.log('📚 Testing resources/list...')
-    try {
-      const resourcesResult = await client.listResources()
-      console.log('📁 Available resources:', resourcesResult.resources?.length || 0)
-      console.log(resourcesResult)
-      if (resourcesResult.resources?.length > 0) {
-        console.log('📄 First resource:', resourcesResult.resources[0].name)
-      }
-    } catch (error) {
-      console.log('⚠️  Resources test failed:', (error as Error).message)
-    }
-    console.log('')
-
     // 5. Test search tool if available
     if (toolsResult.tools.some((t) => t.name === 'search')) {
       console.log('🔎 Testing search tool...')
       try {
+        const startTime = performance.now()
         const searchResult = await client.callTool({
           name: 'search',
           arguments: {
@@ -71,6 +58,10 @@ async function testStreamableHTTPClient(): Promise<void> {
             limit: 3,
           },
         })
+        const endTime = performance.now()
+        const toolCallDuration = endTime - startTime
+
+        console.log(`⏱️  Tool call duration: ${toolCallDuration.toFixed(2)}ms`)
 
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
@@ -78,12 +69,14 @@ async function testStreamableHTTPClient(): Promise<void> {
             totalResults: result.results?.length || 0,
             query: result.query,
             searchTime: result.searchTime,
-            firstResult: result.results?.[0]
-              ? {
-                  filename: result.results[0].source?.filename,
-                  score: result.results[0].relevance_score,
-                }
-              : 'No results',
+            toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
+            firstResult: [
+              ...result.results.map((res) => ({
+                filename: res.source?.filename,
+                vector_score: res.vector_score,
+                reranking_score: res.reranking_score,
+              })),
+            ],
           })
         }
       } catch (error) {
@@ -96,10 +89,15 @@ async function testStreamableHTTPClient(): Promise<void> {
     if (toolsResult.tools.some((t) => t.name === 'get_vectordb_info')) {
       console.log('🗄️  Testing get_vectordb_info tool...')
       try {
+        const startTime = performance.now()
         const vectordbResult = await client.callTool({
           name: 'get_vectordb_info',
           arguments: {},
         })
+        const endTime = performance.now()
+        const toolCallDuration = endTime - startTime
+        
+        console.log(`⏱️  Tool call duration: ${toolCallDuration.toFixed(2)}ms`)
         console.log(vectordbResult)
 
         if (
@@ -114,6 +112,7 @@ async function testStreamableHTTPClient(): Promise<void> {
             totalVectors: result.vectordb_info?.totalVectors || 0,
             dimensions: result.vectordb_info?.dimensions || 0,
             modelName: result.vectordb_info?.modelName || 'unknown',
+            toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
         }
       } catch (error) {

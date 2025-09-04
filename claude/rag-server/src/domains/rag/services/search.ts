@@ -44,15 +44,11 @@ export class SearchService implements ISearchService {
     })
 
     try {
-      // Debug reranking state
-      const isRerankingEnabled = this.config.rerankingEnabled && this.rerankingService?.isReady()
       logger.info('🔍 Starting 2-stage search pipeline', {
         query: query.substring(0, 100),
         topK: options.topK || 10,
-        rerankingEnabled: isRerankingEnabled,
         rerankingConfig: this.config.rerankingEnabled,
         rerankingServiceExists: !!this.rerankingService,
-        rerankingServiceReady: this.rerankingService?.isReady() || false,
         component: 'SearchService',
       })
 
@@ -68,7 +64,6 @@ export class SearchService implements ISearchService {
         query: query.substring(0, 100),
         resultsCount: searchResults.length,
         topScore: searchResults[0]?.score || 0,
-        rerankingUsed: this.config.rerankingEnabled && this.rerankingService?.isReady(),
         component: 'SearchService',
       })
 
@@ -95,8 +90,21 @@ export class SearchService implements ISearchService {
     query: string,
     options: SearchOptions
   ): Promise<SearchResult[]> {
-    // Check if reranking is enabled and ready
-    const isRerankingEnabled = this.config.rerankingEnabled && this.rerankingService?.isReady()
+    // Check if reranking is enabled and try to initialize if needed
+    let isRerankingEnabled = false
+    if (this.config.rerankingEnabled && this.rerankingService) {
+      if (!this.rerankingService.isReady()) {
+        try {
+          // Check if the service has an initialize method (like TransformersReranker)
+          if ('initialize' in this.rerankingService && typeof (this.rerankingService as any).initialize === 'function') {
+            await (this.rerankingService as any).initialize()
+          }
+        } catch (error) {
+          logger.warn('Failed to initialize reranking service', error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+      isRerankingEnabled = this.rerankingService.isReady()
+    }
     
     // Stage 1: Vector Search
     // Retrieve more candidates if reranking is enabled
@@ -133,8 +141,14 @@ export class SearchService implements ISearchService {
       component: 'SearchService',
     })
 
-    // If no reranking or no results, return vector results
+    // If no reranking or no results, return vector results without rerank scores
     if (!isRerankingEnabled || vectorResults.length === 0 || !this.rerankingService) {
+      logger.info(`📊 Stage 1 (Vector Search) only - no reranking`, {
+        query: query.substring(0, 100),
+        resultsCount: vectorResults.length,
+        rerankingEnabled: isRerankingEnabled,
+        component: 'SearchService',
+      })
       return vectorResults.map((result) => ({
         content: result.content,
         score: result.score,
@@ -168,12 +182,14 @@ export class SearchService implements ISearchService {
         component: 'SearchService',
       })
 
-      // Convert reranking results to search results
+      // Convert reranking results to search results with rerank information
       return rerankingResults.map((result) => ({
         content: result.content,
-        score: result.score, // Use final combined score
+        score: result.score, // Use final combined score (rerank score)
         metadata: result.metadata,
         chunkIndex: result.chunkIndex,
+        rerankingScore: result.rerankScore,
+        vectorScore: result.originalScore,
       }))
     } catch (error) {
       logger.error(
@@ -182,7 +198,7 @@ export class SearchService implements ISearchService {
         { component: 'SearchService' }
       )
 
-      // Fallback to vector search results
+      // Fallback to vector search results (no rerank scores)
       return vectorResults.slice(0, options.topK || 10).map((result) => ({
         content: result.content,
         score: result.score,

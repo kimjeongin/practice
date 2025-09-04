@@ -400,7 +400,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
       return {
         totalVectors: countResult,
         dimensions: this.embeddingDimensions,
-        modelName: this.embeddingService?.getModelInfo().name || 'unknown',
+        embeddingModel: this.embeddingService?.getModelInfo().name || 'unknown',
       }
     } catch (error) {
       logger.error(

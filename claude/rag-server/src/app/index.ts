@@ -131,8 +131,8 @@ async function initializeServices(config: any) {
     // Continue startup even if file watcher fails
   }
 
-  // Initialize MCP handlers with SearchService (high-level abstraction)
-  const searchHandler = new SearchHandler(searchService)
+  // Initialize MCP handlers with SearchService and config
+  const searchHandler = new SearchHandler(searchService, config)
   const informationHandler = new InformationHandler(vectorStoreProvider)
 
   // Create MCP Server
