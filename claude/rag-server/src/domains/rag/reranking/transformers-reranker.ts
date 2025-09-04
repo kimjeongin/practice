@@ -61,7 +61,7 @@ export class TransformersReranker implements IRerankingService {
   /**
    * Initialize the reranking pipeline
    */
-  protected async initialize(): Promise<void> {
+  async initialize(): Promise<void> {
     if (this.isInitialized) return
 
     if (this.initPromise) {
@@ -344,6 +344,7 @@ export class TransformersReranker implements IRerankingService {
 
   /**
    * Check if service is ready
+   * Note: This is a synchronous check - initialization should be done beforehand
    */
   isReady(): boolean {
     return this.isInitialized && this.pipeline !== null

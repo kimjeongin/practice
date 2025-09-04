@@ -60,7 +60,7 @@ export class TransformersEmbeddings extends Embeddings {
   /**
    * Initialize the embedding pipeline
    */
-  protected async initialize(): Promise<void> {
+  async initialize(): Promise<void> {
     if (this.isInitialized) return
 
     if (this.initPromise) {

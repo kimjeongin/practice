@@ -6,7 +6,6 @@
 import type { ISearchService, IRerankingService } from '@/domains/rag/core/interfaces.js'
 import type { SearchOptions, SearchResult, RerankingInput } from '@/domains/rag/core/types.js'
 import { LanceDBProvider } from '@/domains/rag/lancedb/index.js'
-import { RerankingFactory } from '@/domains/rag/reranking/index.js'
 import { SearchError } from '@/shared/errors/index.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
@@ -15,50 +14,28 @@ import type { ServerConfig } from '@/shared/config/config-factory.js'
 
 export class SearchService implements ISearchService {
   private rerankingService: IRerankingService | null = null
-  private initPromise: Promise<void> | null = null
 
-  constructor(private vectorStore: LanceDBProvider, private config: ServerConfig) {}
-
-  /**
-   * Initialize reranking service if enabled
-   */
-  private async initialize(): Promise<void> {
-    if (this.initPromise) {
-      await this.initPromise
-      return
-    }
-
-    this.initPromise = this._doInitialize()
-    await this.initPromise
-  }
-
-  private async _doInitialize(): Promise<void> {
-    if (this.config.rerankingEnabled && !this.rerankingService) {
-      try {
-        logger.info('🔄 Initializing reranking service for 2-stage search...', {
-          component: 'SearchService',
-        })
-
-        this.rerankingService = await RerankingFactory.createRerankingService(this.config)
-
-        logger.info('✅ Reranking service initialized for 2-stage search', {
-          model: this.config.rerankingModel,
-          component: 'SearchService',
-        })
-      } catch (error) {
-        logger.error(
-          '❌ Failed to initialize reranking service, falling back to vector search only',
-          error instanceof Error ? error : new Error(String(error)),
-          { component: 'SearchService' }
-        )
-        // Continue without reranking
-        this.rerankingService = null
-      }
+  constructor(
+    private vectorStore: LanceDBProvider, 
+    private config: ServerConfig,
+    prerankingService?: IRerankingService | null
+  ) {
+    this.rerankingService = prerankingService || null
+    
+    if (this.rerankingService) {
+      logger.info('✅ SearchService initialized with pre-initialized reranking service', {
+        rerankingReady: this.rerankingService.isReady(),
+        component: 'SearchService',
+      })
+    } else {
+      logger.info('⚠️ SearchService initialized without reranking service', {
+        rerankingEnabled: config.rerankingEnabled,
+        component: 'SearchService',
+      })
     }
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
-    await this.initialize()
 
     const endTiming = startTiming('search_pipeline', {
       query: query.substring(0, 50),
@@ -67,9 +44,8 @@ export class SearchService implements ISearchService {
     })
 
     try {
-      const isRerankingEnabled = this.config.rerankingEnabled && this.rerankingService?.isReady()
-
       // Debug reranking state
+      const isRerankingEnabled = this.config.rerankingEnabled && this.rerankingService?.isReady()
       logger.info('🔍 Starting 2-stage search pipeline', {
         query: query.substring(0, 100),
         topK: options.topK || 10,
@@ -92,14 +68,13 @@ export class SearchService implements ISearchService {
         query: query.substring(0, 100),
         resultsCount: searchResults.length,
         topScore: searchResults[0]?.score || 0,
-        rerankingUsed: isRerankingEnabled,
+        rerankingUsed: this.config.rerankingEnabled && this.rerankingService?.isReady(),
         component: 'SearchService',
       })
 
       endTiming()
       return searchResults
     } catch (error) {
-      const isRerankingEnabled = this.config.rerankingEnabled && this.rerankingService?.isReady()
       const searchError =
         error instanceof SearchError
           ? error
@@ -120,7 +95,9 @@ export class SearchService implements ISearchService {
     query: string,
     options: SearchOptions
   ): Promise<SearchResult[]> {
+    // Check if reranking is enabled and ready
     const isRerankingEnabled = this.config.rerankingEnabled && this.rerankingService?.isReady()
+    
     // Stage 1: Vector Search
     // Retrieve more candidates if reranking is enabled
     let vectorTopK = options.topK || 10
