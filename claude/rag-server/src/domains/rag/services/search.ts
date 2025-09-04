@@ -13,33 +13,25 @@ import { TimeoutWrapper } from '@/shared/utils/resilience.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
 
 export class SearchService implements ISearchService {
-  private rerankingService: IRerankingService | null = null
+  private rerankingService: IRerankingService
 
   constructor(
-    private vectorStore: LanceDBProvider, 
+    private vectorStore: LanceDBProvider,
     private config: ServerConfig,
-    prerankingService?: IRerankingService | null
+    prerankingService: IRerankingService
   ) {
-    this.rerankingService = prerankingService || null
-    
-    if (this.rerankingService) {
-      logger.info('✅ SearchService initialized with pre-initialized reranking service', {
-        rerankingReady: this.rerankingService.isReady(),
-        component: 'SearchService',
-      })
-    } else {
-      logger.info('⚠️ SearchService initialized without reranking service', {
-        rerankingEnabled: config.rerankingEnabled,
-        component: 'SearchService',
-      })
-    }
+    this.rerankingService = prerankingService
+
+    logger.info('✅ SearchService initialized with pre-initialized reranking service', {
+      rerankingReady: this.rerankingService.isReady(),
+      component: 'SearchService',
+    })
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
-
     const endTiming = startTiming('search_pipeline', {
       query: query.substring(0, 50),
-      rerankingEnabled: this.config.rerankingEnabled,
+      rerankingEnabled: options.enableReranking || false,
       component: 'SearchService',
     })
 
@@ -47,7 +39,7 @@ export class SearchService implements ISearchService {
       logger.info('🔍 Starting 2-stage search pipeline', {
         query: query.substring(0, 100),
         topK: options.topK || 10,
-        rerankingConfig: this.config.rerankingEnabled,
+        rerankingRequested: options.enableReranking || false,
         rerankingServiceExists: !!this.rerankingService,
         component: 'SearchService',
       })
@@ -92,20 +84,26 @@ export class SearchService implements ISearchService {
   ): Promise<SearchResult[]> {
     // Check if reranking is enabled and try to initialize if needed
     let isRerankingEnabled = false
-    if (this.config.rerankingEnabled && this.rerankingService) {
+    if (options.enableReranking) {
       if (!this.rerankingService.isReady()) {
         try {
           // Check if the service has an initialize method (like TransformersReranker)
-          if ('initialize' in this.rerankingService && typeof (this.rerankingService as any).initialize === 'function') {
+          if (
+            'initialize' in this.rerankingService &&
+            typeof (this.rerankingService as any).initialize === 'function'
+          ) {
             await (this.rerankingService as any).initialize()
           }
         } catch (error) {
-          logger.warn('Failed to initialize reranking service', error instanceof Error ? error : new Error(String(error)))
+          logger.warn(
+            'Failed to initialize reranking service',
+            error instanceof Error ? error : new Error(String(error))
+          )
         }
       }
       isRerankingEnabled = this.rerankingService.isReady()
     }
-    
+
     // Stage 1: Vector Search
     // Retrieve more candidates if reranking is enabled
     let vectorTopK = options.topK || 10
@@ -142,7 +140,7 @@ export class SearchService implements ISearchService {
     })
 
     // If no reranking or no results, return vector results without rerank scores
-    if (!isRerankingEnabled || vectorResults.length === 0 || !this.rerankingService) {
+    if (!isRerankingEnabled) {
       logger.info(`📊 Stage 1 (Vector Search) only - no reranking`, {
         query: query.substring(0, 100),
         resultsCount: vectorResults.length,
@@ -154,6 +152,7 @@ export class SearchService implements ISearchService {
         score: result.score,
         metadata: result.metadata,
         chunkIndex: result.chunkIndex,
+        vectorScore: result.score,
       }))
     }
 
@@ -189,7 +188,7 @@ export class SearchService implements ISearchService {
         metadata: result.metadata,
         chunkIndex: result.chunkIndex,
         rerankingScore: result.rerankScore,
-        vectorScore: result.originalScore,
+        vectorScore: result.vectorScore,
       }))
     } catch (error) {
       logger.error(

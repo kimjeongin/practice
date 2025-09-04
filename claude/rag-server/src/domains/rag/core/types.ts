@@ -176,6 +176,7 @@ export interface SearchOptions {
   fileTypes?: string[]
   metadataFilters?: Record<string, string>
   scoreThreshold?: number
+  enableReranking?: boolean
 }
 
 export interface SearchResult {
@@ -220,7 +221,7 @@ export interface RerankingResult {
   chunkIndex: number
 
   // Reranking scores
-  originalScore: number // original vector search score
+  vectorScore: number // vector search score
   rerankScore: number // reranking model score
   score: number // final combined/normalized score
 }

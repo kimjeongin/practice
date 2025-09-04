@@ -11,7 +11,7 @@ import type { IEmbeddingService, IRerankingService } from '@/domains/rag/core/in
 
 export interface StartupServices {
   embeddingService: IEmbeddingService | any
-  rerankingService: IRerankingService | null
+  rerankingService: IRerankingService | any
 }
 
 export class StartupManager {
@@ -53,14 +53,14 @@ export class StartupManager {
   private async _doInitializeServices(): Promise<void> {
     const endTiming = startTiming('startup_initialization', {
       embeddingService: this.config.embeddingService,
-      rerankingEnabled: this.config.rerankingEnabled,
+      rerankingService: this.config.rerankingService,
       component: 'StartupManager',
     })
 
     try {
       logger.info('🚀 Starting application service initialization...', {
         embeddingService: this.config.embeddingService,
-        rerankingEnabled: this.config.rerankingEnabled,
+        rerankingService: this.config.rerankingService,
         component: 'StartupManager',
       })
 
@@ -72,12 +72,15 @@ export class StartupManager {
 
       const embeddingStartTime = Date.now()
       const embeddingService = await EmbeddingFactory.createEmbeddingService(this.config)
-      
+
       // Force initialization of the embedding service if it has an initialize method
-      if ('initialize' in embeddingService && typeof (embeddingService as any).initialize === 'function') {
+      if (
+        'initialize' in embeddingService &&
+        typeof (embeddingService as any).initialize === 'function'
+      ) {
         await (embeddingService as any).initialize()
       }
-      
+
       const embeddingDuration = Date.now() - embeddingStartTime
       logger.info('✅ Embedding service initialized successfully', {
         service: this.config.embeddingService,
@@ -85,9 +88,9 @@ export class StartupManager {
         component: 'StartupManager',
       })
 
-      // Initialize reranking service if enabled
+      // Initialize reranking service (optional but available for parameter-based usage)
       let rerankingService: IRerankingService | null = null
-      if (this.config.rerankingEnabled) {
+      try {
         logger.info('🔄 Initializing reranking service...', {
           service: this.config.rerankingService,
           model: this.config.rerankingModel,
@@ -95,34 +98,29 @@ export class StartupManager {
         })
 
         const rerankingStartTime = Date.now()
-        try {
-          rerankingService = await RerankingFactory.createRerankingService(this.config)
-          
-          // Force initialization of the reranking service
-          if ('initialize' in rerankingService && typeof (rerankingService as any).initialize === 'function') {
-            await (rerankingService as any).initialize()
-          }
+        rerankingService = await RerankingFactory.createRerankingService(this.config)
 
-          const rerankingDuration = Date.now() - rerankingStartTime
-          logger.info('✅ Reranking service initialized successfully', {
-            service: this.config.rerankingService,
-            model: this.config.rerankingModel,
-            duration: rerankingDuration,
-            isReady: rerankingService.isReady(),
-            component: 'StartupManager',
-          })
-        } catch (error) {
-          logger.error(
-            '❌ Failed to initialize reranking service during startup',
-            error instanceof Error ? error : new Error(String(error)),
-            { component: 'StartupManager' }
-          )
-          rerankingService = null
+        // Force initialization of the reranking service
+        if (
+          'initialize' in rerankingService &&
+          typeof (rerankingService as any).initialize === 'function'
+        ) {
+          await (rerankingService as any).initialize()
         }
-      } else {
-        logger.info('⏭️ Reranking service disabled, skipping initialization', {
+
+        const rerankingDuration = Date.now() - rerankingStartTime
+        logger.info('✅ Reranking service initialized successfully', {
+          service: this.config.rerankingService,
+          model: this.config.rerankingModel,
+          duration: rerankingDuration,
+          isReady: rerankingService.isReady(),
           component: 'StartupManager',
         })
+      } catch (error) {
+        logger.warn(
+          '⚠️ Failed to initialize reranking service during startup, will be unavailable for parameter-based usage',
+          error instanceof Error ? error : new Error(String(error))
+        )
       }
 
       this.services = {
@@ -167,12 +165,13 @@ export class StartupManager {
   isReady(): boolean {
     if (!this.services || !this.initialized) return false
 
-    const embeddingReady = 'isReady' in this.services.embeddingService 
-      ? (this.services.embeddingService as any).isReady() 
-      : true
+    const embeddingReady =
+      'isReady' in this.services.embeddingService
+        ? (this.services.embeddingService as any).isReady()
+        : true
 
-    const rerankingReady = this.services.rerankingService 
-      ? this.services.rerankingService.isReady() 
+    const rerankingReady = this.services.rerankingService
+      ? this.services.rerankingService.isReady()
       : true
 
     return embeddingReady && rerankingReady
@@ -183,15 +182,16 @@ export class StartupManager {
    */
   async getHealthStatus(): Promise<{
     embedding: { ready: boolean; healthy: boolean }
-    reranking: { enabled: boolean; ready: boolean; healthy: boolean }
+    reranking: { available: boolean; ready: boolean; healthy: boolean }
   }> {
     if (!this.services || !this.initialized) {
       throw new Error('Services not initialized')
     }
 
-    const embeddingHealthy = 'healthCheck' in this.services.embeddingService
-      ? await (this.services.embeddingService as any).healthCheck()
-      : true
+    const embeddingHealthy =
+      'healthCheck' in this.services.embeddingService
+        ? await (this.services.embeddingService as any).healthCheck()
+        : true
 
     const rerankingHealthy = this.services.rerankingService
       ? await this.services.rerankingService.healthCheck()
@@ -199,14 +199,15 @@ export class StartupManager {
 
     return {
       embedding: {
-        ready: 'isReady' in this.services.embeddingService 
-          ? (this.services.embeddingService as any).isReady() 
-          : true,
+        ready:
+          'isReady' in this.services.embeddingService
+            ? (this.services.embeddingService as any).isReady()
+            : true,
         healthy: embeddingHealthy,
       },
       reranking: {
-        enabled: this.config.rerankingEnabled,
-        ready: this.services.rerankingService ? this.services.rerankingService.isReady() : true,
+        available: this.services.rerankingService !== null,
+        ready: this.services.rerankingService ? this.services.rerankingService.isReady() : false,
         healthy: rerankingHealthy,
       },
     }

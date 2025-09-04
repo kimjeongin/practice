@@ -254,7 +254,7 @@ export class TransformersReranker implements IRerankingService {
         content: doc.content,
         metadata: doc.metadata,
         chunkIndex: doc.chunkIndex,
-        originalScore: doc.score,
+        vectorScore: doc.score,
         rerankScore: rerankingScores[index] || 0,
         score: rerankingScores[index] || 0, // Use rerank score as final score
       }))

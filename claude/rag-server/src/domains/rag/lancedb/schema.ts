@@ -6,13 +6,13 @@
 import * as lancedb from '@lancedb/lancedb'
 import * as arrow from 'apache-arrow'
 import { logger } from '@/shared/logger/index.js'
-import type { 
-  RAGDocumentRecord, 
-  RAGSearchResult, 
+import type {
+  RAGDocumentRecord,
+  RAGSearchResult,
   DocumentMetadata,
   VectorDocument,
   VectorSearchResult,
-  SearchFilters
+  SearchFilters,
 } from '@/domains/rag/core/types.js'
 
 /**
@@ -87,7 +87,7 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
   logger.info('🔍 LanceDB search result conversion:', {
     rawDistance: result._distance,
     calculatedScore: score,
-    originalScore: result.score,
+    vectorScore: result.score,
     docId: result.doc_id,
     chunkId: result.chunk_id,
   })

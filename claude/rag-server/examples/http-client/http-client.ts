@@ -55,7 +55,8 @@ async function testStreamableHTTPClient(): Promise<void> {
           name: 'search',
           arguments: {
             query: 'python programming',
-            limit: 3,
+            topK: 3,
+            enableReranking: true,
           },
         })
         const endTime = performance.now()
@@ -96,7 +97,7 @@ async function testStreamableHTTPClient(): Promise<void> {
         })
         const endTime = performance.now()
         const toolCallDuration = endTime - startTime
-        
+
         console.log(`⏱️  Tool call duration: ${toolCallDuration.toFixed(2)}ms`)
         console.log(vectordbResult)
 

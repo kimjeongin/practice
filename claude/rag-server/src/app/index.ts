@@ -13,7 +13,6 @@ import { InformationHandler } from '@/domains/mcp/handlers/information.js'
 // SearchService and RAGWorkflow removed as part of VectorStore-only architecture
 // These will be refactored in Phase 7 to work with VectorStore-only architecture
 
-
 /**
  * Initialize all dependencies and create MCPServer instance
  */
@@ -22,30 +21,38 @@ async function initializeServices(config: any) {
   logger.info('🚀 Pre-initializing core services for optimal performance...')
   const startupManager = StartupManager.getInstance(config)
   const coreServices = await startupManager.initializeServices()
-  
+
   logger.info('✅ Core services pre-initialized', {
-    embeddingReady: 'isReady' in coreServices.embeddingService ? coreServices.embeddingService.isReady() : 'N/A',
-    rerankingReady: coreServices.rerankingService ? coreServices.rerankingService.isReady() : 'disabled',
+    embeddingReady:
+      'isReady' in coreServices.embeddingService ? coreServices.embeddingService.isReady() : 'N/A',
+    rerankingReady:
+      'isReady' in coreServices.rerankingService
+        ? coreServices.rerankingService.isReady()
+        : 'disabled',
   })
 
   // Initialize LanceDB provider directly
   const { LanceDBProvider } = await import('@/domains/rag/lancedb/index.js')
-  
-  const vectorStoreProvider = new LanceDBProvider(config, {
-    uri: config.vectorStore.config.uri,
-  }, 'documents')
+
+  const vectorStoreProvider = new LanceDBProvider(
+    config,
+    {
+      uri: config.vectorStore.config.uri,
+    },
+    'documents'
+  )
 
   // Initialize SearchService with direct LanceDB provider, config, and pre-initialized reranking service
   const { SearchService } = await import('@/domains/rag/services/search.js')
-  const searchService = new SearchService(vectorStoreProvider, config, coreServices.rerankingService)
-
+  const searchService = new SearchService(
+    vectorStoreProvider,
+    config,
+    coreServices.rerankingService
+  )
 
   // Initialize DocumentProcessor for file processing
   const { DocumentProcessor } = await import('@/domains/rag/services/processor.js')
-  const documentProcessor = new DocumentProcessor(
-    vectorStoreProvider,
-    config
-  )
+  const documentProcessor = new DocumentProcessor(vectorStoreProvider, config)
 
   // Initialize FileWatcher for automatic file processing
   const { FileWatcher } = await import('@/domains/filesystem/index.js')

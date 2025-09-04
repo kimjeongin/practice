@@ -8,13 +8,14 @@ import type { ServerConfig } from '@/shared/config/config-factory.js'
 export interface SearchArgs {
   query: string
   topK?: number
+  enableReranking?: boolean
 }
 
 export class SearchHandler {
   constructor(private searchService: SearchService, private config?: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
-    const { query, topK = 5 } = args
+    const { query, topK = 5, enableReranking = false } = args
 
     if (!query) {
       return {
@@ -41,6 +42,7 @@ export class SearchHandler {
       const searchOptions: SearchOptions = {
         topK: topK ? Math.max(1, Math.min(topK, 50)) : 5, // Clamp between 1-50
         scoreThreshold: 0.75,
+        enableReranking,
       }
 
       const results = await this.searchService.search(query, searchOptions)
@@ -108,7 +110,7 @@ export class SearchHandler {
       {
         name: 'search',
         description:
-          'Search through indexed documents using semantic search with natural language queries',
+          'Search through indexed documents using semantic search with natural language queries. Supports optional reranking for improved accuracy (slower but more precise results).',
         inputSchema: {
           type: 'object',
           properties: {
@@ -122,6 +124,11 @@ export class SearchHandler {
               default: 5,
               minimum: 1,
               maximum: 50,
+            },
+            enableReranking: {
+              type: 'boolean',
+              description: 'Enable reranking for more accurate but slower results. Uses a cross-encoder model to reorder vector search results.',
+              default: false,
             },
           },
           required: ['query'],

@@ -46,7 +46,6 @@ export interface ServerConfig {
   transformersCacheDir?: string
 
   // Reranking configuration
-  rerankingEnabled: boolean
   rerankingService: 'transformers'
   rerankingModel: string
   rerankingTopK: number
@@ -98,7 +97,6 @@ export class ConfigFactory {
       transformersCacheDir: process.env['TRANSFORMERS_CACHE_DIR'],
 
       // Reranking configuration
-      rerankingEnabled: process.env['RERANKING_ENABLED'] !== 'false',
       rerankingService: 'transformers',
       rerankingModel: process.env['RERANKING_MODEL'] || 'gte-multilingual-reranker-base',
       rerankingTopK: parseInt(process.env['RERANKING_TOP_K'] || '5'),
