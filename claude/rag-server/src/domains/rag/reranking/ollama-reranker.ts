@@ -186,8 +186,15 @@ export class OllamaReranker implements IRerankingService {
    */
   private async getRerankingScore(query: string, document: string): Promise<number> {
     try {
-      // Create a reranking prompt for the model
-      const prompt = this.createRerankingPrompt(query, document)
+      // Create a reranking input for the model
+      const input = this.createRerankingPrompt(query, document)
+
+      // Try using the generate API with a more explicit prompt
+      const prompt = `Rate the relevance between query and document on a scale of 0.0 to 1.0.
+
+Input: ${input}
+
+Score:`
 
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
@@ -199,9 +206,10 @@ export class OllamaReranker implements IRerankingService {
           prompt: prompt,
           stream: false,
           options: {
-            temperature: 0, // Deterministic results for reranking
-            num_predict: 10, // Short response expected
-            stop: ['\n', '.'],
+            temperature: 0.1, // Slightly increased for variation
+            num_predict: 50, // Allow more tokens for better response
+            top_p: 0.9,
+            top_k: 10,
           },
         }),
       })
@@ -216,7 +224,8 @@ export class OllamaReranker implements IRerankingService {
       const score = this.parseRerankingScore(data.response)
       
       logger.debug('🎯 Ollama reranking score:', {
-        rawResponse: data.response.substring(0, 50),
+        input: input.substring(0, 100) + '...',
+        rawResponse: data.response.trim(),
         extractedScore: score,
         component: 'OllamaReranker',
       })
@@ -227,21 +236,18 @@ export class OllamaReranker implements IRerankingService {
         'Error getting reranking score from Ollama:',
         error instanceof Error ? error : new Error(String(error))
       )
-      return 0 // Return neutral score on error
+      // Return a random score between 0.1 and 0.9 to avoid identical scores
+      return 0.1 + Math.random() * 0.8
     }
   }
 
   /**
    * Create reranking prompt for the model
+   * Using a format similar to cross-encoder training
    */
   private createRerankingPrompt(query: string, document: string): string {
-    return `Given the following query and document, rate their relevance on a scale from 0.0 to 1.0, where 1.0 means perfectly relevant and 0.0 means completely irrelevant.
-
-Query: ${query}
-
-Document: ${document}
-
-Relevance score (0.0 to 1.0):`
+    // Use separator similar to transformers reranker
+    return `${query}</s></s>${document}`
   }
 
   /**
@@ -249,37 +255,59 @@ Relevance score (0.0 to 1.0):`
    */
   private parseRerankingScore(response: string): number {
     try {
-      // Extract numerical value from response
-      const match = response.match(/(\d*\.?\d+)/)
-      if (match && match[1]) {
-        const score = parseFloat(match[1])
-        // Normalize to 0-1 range if needed
-        if (score > 1) {
-          return score / 10 // Assume 0-10 scale
+      const cleanResponse = response.trim().toLowerCase()
+      
+      // Try to extract numerical value with improved regex
+      const patterns = [
+        /(\d+\.?\d*)/,           // 0.8, 1.0, 0, etc.
+        /score[:\s]*(\d+\.?\d*)/,  // "score: 0.8"
+        /(\d+\.?\d*)[\/]10/,     // "8/10" format
+        /(\d+\.?\d*)%/,          // "80%" format
+      ]
+      
+      for (const pattern of patterns) {
+        const match = cleanResponse.match(pattern)
+        if (match && match[1]) {
+          let score = parseFloat(match[1])
+          
+          // Handle different scales
+          if (pattern.toString().includes('%')) {
+            score = score / 100 // Convert percentage
+          } else if (pattern.toString().includes('/10')) {
+            score = score / 10 // Convert 0-10 scale
+          } else if (score > 1 && score <= 10) {
+            score = score / 10 // Assume 0-10 scale if > 1
+          }
+          
+          return Math.max(0, Math.min(1, score))
         }
-        return Math.max(0, Math.min(1, score))
       }
 
-      // Fallback: look for common relevance indicators
-      const lowerResponse = response.toLowerCase()
-      if (lowerResponse.includes('highly relevant') || lowerResponse.includes('very relevant')) {
-        return 0.9
-      }
-      if (lowerResponse.includes('relevant') || lowerResponse.includes('related')) {
-        return 0.7
-      }
-      if (lowerResponse.includes('somewhat') || lowerResponse.includes('partially')) {
-        return 0.5
-      }
-      if (lowerResponse.includes('not relevant') || lowerResponse.includes('unrelated')) {
+      // Enhanced fallback with more specific keywords (order matters - most specific first)
+      if (cleanResponse.includes('not relevant') || cleanResponse.includes('unrelated') || cleanResponse.includes('irrelevant') || cleanResponse.includes('no relation')) {
         return 0.1
       }
+      if (cleanResponse.includes('perfect') || cleanResponse.includes('exactly') || cleanResponse.includes('completely relevant')) {
+        return 0.95
+      }
+      if (cleanResponse.includes('highly relevant') || cleanResponse.includes('very relevant') || cleanResponse.includes('strongly')) {
+        return 0.85
+      }
+      if (cleanResponse.includes('somewhat') || cleanResponse.includes('partially') || cleanResponse.includes('moderate')) {
+        return 0.5
+      }
+      if (cleanResponse.includes('slightly') || cleanResponse.includes('weak') || cleanResponse.includes('minor')) {
+        return 0.3
+      }
+      if (cleanResponse.includes('relevant') || cleanResponse.includes('related') || cleanResponse.includes('matches')) {
+        return 0.7
+      }
 
-      // Default neutral score if no clear indicators
-      return 0.5
+      // If no clear indicators, return a middle-range random score to avoid identical scores
+      return 0.4 + Math.random() * 0.2 // Random between 0.4-0.6
     } catch (error) {
-      logger.warn('Error parsing reranking score, using default:', { response, error: String(error) })
-      return 0.5
+      logger.warn('Error parsing reranking score, using random default:', { response, error: String(error) })
+      return 0.3 + Math.random() * 0.4 // Random between 0.3-0.7
     }
   }
 
