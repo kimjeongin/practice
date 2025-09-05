@@ -6,6 +6,7 @@
 import type { IRerankingService } from '@/domains/rag/core/interfaces.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { TransformersReranker } from './transformers-reranker.js'
+import { OllamaReranker } from './ollama-reranker.js'
 import { logger } from '@/shared/logger/index.js'
 
 /**
@@ -27,6 +28,9 @@ export class RerankingFactory {
       case 'transformers':
         return new TransformersReranker(config)
 
+      case 'ollama':
+        return new OllamaReranker(config)
+
       default:
         logger.warn(`Unsupported reranking service: ${service}, falling back to transformers`)
         return new TransformersReranker(config)
@@ -41,6 +45,18 @@ export class RerankingFactory {
       case 'transformers':
         return true // Always available via Transformers.js
 
+      case 'ollama':
+        // Check if Ollama server is accessible
+        try {
+          const ollamaReranker = new OllamaReranker({
+            ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+            rerankingModel: 'dengcao/Qwen3-Reranker-0.6B:Q8_0'
+          } as ServerConfig)
+          return await ollamaReranker.isModelAvailable()
+        } catch {
+          return false
+        }
+
       default:
         return false
     }
@@ -50,12 +66,13 @@ export class RerankingFactory {
    * Get list of available reranking services
    */
   static getAvailableServices(): string[] {
-    return ['transformers']
+    return ['transformers', 'ollama']
   }
 }
 
 // Re-export main components
 export { TransformersReranker } from './transformers-reranker.js'
+export { OllamaReranker } from './ollama-reranker.js'
 export type { IRerankingService } from '@/domains/rag/core/interfaces.js'
 export type { 
   RerankingInput, 

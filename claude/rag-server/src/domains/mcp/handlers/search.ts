@@ -26,7 +26,8 @@ export class SearchHandler {
               {
                 error: 'InvalidQuery',
                 message: 'Query parameter is required',
-                suggestion: 'Provide a descriptive natural language search query. Examples: "API authentication methods", "error handling patterns", "configuration settings"',
+                suggestion:
+                  'Provide a descriptive natural language search query. Examples: "API authentication methods", "error handling patterns", "configuration settings"',
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
               2
@@ -41,7 +42,7 @@ export class SearchHandler {
       // Use SearchService with simplified search options
       const searchOptions: SearchOptions = {
         topK: topK ? Math.max(1, Math.min(topK, 50)) : 5, // Clamp between 1-50
-        scoreThreshold: 0.75,
+        scoreThreshold: 0.1,
         enableReranking,
       }
 
@@ -93,7 +94,8 @@ export class SearchHandler {
               {
                 error: 'SearchFailed',
                 message: error instanceof Error ? error.message : 'Search operation failed',
-                suggestion: 'Try these steps: 1) Use get_vectordb_info to verify documents are indexed, 2) Simplify your query or try different keywords, 3) Check if the embedding service is running properly, 4) Ensure documents are placed in the correct directory',
+                suggestion:
+                  'Try these steps: 1) Use get_vectordb_info to verify documents are indexed, 2) Simplify your query or try different keywords, 3) Check if the embedding service is running properly, 4) Ensure documents are placed in the correct directory',
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
               2
@@ -116,18 +118,21 @@ export class SearchHandler {
           properties: {
             query: {
               type: 'string',
-              description: 'Natural language search query. Use specific, descriptive queries for better results. Examples: "authentication methods in API documentation", "error handling best practices", "database configuration settings"',
+              description:
+                'Natural language search query. Use specific, descriptive queries for better results. Examples: "authentication methods in API documentation", "error handling best practices", "database configuration settings"',
             },
             topK: {
               type: 'number',
-              description: 'Maximum number of results to return (1-50). Use 5-10 for general queries, 15-20 for comprehensive searches, 3-5 for focused questions. Higher values provide more context but may include less relevant results.',
+              description:
+                'Maximum number of results to return (1-50). Use 5-10 for general queries, 15-20 for comprehensive searches, 3-5 for focused questions. Higher values provide more context but may include less relevant results.',
               default: 5,
               minimum: 1,
               maximum: 50,
             },
             enableReranking: {
               type: 'boolean',
-              description: 'Enable 2-stage search (vector + rerank) for improved accuracy. Use TRUE for critical queries where precision matters more than speed (adds ~2-3s latency). Use FALSE for exploratory searches or when speed is priority. Reranking significantly improves result quality by re-scoring matches with a cross-encoder model.',
+              description:
+                'Enable 2-stage search (vector + rerank) for improved accuracy. Use TRUE for critical queries where precision matters more than speed (adds ~2-3s latency). Use FALSE for exploratory searches or when speed is priority. Reranking significantly improves result quality by re-scoring matches with a cross-encoder model.',
               default: false,
             },
           },

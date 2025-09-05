@@ -91,6 +91,7 @@ export class TransformersReranker implements IRerankingService {
       // Try to create the pipeline with the GTE multilingual reranker
       try {
         this.pipeline = await pipeline('text-classification', this.modelConfig.modelId, {
+          device: this.config.deviceType,
           progress_callback: (progress: any) => {
             if (progress.status === 'downloading') {
               const percent = Math.round((progress.loaded / progress.total) * 100)

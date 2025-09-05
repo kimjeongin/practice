@@ -39,16 +39,18 @@ export interface ServerConfig {
   // Embedding configuration
   embeddingService: 'transformers' | 'ollama'
   embeddingModel: string
-  embeddingDevice: string
   embeddingBatchSize: number
   embeddingDimensions: number
   ollamaBaseUrl?: string
   transformersCacheDir?: string
 
   // Reranking configuration
-  rerankingService: 'transformers'
+  rerankingService: 'transformers' | 'ollama'
   rerankingModel: string
   rerankingTopK: number
+
+  // Device configuration (shared by embedding and reranking models)
+  deviceType: 'webgpu' | 'cpu'
 
   // Vector store
   vectorStore: VectorStoreConfig
@@ -59,11 +61,48 @@ export interface ServerConfig {
 
 export class ConfigFactory {
   /**
+   * Detect optimal device for ML models (GPU if available, fallback to CPU)
+   * Returns device type compatible with transformers.js
+   */
+  static getOptimalDevice(): 'webgpu' | 'cpu' {
+    try {
+      // Check if CUDA is available (NVIDIA GPUs)
+      const { execSync } = require('child_process')
+      try {
+        execSync('nvidia-smi', { stdio: 'ignore' })
+        return 'webgpu' // transformers.js uses 'gpu' for CUDA
+      } catch {
+        // CUDA not available, continue to check other options
+      }
+
+      // For macOS with Apple Silicon, still use 'gpu' as transformers.js may support Metal
+      if (process.platform === 'darwin') {
+        try {
+          const os = require('os')
+          const arch = os.arch()
+          if (arch === 'arm64') {
+            return 'webgpu' // transformers.js may use Metal on Apple Silicon
+          }
+        } catch {
+          // GPU not available
+        }
+      }
+
+      // Fallback to CPU
+      logger.debug('Using CPU for ML models (no GPU acceleration detected)')
+      return 'cpu'
+    } catch (error) {
+      logger.warn('Error detecting optimal device, falling back to CPU', { error: String(error) })
+      return 'cpu'
+    }
+  }
+
+  /**
    * Get current configuration based on NODE_ENV
    */
   static getCurrentConfig(): ServerConfig {
     const nodeEnv = process.env['NODE_ENV'] || 'development'
-    
+
     if (nodeEnv === 'production') {
       return ConfigFactory.createProductionConfig()
     } else {
@@ -88,18 +127,22 @@ export class ConfigFactory {
       similarityThreshold: parseFloat(process.env['SIMILARITY_THRESHOLD'] || '0.75'),
 
       // Embedding configuration
-      embeddingService: (process.env['EMBEDDING_SERVICE'] as 'transformers' | 'ollama') || 'transformers',
+      embeddingService:
+        (process.env['EMBEDDING_SERVICE'] as 'transformers' | 'ollama') || 'transformers',
       embeddingModel: process.env['EMBEDDING_MODEL'] || 'gte-multilingual-base',
-      embeddingDevice: process.env['EMBEDDING_DEVICE'] || 'cpu',
       embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '10'),
       embeddingDimensions: parseInt(process.env['EMBEDDING_DIMENSIONS'] || '768'),
       ollamaBaseUrl: process.env['OLLAMA_BASE_URL'],
       transformersCacheDir: process.env['TRANSFORMERS_CACHE_DIR'],
 
       // Reranking configuration
-      rerankingService: 'transformers',
+      rerankingService: 
+        (process.env['RERANKING_SERVICE'] as 'transformers' | 'ollama') || 'transformers',
       rerankingModel: process.env['RERANKING_MODEL'] || 'gte-multilingual-reranker-base',
       rerankingTopK: parseInt(process.env['RERANKING_TOP_K'] || '5'),
+
+      // Device configuration (shared by embedding and reranking models)
+      deviceType: ConfigFactory.getOptimalDevice(),
 
       // Vector store
       vectorStore: {
@@ -127,7 +170,7 @@ export class ConfigFactory {
    */
   static createDevelopmentConfig(): ServerConfig {
     const baseConfig = ConfigFactory.createBaseConfig()
-    
+
     return {
       ...baseConfig,
       nodeEnv: 'development',
@@ -140,7 +183,7 @@ export class ConfigFactory {
    */
   static createProductionConfig(): ServerConfig {
     const baseConfig = ConfigFactory.createBaseConfig()
-    
+
     return {
       ...baseConfig,
       nodeEnv: 'production',
@@ -200,6 +243,19 @@ export class ConfigFactory {
       errors.push('Embedding batch size must be at least 1')
     }
 
+    // Reranking validation
+    if (!['transformers', 'ollama'].includes(config.rerankingService)) {
+      errors.push('Reranking service must be "transformers" or "ollama"')
+    }
+
+    if (!config.rerankingModel) {
+      errors.push('Reranking model is required')
+    }
+
+    if (config.rerankingTopK < 1) {
+      errors.push('Reranking top K must be at least 1')
+    }
+
     // Vector store validation
     if (!config.vectorStore.config.uri) {
       errors.push('LanceDB URI is required')
@@ -221,6 +277,8 @@ export class ConfigFactory {
     logger.debug('✅ Configuration validation passed', {
       embeddingService: config.embeddingService,
       embeddingModel: config.embeddingModel,
+      rerankingService: config.rerankingService,
+      rerankingModel: config.rerankingModel,
       vectorStoreProvider: config.vectorStore.provider,
       mcpTransport: config.mcp.type,
     })

@@ -100,8 +100,9 @@ export class TransformersEmbeddings extends Embeddings {
     const startTime = Date.now()
     let lastProgress = 0
 
-    // Create feature extraction pipeline with progress tracking
+    // Create feature extraction pipeline with progress tracking and device configuration
     this.pipeline = await pipeline('feature-extraction', this.modelConfig.modelId, {
+      device: this.config.deviceType,
       progress_callback: (progress: any) => {
         if (progress.status === 'downloading') {
           const percent = Math.round((progress.loaded / progress.total) * 100)

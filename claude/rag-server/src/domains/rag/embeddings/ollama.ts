@@ -13,11 +13,11 @@ export interface OllamaModelConfig {
 }
 
 export const AVAILABLE_OLLAMA_MODELS: Record<string, OllamaModelConfig> = {
-  'nomic-embed-text': {
-    modelId: 'nomic-embed-text',
-    dimensions: 768,
-    maxTokens: 2048, // 토큰 단위: 2048 tokens (≈ 7168 characters with 3.5x ratio)
-    description: 'Nomic Embed - Recommended general-purpose embedding model',
+  'dengcao/Qwen3-Embedding-0.6B:Q8_0': {
+    modelId: 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
+    dimensions: 1024,
+    maxTokens: 32000, // Qwen3 supports much longer context
+    description: 'Qwen3 Embedding - High-performance embedding model with extended context',
     recommendedBatchSize: 8,
   },
 }
@@ -75,7 +75,9 @@ export class OllamaEmbeddings extends Embeddings {
         logger.info(`📊 Ollama model dimensions detected: ${this.cachedDimensions}`)
       }
 
-      return data.embedding
+      // 벡터 정규화 (코사인 유사도 계산을 위해 필수)
+      const normalizedEmbedding = this.normalizeVector(data.embedding)
+      return normalizedEmbedding
     } catch (error) {
       logger.error(
         'Error generating Ollama embedding for query:',
@@ -376,5 +378,20 @@ export class OllamaEmbeddings extends Embeddings {
   static getModelBatchSize(modelName: string): number {
     const config = OllamaEmbeddings.getModelConfig(modelName)
     return config?.recommendedBatchSize || 8 // fallback to default
+  }
+
+  /**
+   * 벡터 정규화 (L2 norm)
+   * 코사인 유사도 계산을 위해 벡터를 단위 벡터로 변환
+   */
+  private normalizeVector(vector: number[]): number[] {
+    const norm = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0))
+    
+    if (norm === 0) {
+      logger.warn('Zero vector detected during normalization')
+      return vector
+    }
+    
+    return vector.map(val => val / norm)
   }
 }
