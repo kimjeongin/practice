@@ -17,7 +17,7 @@ async function testStreamableHTTPClient(): Promise<void> {
 
   try {
     // 1. Create streamable HTTP transport
-    const serverUrl = 'http://localhost:3001/mcp'
+    const serverUrl = 'http://localhost:3000/mcp'
     console.log(`📡 Connecting to server: ${serverUrl}`)
 
     const transport = new StreamableHTTPClientTransport(new URL(serverUrl))
@@ -56,7 +56,7 @@ async function testStreamableHTTPClient(): Promise<void> {
           arguments: {
             query: 'python programming',
             topK: 3,
-            enableReranking: true,
+            enableReranking: false,
             scoreThreshold: 0.3, // Test the new scoreThreshold parameter
           },
         })

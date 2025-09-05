@@ -15,7 +15,3 @@ export { SearchService } from './services/search.js'
 export { DocumentProcessor } from './services/processor.js'
 export { FileReader } from './services/reader.js'
 export { ChunkingService } from './services/chunking.js'
-
-// Embeddings
-export { EmbeddingFactory, EmbeddingAdapter } from './embeddings/index.js'
-

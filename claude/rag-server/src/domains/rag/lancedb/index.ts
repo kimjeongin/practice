@@ -15,8 +15,7 @@ import type {
   SearchFilters,
   RAGSearchResult,
 } from '@/domains/rag/core/types.js'
-import { EmbeddingAdapter } from '@/domains/rag/embeddings/adapter.js'
-import { EmbeddingFactory } from '@/domains/rag/embeddings/index.js'
+import { EmbeddingService } from '@/domains/rag/ollama/embedding.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { TimeoutWrapper } from '@/shared/utils/resilience.js'
@@ -40,7 +39,7 @@ import { LANCEDB_CONSTANTS, type LanceDBConnectionOptions } from './config.js'
 export class LanceDBProvider implements IVectorStoreProvider {
   private db: lancedb.Connection | null = null
   private table: lancedb.Table | null = null
-  private embeddingService: EmbeddingAdapter | null = null
+  private embeddingService: EmbeddingService | null = null
   private embeddingBridge: LanceDBEmbeddingBridge | null = null
   private isInitialized = false
   private initPromise: Promise<void> | null = null
@@ -94,7 +93,8 @@ export class LanceDBProvider implements IVectorStoreProvider {
       this.db = await lancedb.connect(this.connectionOptions.uri)
 
       // Initialize embedding service
-      this.embeddingService = await EmbeddingFactory.createEmbeddingAdapter(this.config)
+      this.embeddingService = new EmbeddingService(this.config)
+      await this.embeddingService.initialize()
       this.embeddingDimensions = this.embeddingService.getModelInfo().dimensions
 
       // Create embedding bridge

@@ -12,6 +12,7 @@ import type {
   RerankingInput,
   RerankingResult,
   RerankingOptions,
+  EmbeddingModelInfo,
 } from './types.js'
 
 // Re-export types that are used in interfaces
@@ -38,7 +39,7 @@ export interface IFileProcessingService {
 export interface IEmbeddingService {
   embedQuery(text: string): Promise<number[]>
   embedDocuments(texts: string[]): Promise<number[][]>
-  getModelInfo(): ModelInfo
+  getModelInfo(): EmbeddingModelInfo
 }
 
 /**
@@ -66,12 +67,11 @@ export interface IVectorStoreProvider {
 export interface IRerankingService {
   // Core reranking operation
   rerank(input: RerankingInput, options?: RerankingOptions): Promise<RerankingResult[]>
-  
+
   // Model and health info
   getModelInfo(): ModelInfo
   isReady(): boolean
-  
+
   // Health check
   healthCheck(): Promise<boolean>
 }
-

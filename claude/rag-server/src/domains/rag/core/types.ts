@@ -230,17 +230,39 @@ export interface RerankingResult {
 // Model Information Types
 // ========================================
 
-export interface ModelInfo {
+export type ModelInfo = EmbeddingModelInfo | RerankerModelInfo
+
+export interface EmbeddingModelInfo {
   name: string
   service: string
   dimensions: number
-  model?: string
+  maxTokens: number
+}
+
+export interface RerankerModelInfo {
+  name: string
+  service: string
+  maxTokens: number
 }
 
 // ========================================
 // Event Types
 // ========================================
 
+export interface FileWatcherEvent {
+  type: 'added' | 'changed' | 'deleted'
+  path: string
+  metadata?: FileMetadata
+}
+
 // ========================================
 // Constants
 // ========================================
+
+export const RAG_CONSTANTS = {
+  DEFAULT_CHUNK_SIZE: 1024,
+  DEFAULT_CHUNK_OVERLAP: 20,
+  DEFAULT_TOP_K: 5,
+  DEFAULT_SIMILARITY_THRESHOLD: 0.75,
+  DEFAULT_RERANKING_TOP_K: 5,
+} as const

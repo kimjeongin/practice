@@ -4,7 +4,6 @@
  */
 
 import { logger } from '@/shared/logger/index.js'
-import { EmbeddingAdapter } from '@/domains/rag/embeddings/adapter.js'
 import type { IEmbeddingService } from '@/domains/rag/core/interfaces.js'
 
 /**
@@ -51,7 +50,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
   private cache = new Map<string, number[]>()
   private readonly maxCacheSize = 1000
 
-  constructor(private embeddingService: EmbeddingAdapter, sourceColumn: string = 'text') {
+  constructor(private embeddingService: IEmbeddingService, sourceColumn: string = 'text') {
     this.sourceColumn = sourceColumn
   }
 
@@ -59,6 +58,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
    * Get embedding dimensions
    */
   ndims(): number {
+    logger.info('!!!!!!!!!!!!!!!!!!!!!!!!!!', { dimension: this._embeddingDimension })
     if (!this._embeddingDimension) {
       const modelInfo = this.embeddingService.getModelInfo()
       this._embeddingDimension = modelInfo.dimensions
@@ -219,7 +219,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
  * Create LanceDB embedding bridge from embedding service
  */
 export function createLanceDBEmbeddingBridgeFromService(
-  embeddingService: EmbeddingAdapter,
+  embeddingService: IEmbeddingService,
   sourceColumn: string = 'text'
 ): LanceDBEmbeddingBridge {
   return new LanceDBEmbeddingBridge(embeddingService, sourceColumn)

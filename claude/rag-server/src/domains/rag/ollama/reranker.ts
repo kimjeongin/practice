@@ -9,49 +9,36 @@ import type {
 import { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 
-export interface OllamaRerankingModelConfig {
-  modelId: string
-  maxTokens: number
-  description: string
-  recommendedBatchSize?: number
-}
-
-export const AVAILABLE_OLLAMA_RERANKING_MODELS: Record<string, OllamaRerankingModelConfig> = {
-  'dengcao/Qwen3-Reranker-0.6B:Q8_0': {
-    modelId: 'dengcao/Qwen3-Reranker-0.6B:Q8_0',
-    maxTokens: 8192,
-    description:
-      'Qwen3 Reranker - High-performance reranking model optimized for relevance scoring',
-    recommendedBatchSize: 4,
-  },
+interface OllamaModel {
+  name: string
+  parameters?: string
+  modelfile?: string
+  dimensions?: number
+  maxTokens?: number
+  details?: {
+    context_length?: number
+  }
 }
 
 /**
- * Ollama-based reranking service using Qwen3 reranker model
- * Implements cross-encoder architecture for accurate query-document relevance scoring
+ * Ollama-based reranking service
+ * Uses cross-encoder architecture for accurate query-document relevance scoring
  */
-export class OllamaReranker implements IRerankingService {
+export class RerankingService implements IRerankingService {
   private baseUrl: string
-  private modelConfig: OllamaRerankingModelConfig
+  private model: string
   private isInitialized = false
-  private initPromise: Promise<void> | null = null
+  private cachedModelInfo: ModelInfo | null = null
+  private modelDetails: OllamaModel | null = null
 
   constructor(config: ServerConfig) {
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
+    this.model = config.rerankingModel
 
-    // Get model configuration
-    const modelName = config.rerankingModel || 'dengcao/Qwen3-Reranker-0.6B:Q8_0'
-    const defaultModel = AVAILABLE_OLLAMA_RERANKING_MODELS['dengcao/Qwen3-Reranker-0.6B:Q8_0']
-    if (!defaultModel) {
-      throw new Error('Default Ollama reranking model configuration not found')
-    }
-    this.modelConfig = AVAILABLE_OLLAMA_RERANKING_MODELS[modelName] ?? defaultModel
-
-    logger.info('🔄 OllamaReranker initialized', {
-      model: this.modelConfig.modelId,
-      maxTokens: this.modelConfig.maxTokens,
+    logger.info('🔄 RerankingService initialized', {
+      model: this.model,
       baseUrl: this.baseUrl,
-      component: 'OllamaReranker',
+      component: 'RerankingService',
     })
   }
 
@@ -61,44 +48,52 @@ export class OllamaReranker implements IRerankingService {
   async initialize(): Promise<void> {
     if (this.isInitialized) return
 
-    if (this.initPromise) {
-      await this.initPromise
-      return
-    }
-
-    this.initPromise = this._doInitialize()
-    await this.initPromise
-  }
-
-  private async _doInitialize(): Promise<void> {
     try {
-      logger.info(`🔄 Initializing Ollama reranker with model: ${this.modelConfig.modelId}`)
+      logger.info(`🔄 Initializing Ollama reranker with model: ${this.model}`, {
+        component: 'RerankingService',
+      })
 
-      // Check if Ollama server is available
-      const isHealthy = await this.checkOllamaHealth()
-      if (!isHealthy) {
-        throw new Error('Ollama server is not available')
+      // Check Ollama connection and model availability
+      const models = await this.getTags()
+      if (models.length === 0) {
+        throw new Error('Ollama server is not available or has no models')
       }
 
-      // Check if model is available
-      const isModelAvailable = await this.isModelAvailable()
-      if (!isModelAvailable) {
+      const modelAvailable = models.some((model) => {
+        const baseModelName = this.model.split(':')[0]
+        return model.name === this.model || (baseModelName && model.name.startsWith(baseModelName))
+      })
+
+      if (!modelAvailable) {
         logger.warn(
-          `⚠️ Model ${this.modelConfig.modelId} not found. Please pull it using: ollama pull ${this.modelConfig.modelId}`
+          `⚠️ Model ${this.model} not found. Please pull it using: ollama pull ${this.model}`,
+          { component: 'RerankingService' }
         )
-        throw new Error(`Model ${this.modelConfig.modelId} not available in Ollama`)
+        throw new Error(`Model ${this.model} not available in Ollama`)
       }
 
-      logger.info(
-        `✅ Ollama reranker initialized successfully with model: ${this.modelConfig.modelId}`
-      )
-      logger.info(`🚀 Ready for reranking (${this.modelConfig.description})`)
+      // Get detailed model information
+      this.modelDetails = await this.getModelDetails()
+
+      // Cache model info with complete information
+      this.cachedModelInfo = {
+        name: this.model,
+        service: 'ollama',
+        dimensions: 0, // Rerankers don't have fixed dimensions like embeddings
+        maxTokens: 0,
+      }
+
+      logger.info(`✅ Ollama reranker initialized successfully with model: ${this.model}`, {
+        maxTokens: this.modelDetails?.maxTokens || 0,
+        component: 'RerankingService',
+      })
 
       this.isInitialized = true
     } catch (error) {
       logger.error(
-        '❌ Failed to initialize OllamaReranker:',
-        error instanceof Error ? error : new Error(String(error))
+        '❌ Failed to initialize RerankingService:',
+        error instanceof Error ? error : new Error(String(error)),
+        { component: 'RerankingService' }
       )
       throw error
     }
@@ -121,14 +116,14 @@ export class OllamaReranker implements IRerankingService {
       logger.info(`🔄 Reranking ${documents.length} documents using Ollama...`, {
         query: query.substring(0, 100),
         topK,
-        model: this.modelConfig.modelId,
-        component: 'OllamaReranker',
+        model: this.model,
+        component: 'RerankingService',
       })
 
       const startTime = Date.now()
 
       // Process in batches for memory efficiency
-      const batchSize = this.modelConfig.recommendedBatchSize || 4
+      const batchSize = 4
       const rerankingScores: number[] = []
 
       for (let i = 0; i < documents.length; i += batchSize) {
@@ -136,8 +131,13 @@ export class OllamaReranker implements IRerankingService {
 
         // Process batch with concurrent requests (limited concurrency)
         const batchPromises = batch.map(async (doc) => {
-          const truncatedQuery = this.truncateText(query)
-          const truncatedContent = this.truncateText(doc.content)
+          // Use model's actual maxTokens if available
+          const maxTokens = this.modelDetails?.maxTokens || 8192
+          const queryMaxChars = Math.floor(maxTokens * 0.3 * 3) // 30% for query, ~3 chars per token
+          const docMaxChars = Math.floor(maxTokens * 0.6 * 3) // 60% for document, ~3 chars per token
+
+          const truncatedQuery = this.truncateText(query, queryMaxChars)
+          const truncatedContent = this.truncateText(doc.content, docMaxChars)
 
           return await this.getRerankingScore(truncatedQuery, truncatedContent)
         })
@@ -149,7 +149,8 @@ export class OllamaReranker implements IRerankingService {
           logger.debug(
             `   📊 Reranked ${Math.min(i + batchSize, documents.length)}/${
               documents.length
-            } documents`
+            } documents`,
+            { component: 'RerankingService' }
           )
         }
       }
@@ -175,14 +176,15 @@ export class OllamaReranker implements IRerankingService {
         originalCount: documents.length,
         finalCount: sortedResults.length,
         topScore: sortedResults[0]?.rerankScore || 0,
-        component: 'OllamaReranker',
+        component: 'RerankingService',
       })
 
       return sortedResults
     } catch (error) {
       logger.error(
         '❌ Error during Ollama reranking:',
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
+        { component: 'RerankingService' }
       )
       throw error
     }
@@ -196,7 +198,7 @@ export class OllamaReranker implements IRerankingService {
       // Create a reranking input for the model
       const input = this.createRerankingPrompt(query, document)
 
-      // Try using the generate API with a more explicit prompt
+      // Use generate API with explicit prompt for relevance scoring
       const prompt = `Rate the relevance between query and document on a scale of 0.0 to 1.0.
 
 Input: ${input}
@@ -209,12 +211,12 @@ Score:`
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: this.modelConfig.modelId,
+          model: this.model,
           prompt: prompt,
           stream: false,
           options: {
-            temperature: 0.1, // Slightly increased for variation
-            num_predict: 50, // Allow more tokens for better response
+            temperature: 0.1,
+            num_predict: 50,
             top_p: 0.9,
             top_k: 10,
           },
@@ -234,14 +236,15 @@ Score:`
         input: input.substring(0, 100) + '...',
         rawResponse: data.response.trim(),
         extractedScore: score,
-        component: 'OllamaReranker',
+        component: 'RerankingService',
       })
 
       return score
     } catch (error) {
       logger.error(
         'Error getting reranking score from Ollama:',
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
+        { component: 'RerankingService' }
       )
       return 0.0
     }
@@ -249,10 +252,9 @@ Score:`
 
   /**
    * Create reranking prompt for the model
-   * Using a format similar to cross-encoder training
    */
   private createRerankingPrompt(query: string, document: string): string {
-    // Use separator similar to transformers reranker
+    // Use separator similar to cross-encoder training
     return `${query}</s></s>${document}`
   }
 
@@ -289,7 +291,7 @@ Score:`
         }
       }
 
-      // Enhanced fallback with more specific keywords (order matters - most specific first)
+      // Enhanced fallback with specific keywords (order matters - most specific first)
       if (
         cleanResponse.includes('not relevant') ||
         cleanResponse.includes('unrelated') ||
@@ -340,32 +342,105 @@ Score:`
       logger.warn('Error parsing reranking score, using random default:', {
         response,
         error: String(error),
+        component: 'RerankingService',
       })
       return 0.3 + Math.random() * 0.4 // Random between 0.3-0.7
     }
   }
 
   /**
-   * Truncate text to model's maximum token limit
+   * Get detailed model information from Ollama server
    */
-  private truncateText(text: string): string {
-    // Conservative token to character conversion ratio: ~3 characters per token
-    const maxChars = Math.floor(this.modelConfig.maxTokens * 3 * 0.4) // Use 40% for each text to leave room for prompt
+  async getModelDetails(modelName?: string): Promise<OllamaModel | null> {
+    const targetModel = modelName || this.model
+    try {
+      const response = await fetch(`${this.baseUrl}/api/show`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: targetModel,
+        }),
+      })
 
+      if (!response.ok) {
+        return null
+      }
+
+      const data = (await response.json()) as OllamaModel
+
+      // Try to extract maxTokens from parameters or modelfile
+      const maxTokens = this.extractMaxTokensFromModelInfo(data)
+      if (maxTokens) {
+        data.maxTokens = maxTokens
+      }
+
+      return data
+    } catch (error) {
+      logger.warn(`Could not fetch model details for ${targetModel}:`, {
+        error: error instanceof Error ? error : new Error(String(error)),
+        component: 'RerankingService',
+      })
+      return null
+    }
+  }
+
+  /**
+   * Extract max tokens from model information
+   */
+  private extractMaxTokensFromModelInfo(modelInfo: OllamaModel): number | null {
+    // Try to extract from details first
+    if (modelInfo.details?.context_length) {
+      return modelInfo.details.context_length
+    }
+
+    // Try to extract from parameters string
+    if (modelInfo.parameters) {
+      const contextMatch = modelInfo.parameters.match(/num_ctx\s+(\d+)/i)
+      if (contextMatch && contextMatch[1]) {
+        return parseInt(contextMatch[1])
+      }
+    }
+
+    // Try to extract from modelfile
+    if (modelInfo.modelfile) {
+      const contextMatch = modelInfo.modelfile.match(/PARAMETER\s+num_ctx\s+(\d+)/i)
+      if (contextMatch && contextMatch[1]) {
+        return parseInt(contextMatch[1])
+      }
+    }
+
+    // Default context lengths for common models
+    const modelName = modelInfo.name.toLowerCase()
+    if (modelName.includes('qwen3')) {
+      return 32768 // Qwen3 typically has 32k context
+    }
+    if (modelName.includes('qwen')) {
+      return 8192 // Other Qwen models typically 8k
+    }
+
+    return null
+  }
+
+  /**
+   * Truncate text to specified maximum character limit
+   */
+  private truncateText(text: string, maxChars: number): string {
     if (text.length <= maxChars) {
       return text
     }
 
-    logger.warn(
-      `⚠️ Truncating text from ${text.length} to ${maxChars} characters (${this.modelConfig.maxTokens} tokens limit)`
-    )
+    logger.warn(`⚠️ Truncating text from ${text.length} to ${maxChars} characters`, {
+      component: 'RerankingService',
+    })
     return text.substring(0, maxChars)
   }
 
   /**
-   * Check Ollama server health
+   * Get available models from Ollama server (/api/tags)
    */
-  private async checkOllamaHealth(): Promise<boolean> {
+  async getTags(): Promise<OllamaModel[]> {
     try {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 5000)
@@ -376,43 +451,19 @@ Score:`
       })
 
       clearTimeout(timeoutId)
-      return response.ok
-    } catch (error) {
-      logger.warn(
-        'Ollama health check failed:',
-        error instanceof Error ? error : new Error(String(error))
-      )
-      return false
-    }
-  }
-
-  /**
-   * Check if the configured model is available in Ollama
-   */
-  async isModelAvailable(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/tags`, {
-        method: 'GET',
-      })
 
       if (!response.ok) {
-        return false
+        return []
       }
 
-      const data = (await response.json()) as { models: Array<{ name: string }> }
-      return data.models.some((model) => {
-        const baseModelName = this.modelConfig.modelId.split(':')[0]
-        return (
-          model.name === this.modelConfig.modelId ||
-          (baseModelName && model.name.startsWith(baseModelName))
-        )
-      })
+      const data = (await response.json()) as { models: OllamaModel[] }
+      return data.models
     } catch (error) {
       logger.warn(
-        'Error checking Ollama model availability:',
+        'Failed to get Ollama tags:',
         error instanceof Error ? error : new Error(String(error))
       )
-      return false
+      return []
     }
   }
 
@@ -420,71 +471,8 @@ Score:`
    * Health check for the reranking service
    */
   async healthCheck(): Promise<boolean> {
-    try {
-      await this.initialize()
-
-      // Test with simple query-document pair
-      const testInput: RerankingInput = {
-        query: 'test query about machine learning',
-        documents: [
-          {
-            id: 'test-doc-1',
-            content:
-              'Machine learning is a subset of artificial intelligence that focuses on algorithms.',
-            score: 0.8,
-            metadata: {
-              fileName: 'test',
-              filePath: 'test',
-              fileType: 'test',
-              fileSize: 0,
-              fileHash: 'test',
-              createdAt: '',
-              modifiedAt: '',
-              processedAt: '',
-            },
-            chunkIndex: 0,
-          },
-          {
-            id: 'test-doc-2',
-            content: 'The weather today is sunny and warm.',
-            score: 0.3,
-            metadata: {
-              fileName: 'test',
-              filePath: 'test',
-              fileType: 'test',
-              fileSize: 0,
-              fileHash: 'test',
-              createdAt: '',
-              modifiedAt: '',
-              processedAt: '',
-            },
-            chunkIndex: 1,
-          },
-        ],
-      }
-
-      const results = await this.rerank(testInput, { topK: 2 })
-      const isValid = Array.isArray(results) && results.length > 0
-
-      if (isValid) {
-        // Verify that reranking worked correctly (ML doc should rank higher than weather doc)
-        const mlDocScore = results.find((r) => r.id === 'test-doc-1')?.rerankScore || 0
-        const weatherDocScore = results.find((r) => r.id === 'test-doc-2')?.rerankScore || 0
-
-        if (mlDocScore > weatherDocScore) {
-          logger.info('✅ Ollama reranking health check passed - correct ranking detected')
-          return true
-        }
-      }
-
-      return isValid
-    } catch (error) {
-      logger.error(
-        '❌ Ollama reranking health check failed:',
-        error instanceof Error ? error : new Error(String(error))
-      )
-      return false
-    }
+    const models = await this.getTags()
+    return models.length > 0
   }
 
   /**
@@ -498,25 +486,13 @@ Score:`
    * Get model information
    */
   getModelInfo(): ModelInfo {
-    return {
-      name: this.modelConfig.modelId,
-      model: this.modelConfig.modelId,
-      service: 'ollama',
-      dimensions: 0, // Rerankers don't have fixed dimensions like embeddings
-    }
-  }
-
-  /**
-   * Get available reranking models for Ollama
-   */
-  static getAvailableModels(): Record<string, OllamaRerankingModelConfig> {
-    return AVAILABLE_OLLAMA_RERANKING_MODELS
-  }
-
-  /**
-   * Estimate memory usage for the model
-   */
-  estimateMemoryUsage(): string {
-    return '~600MB (Q8_0 quantized)'
+    return (
+      this.cachedModelInfo || {
+        name: this.model,
+        service: 'ollama',
+        dimensions: 0, // Rerankers don't have fixed dimensions like embeddings
+        maxTokens: 0,
+      }
+    )
   }
 }
