@@ -17,7 +17,7 @@ async function testStreamableHTTPClient(): Promise<void> {
 
   try {
     // 1. Create streamable HTTP transport
-    const serverUrl = 'http://localhost:3000/mcp'
+    const serverUrl = 'http://localhost:3001/mcp'
     console.log(`📡 Connecting to server: ${serverUrl}`)
 
     const transport = new StreamableHTTPClientTransport(new URL(serverUrl))

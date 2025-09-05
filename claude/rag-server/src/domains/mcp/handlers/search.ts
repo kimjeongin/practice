@@ -26,7 +26,7 @@ export class SearchHandler {
               {
                 error: 'InvalidQuery',
                 message: 'Query parameter is required',
-                suggestion: 'Provide a search query string to find relevant documents',
+                suggestion: 'Provide a descriptive natural language search query. Examples: "API authentication methods", "error handling patterns", "configuration settings"',
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
               2
@@ -93,7 +93,7 @@ export class SearchHandler {
               {
                 error: 'SearchFailed',
                 message: error instanceof Error ? error.message : 'Search operation failed',
-                suggestion: 'Try a different query or check if documents are indexed properly',
+                suggestion: 'Try these steps: 1) Use get_vectordb_info to verify documents are indexed, 2) Simplify your query or try different keywords, 3) Check if the embedding service is running properly, 4) Ensure documents are placed in the correct directory',
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
               2
@@ -110,24 +110,24 @@ export class SearchHandler {
       {
         name: 'search',
         description:
-          'Search through indexed documents using semantic search with natural language queries. Supports optional reranking for improved accuracy (slower but more precise results).',
+          'Semantic document search tool for finding relevant content from indexed documents. Use this when users ask questions about document content, need to find specific information, or want to explore available knowledge. The tool performs vector-based similarity search and can optionally use reranking for higher precision. Returns ranked results with content, metadata, and confidence scores.',
         inputSchema: {
           type: 'object',
           properties: {
             query: {
               type: 'string',
-              description: 'The search query in natural language',
+              description: 'Natural language search query. Use specific, descriptive queries for better results. Examples: "authentication methods in API documentation", "error handling best practices", "database configuration settings"',
             },
             topK: {
               type: 'number',
-              description: 'Maximum number of results to return',
+              description: 'Maximum number of results to return (1-50). Use 5-10 for general queries, 15-20 for comprehensive searches, 3-5 for focused questions. Higher values provide more context but may include less relevant results.',
               default: 5,
               minimum: 1,
               maximum: 50,
             },
             enableReranking: {
               type: 'boolean',
-              description: 'Enable reranking for more accurate but slower results. Uses a cross-encoder model to reorder vector search results.',
+              description: 'Enable 2-stage search (vector + rerank) for improved accuracy. Use TRUE for critical queries where precision matters more than speed (adds ~2-3s latency). Use FALSE for exploratory searches or when speed is priority. Reranking significantly improves result quality by re-scoring matches with a cross-encoder model.',
               default: false,
             },
           },

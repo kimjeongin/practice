@@ -70,7 +70,7 @@ export class MCPServer {
                       error: 'UnknownTool',
                       message: `Tool '${name}' is not available`,
                       availableTools: this.getAvailableToolNames(),
-                      suggestion: 'Use the list_tools endpoint to see all available tools',
+                      suggestion: 'Available tools: "search" (for document queries) and "get_vectordb_info" (for database status). Use search for finding information in documents, or get_vectordb_info to check system status.',
                     },
                     null,
                     2

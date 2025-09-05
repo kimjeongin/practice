@@ -35,7 +35,7 @@ export class InformationHandler {
               {
                 error: 'VectorDBInfoFailed',
                 message: error instanceof Error ? error.message : 'Failed to get vector db info',
-                suggestion: 'Check if vector database is properly initialized',
+                suggestion: 'This usually indicates database initialization issues. Try: 1) Restart the MCP server, 2) Check if the database directory exists and has proper permissions, 3) Verify the LANCEDB_URI environment variable, 4) Run yarn db:setup if using the development setup',
               },
               null,
               2
@@ -52,7 +52,7 @@ export class InformationHandler {
       {
         name: 'get_vectordb_info',
         description:
-          'Get vector database information including total files, vectors, and model details',
+          'Retrieve comprehensive vector database status and statistics. Use this tool to: check if documents are indexed and ready for search, diagnose search issues (empty results may indicate no indexed documents), verify system initialization, understand the knowledge base scope before performing searches, or provide users with information about available content. Returns document count, vector statistics, embedding model info, and database health status. Call this before search operations when troubleshooting or when users ask about available documents.',
         inputSchema: {
           type: 'object',
           properties: {},
