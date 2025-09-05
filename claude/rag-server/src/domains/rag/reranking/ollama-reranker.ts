@@ -20,7 +20,8 @@ export const AVAILABLE_OLLAMA_RERANKING_MODELS: Record<string, OllamaRerankingMo
   'dengcao/Qwen3-Reranker-0.6B:Q8_0': {
     modelId: 'dengcao/Qwen3-Reranker-0.6B:Q8_0',
     maxTokens: 8192,
-    description: 'Qwen3 Reranker - High-performance reranking model optimized for relevance scoring',
+    description:
+      'Qwen3 Reranker - High-performance reranking model optimized for relevance scoring',
     recommendedBatchSize: 4,
   },
 }
@@ -37,7 +38,7 @@ export class OllamaReranker implements IRerankingService {
 
   constructor(config: ServerConfig) {
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
-    
+
     // Get model configuration
     const modelName = config.rerankingModel || 'dengcao/Qwen3-Reranker-0.6B:Q8_0'
     const defaultModel = AVAILABLE_OLLAMA_RERANKING_MODELS['dengcao/Qwen3-Reranker-0.6B:Q8_0']
@@ -82,11 +83,15 @@ export class OllamaReranker implements IRerankingService {
       // Check if model is available
       const isModelAvailable = await this.isModelAvailable()
       if (!isModelAvailable) {
-        logger.warn(`⚠️ Model ${this.modelConfig.modelId} not found. Please pull it using: ollama pull ${this.modelConfig.modelId}`)
+        logger.warn(
+          `⚠️ Model ${this.modelConfig.modelId} not found. Please pull it using: ollama pull ${this.modelConfig.modelId}`
+        )
         throw new Error(`Model ${this.modelConfig.modelId} not available in Ollama`)
       }
 
-      logger.info(`✅ Ollama reranker initialized successfully with model: ${this.modelConfig.modelId}`)
+      logger.info(
+        `✅ Ollama reranker initialized successfully with model: ${this.modelConfig.modelId}`
+      )
       logger.info(`🚀 Ready for reranking (${this.modelConfig.description})`)
 
       this.isInitialized = true
@@ -133,7 +138,7 @@ export class OllamaReranker implements IRerankingService {
         const batchPromises = batch.map(async (doc) => {
           const truncatedQuery = this.truncateText(query)
           const truncatedContent = this.truncateText(doc.content)
-          
+
           return await this.getRerankingScore(truncatedQuery, truncatedContent)
         })
 
@@ -142,7 +147,9 @@ export class OllamaReranker implements IRerankingService {
 
         if (batch.length === batchSize) {
           logger.debug(
-            `   📊 Reranked ${Math.min(i + batchSize, documents.length)}/${documents.length} documents`
+            `   📊 Reranked ${Math.min(i + batchSize, documents.length)}/${
+              documents.length
+            } documents`
           )
         }
       }
@@ -219,10 +226,10 @@ Score:`
       }
 
       const data = (await response.json()) as { response: string }
-      
+
       // Extract numerical score from response
       const score = this.parseRerankingScore(data.response)
-      
+
       logger.debug('🎯 Ollama reranking score:', {
         input: input.substring(0, 100) + '...',
         rawResponse: data.response.trim(),
@@ -236,8 +243,7 @@ Score:`
         'Error getting reranking score from Ollama:',
         error instanceof Error ? error : new Error(String(error))
       )
-      // Return a random score between 0.1 and 0.9 to avoid identical scores
-      return 0.1 + Math.random() * 0.8
+      return 0.0
     }
   }
 
@@ -256,20 +262,20 @@ Score:`
   private parseRerankingScore(response: string): number {
     try {
       const cleanResponse = response.trim().toLowerCase()
-      
+
       // Try to extract numerical value with improved regex
       const patterns = [
-        /(\d+\.?\d*)/,           // 0.8, 1.0, 0, etc.
-        /score[:\s]*(\d+\.?\d*)/,  // "score: 0.8"
-        /(\d+\.?\d*)[\/]10/,     // "8/10" format
-        /(\d+\.?\d*)%/,          // "80%" format
+        /(\d+\.?\d*)/, // 0.8, 1.0, 0, etc.
+        /score[:\s]*(\d+\.?\d*)/, // "score: 0.8"
+        /(\d+\.?\d*)[\/]10/, // "8/10" format
+        /(\d+\.?\d*)%/, // "80%" format
       ]
-      
+
       for (const pattern of patterns) {
         const match = cleanResponse.match(pattern)
         if (match && match[1]) {
           let score = parseFloat(match[1])
-          
+
           // Handle different scales
           if (pattern.toString().includes('%')) {
             score = score / 100 // Convert percentage
@@ -278,35 +284,63 @@ Score:`
           } else if (score > 1 && score <= 10) {
             score = score / 10 // Assume 0-10 scale if > 1
           }
-          
+
           return Math.max(0, Math.min(1, score))
         }
       }
 
       // Enhanced fallback with more specific keywords (order matters - most specific first)
-      if (cleanResponse.includes('not relevant') || cleanResponse.includes('unrelated') || cleanResponse.includes('irrelevant') || cleanResponse.includes('no relation')) {
+      if (
+        cleanResponse.includes('not relevant') ||
+        cleanResponse.includes('unrelated') ||
+        cleanResponse.includes('irrelevant') ||
+        cleanResponse.includes('no relation')
+      ) {
         return 0.1
       }
-      if (cleanResponse.includes('perfect') || cleanResponse.includes('exactly') || cleanResponse.includes('completely relevant')) {
+      if (
+        cleanResponse.includes('perfect') ||
+        cleanResponse.includes('exactly') ||
+        cleanResponse.includes('completely relevant')
+      ) {
         return 0.95
       }
-      if (cleanResponse.includes('highly relevant') || cleanResponse.includes('very relevant') || cleanResponse.includes('strongly')) {
+      if (
+        cleanResponse.includes('highly relevant') ||
+        cleanResponse.includes('very relevant') ||
+        cleanResponse.includes('strongly')
+      ) {
         return 0.85
       }
-      if (cleanResponse.includes('somewhat') || cleanResponse.includes('partially') || cleanResponse.includes('moderate')) {
+      if (
+        cleanResponse.includes('somewhat') ||
+        cleanResponse.includes('partially') ||
+        cleanResponse.includes('moderate')
+      ) {
         return 0.5
       }
-      if (cleanResponse.includes('slightly') || cleanResponse.includes('weak') || cleanResponse.includes('minor')) {
+      if (
+        cleanResponse.includes('slightly') ||
+        cleanResponse.includes('weak') ||
+        cleanResponse.includes('minor')
+      ) {
         return 0.3
       }
-      if (cleanResponse.includes('relevant') || cleanResponse.includes('related') || cleanResponse.includes('matches')) {
+      if (
+        cleanResponse.includes('relevant') ||
+        cleanResponse.includes('related') ||
+        cleanResponse.includes('matches')
+      ) {
         return 0.7
       }
 
       // If no clear indicators, return a middle-range random score to avoid identical scores
       return 0.4 + Math.random() * 0.2 // Random between 0.4-0.6
     } catch (error) {
-      logger.warn('Error parsing reranking score, using random default:', { response, error: String(error) })
+      logger.warn('Error parsing reranking score, using random default:', {
+        response,
+        error: String(error),
+      })
       return 0.3 + Math.random() * 0.4 // Random between 0.3-0.7
     }
   }
@@ -366,13 +400,13 @@ Score:`
       }
 
       const data = (await response.json()) as { models: Array<{ name: string }> }
-      return data.models.some(
-        (model) => {
-          const baseModelName = this.modelConfig.modelId.split(':')[0]
-          return model.name === this.modelConfig.modelId || 
-                 (baseModelName && model.name.startsWith(baseModelName))
-        }
-      )
+      return data.models.some((model) => {
+        const baseModelName = this.modelConfig.modelId.split(':')[0]
+        return (
+          model.name === this.modelConfig.modelId ||
+          (baseModelName && model.name.startsWith(baseModelName))
+        )
+      })
     } catch (error) {
       logger.warn(
         'Error checking Ollama model availability:',
@@ -395,7 +429,8 @@ Score:`
         documents: [
           {
             id: 'test-doc-1',
-            content: 'Machine learning is a subset of artificial intelligence that focuses on algorithms.',
+            content:
+              'Machine learning is a subset of artificial intelligence that focuses on algorithms.',
             score: 0.8,
             metadata: {
               fileName: 'test',
@@ -430,18 +465,18 @@ Score:`
 
       const results = await this.rerank(testInput, { topK: 2 })
       const isValid = Array.isArray(results) && results.length > 0
-      
+
       if (isValid) {
         // Verify that reranking worked correctly (ML doc should rank higher than weather doc)
-        const mlDocScore = results.find(r => r.id === 'test-doc-1')?.rerankScore || 0
-        const weatherDocScore = results.find(r => r.id === 'test-doc-2')?.rerankScore || 0
-        
+        const mlDocScore = results.find((r) => r.id === 'test-doc-1')?.rerankScore || 0
+        const weatherDocScore = results.find((r) => r.id === 'test-doc-2')?.rerankScore || 0
+
         if (mlDocScore > weatherDocScore) {
           logger.info('✅ Ollama reranking health check passed - correct ranking detected')
           return true
         }
       }
-      
+
       return isValid
     } catch (error) {
       logger.error(

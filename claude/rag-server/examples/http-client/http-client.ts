@@ -57,6 +57,7 @@ async function testStreamableHTTPClient(): Promise<void> {
             query: 'python programming',
             topK: 3,
             enableReranking: true,
+            scoreThreshold: 0.3, // Test the new scoreThreshold parameter
           },
         })
         const endTime = performance.now()

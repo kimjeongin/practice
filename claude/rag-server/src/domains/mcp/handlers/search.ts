@@ -9,13 +9,14 @@ export interface SearchArgs {
   query: string
   topK?: number
   enableReranking?: boolean
+  scoreThreshold?: number
 }
 
 export class SearchHandler {
   constructor(private searchService: SearchService, private config?: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
-    const { query, topK = 5, enableReranking = false } = args
+    const { query, topK = 5, enableReranking = false, scoreThreshold } = args
 
     if (!query) {
       return {
@@ -39,10 +40,13 @@ export class SearchHandler {
     }
 
     try {
-      // Use SearchService with simplified search options
+      // Use SearchService with user-configurable options
       const searchOptions: SearchOptions = {
         topK: topK ? Math.max(1, Math.min(topK, 50)) : 5, // Clamp between 1-50
-        scoreThreshold: 0.1,
+        scoreThreshold:
+          scoreThreshold !== undefined
+            ? Math.max(0.0, Math.min(1.0, scoreThreshold)) // Clamp between 0.0-1.0
+            : 0.5, // Default threshold
         enableReranking,
       }
 
@@ -76,6 +80,8 @@ export class SearchHandler {
                   total_results: results.length,
                   search_method: rerankingUsed ? '2-stage (vector + rerank)' : 'vector search',
                   max_requested: topK,
+                  score_threshold: searchOptions.scoreThreshold,
+                  reranking_enabled: enableReranking,
                 },
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
@@ -134,6 +140,14 @@ export class SearchHandler {
               description:
                 'Enable 2-stage search (vector + rerank) for improved accuracy. Use TRUE for critical queries where precision matters more than speed (adds ~2-3s latency). Use FALSE for exploratory searches or when speed is priority. Reranking significantly improves result quality by re-scoring matches with a cross-encoder model.',
               default: false,
+            },
+            scoreThreshold: {
+              type: 'number',
+              description:
+                'Minimum similarity score threshold (0.0-1.0) for filtering results. Higher values = more relevant but fewer results. Lower values = more results but may include less relevant matches. Guidelines: 0.8+ = Very similar content only, 0.6-0.8 = Moderately similar content, 0.3-0.6 = Broadly related content, 0.1-0.3 = Loosely related content. Use higher thresholds (0.7+) for precise searches, lower thresholds (0.3-0.5) for exploratory searches. When reranking is enabled, you can use lower vector thresholds (0.1-0.3) as reranking will improve final quality.',
+              default: 0.5,
+              minimum: 0.0,
+              maximum: 1.0,
             },
           },
           required: ['query'],
