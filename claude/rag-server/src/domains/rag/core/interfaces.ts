@@ -13,6 +13,7 @@ import type {
   RerankingResult,
   RerankingOptions,
   EmbeddingModelInfo,
+  RerankerModelInfo,
 } from './types.js'
 
 // Re-export types that are used in interfaces
@@ -69,7 +70,7 @@ export interface IRerankingService {
   rerank(input: RerankingInput, options?: RerankingOptions): Promise<RerankingResult[]>
 
   // Model and health info
-  getModelInfo(): ModelInfo
+  getModelInfo(): RerankerModelInfo
   isReady(): boolean
 
   // Health check

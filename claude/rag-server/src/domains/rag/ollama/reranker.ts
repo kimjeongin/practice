@@ -123,7 +123,7 @@ export class RerankingService implements IRerankingService {
       const startTime = Date.now()
 
       // Process in batches for memory efficiency
-      const batchSize = 4
+      const batchSize = 1
       const rerankingScores: number[] = []
 
       for (let i = 0; i < documents.length; i += batchSize) {
@@ -198,12 +198,12 @@ export class RerankingService implements IRerankingService {
       // Create a reranking input for the model
       const input = this.createRerankingPrompt(query, document)
 
-      // Use generate API with explicit prompt for relevance scoring
-      const prompt = `Rate the relevance between query and document on a scale of 0.0 to 1.0.
 
-Input: ${input}
+      // Use direct binary format - force the model to choose between tokens
+      const chatPrompt = `Query: ${query}
+Document: ${document}
 
-Score:`
+Is this document relevant to the query? Answer:`
 
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
@@ -212,13 +212,12 @@ Score:`
         },
         body: JSON.stringify({
           model: this.model,
-          prompt: prompt,
+          prompt: chatPrompt,
           stream: false,
           options: {
-            temperature: 0.1,
-            num_predict: 50,
-            top_p: 0.9,
-            top_k: 10,
+            temperature: 0,
+            num_predict: 10, // Allow slightly more tokens
+            stop: ['\n', '\n\n', '\.', 'Query:', 'Document:'], // More specific stops
           },
         }),
       })
@@ -227,7 +226,13 @@ Score:`
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
       }
 
-      const data = (await response.json()) as { response: string }
+      const data = (await response.json()) as any
+      logger.info('🤖 Qwen3-Reranker raw response:', { 
+        response: data.response,
+        query: query.substring(0, 50) + '...',
+        document: document.substring(0, 50) + '...',
+        component: 'RerankingService'
+      })
 
       // Extract numerical score from response
       const score = this.parseRerankingScore(data.response)
@@ -259,92 +264,53 @@ Score:`
   }
 
   /**
-   * Parse numerical score from model response
+   * Parse binary yes/no response from Qwen3-Reranker model
    */
   private parseRerankingScore(response: string): number {
     try {
       const cleanResponse = response.trim().toLowerCase()
-
-      // Try to extract numerical value with improved regex
-      const patterns = [
-        /(\d+\.?\d*)/, // 0.8, 1.0, 0, etc.
-        /score[:\s]*(\d+\.?\d*)/, // "score: 0.8"
-        /(\d+\.?\d*)[\/]10/, // "8/10" format
-        /(\d+\.?\d*)%/, // "80%" format
-      ]
-
-      for (const pattern of patterns) {
-        const match = cleanResponse.match(pattern)
-        if (match && match[1]) {
-          let score = parseFloat(match[1])
-
-          // Handle different scales
-          if (pattern.toString().includes('%')) {
-            score = score / 100 // Convert percentage
-          } else if (pattern.toString().includes('/10')) {
-            score = score / 10 // Convert 0-10 scale
-          } else if (score > 1 && score <= 10) {
-            score = score / 10 // Assume 0-10 scale if > 1
-          }
-
-          return Math.max(0, Math.min(1, score))
-        }
-      }
-
-      // Enhanced fallback with specific keywords (order matters - most specific first)
-      if (
-        cleanResponse.includes('not relevant') ||
-        cleanResponse.includes('unrelated') ||
-        cleanResponse.includes('irrelevant') ||
-        cleanResponse.includes('no relation')
-      ) {
-        return 0.1
-      }
-      if (
-        cleanResponse.includes('perfect') ||
-        cleanResponse.includes('exactly') ||
-        cleanResponse.includes('completely relevant')
-      ) {
-        return 0.95
-      }
-      if (
-        cleanResponse.includes('highly relevant') ||
-        cleanResponse.includes('very relevant') ||
-        cleanResponse.includes('strongly')
-      ) {
-        return 0.85
-      }
-      if (
-        cleanResponse.includes('somewhat') ||
-        cleanResponse.includes('partially') ||
-        cleanResponse.includes('moderate')
-      ) {
-        return 0.5
-      }
-      if (
-        cleanResponse.includes('slightly') ||
-        cleanResponse.includes('weak') ||
-        cleanResponse.includes('minor')
-      ) {
-        return 0.3
-      }
-      if (
-        cleanResponse.includes('relevant') ||
-        cleanResponse.includes('related') ||
-        cleanResponse.includes('matches')
-      ) {
-        return 0.7
-      }
-
-      // If no clear indicators, return a middle-range random score to avoid identical scores
-      return 0.4 + Math.random() * 0.2 // Random between 0.4-0.6
-    } catch (error) {
-      logger.warn('Error parsing reranking score, using random default:', {
-        response,
-        error: String(error),
+      
+      logger.debug('🔍 Parsing reranker response:', {
+        originalResponse: response,
+        cleanResponse: cleanResponse,
         component: 'RerankingService',
       })
-      return 0.3 + Math.random() * 0.4 // Random between 0.3-0.7
+
+      // Extract the first word from the response
+      const firstWord = cleanResponse.split(/\s+/)[0]
+      
+      // Handle yes/no responses directly
+      if (firstWord === 'yes') {
+        return 1.0
+      }
+      if (firstWord === 'no') {
+        return 0.0
+      }
+      
+      // Fallback: check if yes/no appears anywhere in the response
+      if (cleanResponse.includes('yes')) {
+        return 1.0
+      }
+      if (cleanResponse.includes('no')) {
+        return 0.0
+      }
+      
+      // If neither yes nor no found, log warning and return neutral score
+      logger.warn('⚠️ No clear yes/no response found in reranker output:', {
+        response: response,
+        component: 'RerankingService',
+      })
+      
+      return 0.5 // Neutral score when unclear
+    } catch (error) {
+      logger.error('❌ Error parsing binary reranking response:', 
+        error instanceof Error ? error : new Error(String(error)), 
+        {
+          response,
+          component: 'RerankingService',
+        }
+      )
+      return 0.0
     }
   }
 

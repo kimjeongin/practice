@@ -56,7 +56,7 @@ async function testStreamableHTTPClient(): Promise<void> {
           arguments: {
             query: 'python programming',
             topK: 3,
-            enableReranking: false,
+            enableReranking: true,
             scoreThreshold: 0.3, // Test the new scoreThreshold parameter
           },
         })
