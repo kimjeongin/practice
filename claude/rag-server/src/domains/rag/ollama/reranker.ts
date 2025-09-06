@@ -5,20 +5,10 @@ import type {
   RerankingResult,
   RerankingOptions,
   ModelInfo,
+  RerankerModelInfo,
 } from '@/domains/rag/core/types.js'
 import { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
-
-interface OllamaModel {
-  name: string
-  parameters?: string
-  modelfile?: string
-  dimensions?: number
-  maxTokens?: number
-  details?: {
-    context_length?: number
-  }
-}
 
 /**
  * Ollama-based reranking service
@@ -27,9 +17,8 @@ interface OllamaModel {
 export class RerankingService implements IRerankingService {
   private baseUrl: string
   private model: string
-  private isInitialized = false
   private cachedModelInfo: ModelInfo | null = null
-  private modelDetails: OllamaModel | null = null
+  private modelDetails: RerankerModelInfo | null = null
 
   constructor(config: ServerConfig) {
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
@@ -46,49 +35,35 @@ export class RerankingService implements IRerankingService {
    * Initialize the reranking service
    */
   async initialize(): Promise<void> {
-    if (this.isInitialized) return
-
     try {
       logger.info(`🔄 Initializing Ollama reranker with model: ${this.model}`, {
         component: 'RerankingService',
       })
-
       // Check Ollama connection and model availability
-      const models = await this.getTags()
-      if (models.length === 0) {
+      const isAvailable = await this.isAvailableModel(this.model)
+      if (isAvailable == false) {
         throw new Error('Ollama server is not available or has no models')
       }
 
-      const modelAvailable = models.some((model) => {
-        const baseModelName = this.model.split(':')[0]
-        return model.name === this.model || (baseModelName && model.name.startsWith(baseModelName))
-      })
-
-      if (!modelAvailable) {
-        logger.warn(
-          `⚠️ Model ${this.model} not found. Please pull it using: ollama pull ${this.model}`,
-          { component: 'RerankingService' }
-        )
-        throw new Error(`Model ${this.model} not available in Ollama`)
-      }
-
       // Get detailed model information
-      this.modelDetails = await this.getModelDetails()
+      const modelDetails = await this.getModelDetails(this.model)
+
+      // Update cached model info with complete information
+      if (!modelDetails) {
+        throw new Error('Ollama server is not available or has no models')
+      }
 
       // Cache model info with complete information
       this.cachedModelInfo = {
         name: this.model,
         service: 'ollama',
-        dimensions: 0, // Rerankers don't have fixed dimensions like embeddings
-        maxTokens: 0,
+        maxTokens: modelDetails.maxTokens,
       }
 
       logger.info(`✅ Ollama reranker initialized successfully with model: ${this.model}`, {
         maxTokens: this.modelDetails?.maxTokens || 0,
         component: 'RerankingService',
       })
-
-      this.isInitialized = true
     } catch (error) {
       logger.error(
         '❌ Failed to initialize RerankingService:',
@@ -198,7 +173,6 @@ export class RerankingService implements IRerankingService {
       // Create a reranking input for the model
       const input = this.createRerankingPrompt(query, document)
 
-
       // Use direct binary format - force the model to choose between tokens
       const chatPrompt = `Query: ${query}
 Document: ${document}
@@ -217,7 +191,7 @@ Is this document relevant to the query? Answer:`
           options: {
             temperature: 0,
             num_predict: 10, // Allow slightly more tokens
-            stop: ['\n', '\n\n', '\.', 'Query:', 'Document:'], // More specific stops
+            stop: ['\n', '\n\n', '.', 'Query:', 'Document:'], // More specific stops
           },
         }),
       })
@@ -227,11 +201,11 @@ Is this document relevant to the query? Answer:`
       }
 
       const data = (await response.json()) as any
-      logger.info('🤖 Qwen3-Reranker raw response:', { 
+      logger.info('🤖 Qwen3-Reranker raw response:', {
         response: data.response,
         query: query.substring(0, 50) + '...',
         document: document.substring(0, 50) + '...',
-        component: 'RerankingService'
+        component: 'RerankingService',
       })
 
       // Extract numerical score from response
@@ -269,7 +243,7 @@ Is this document relevant to the query? Answer:`
   private parseRerankingScore(response: string): number {
     try {
       const cleanResponse = response.trim().toLowerCase()
-      
+
       logger.debug('🔍 Parsing reranker response:', {
         originalResponse: response,
         cleanResponse: cleanResponse,
@@ -278,7 +252,7 @@ Is this document relevant to the query? Answer:`
 
       // Extract the first word from the response
       const firstWord = cleanResponse.split(/\s+/)[0]
-      
+
       // Handle yes/no responses directly
       if (firstWord === 'yes') {
         return 1.0
@@ -286,7 +260,7 @@ Is this document relevant to the query? Answer:`
       if (firstWord === 'no') {
         return 0.0
       }
-      
+
       // Fallback: check if yes/no appears anywhere in the response
       if (cleanResponse.includes('yes')) {
         return 1.0
@@ -294,17 +268,18 @@ Is this document relevant to the query? Answer:`
       if (cleanResponse.includes('no')) {
         return 0.0
       }
-      
+
       // If neither yes nor no found, log warning and return neutral score
       logger.warn('⚠️ No clear yes/no response found in reranker output:', {
         response: response,
         component: 'RerankingService',
       })
-      
+
       return 0.5 // Neutral score when unclear
     } catch (error) {
-      logger.error('❌ Error parsing binary reranking response:', 
-        error instanceof Error ? error : new Error(String(error)), 
+      logger.error(
+        '❌ Error parsing binary reranking response:',
+        error instanceof Error ? error : new Error(String(error)),
         {
           response,
           component: 'RerankingService',
@@ -317,8 +292,7 @@ Is this document relevant to the query? Answer:`
   /**
    * Get detailed model information from Ollama server
    */
-  async getModelDetails(modelName?: string): Promise<OllamaModel | null> {
-    const targetModel = modelName || this.model
+  async getModelDetails(model: string): Promise<{ maxTokens: number } | null> {
     try {
       const response = await fetch(`${this.baseUrl}/api/show`, {
         method: 'POST',
@@ -326,7 +300,7 @@ Is this document relevant to the query? Answer:`
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: targetModel,
+          name: model,
         }),
       })
 
@@ -334,61 +308,20 @@ Is this document relevant to the query? Answer:`
         return null
       }
 
-      const data = (await response.json()) as OllamaModel
-
-      // Try to extract maxTokens from parameters or modelfile
-      const maxTokens = this.extractMaxTokensFromModelInfo(data)
-      if (maxTokens) {
-        data.maxTokens = maxTokens
+      const data = (await response.json()) as {
+        model_info: { 'qwen3.context_length': number }
       }
-
-      return data
+      return {
+        maxTokens: data.model_info['qwen3.context_length'],
+      }
     } catch (error) {
-      logger.warn(`Could not fetch model details for ${targetModel}:`, {
-        error: error instanceof Error ? error : new Error(String(error)),
-        component: 'RerankingService',
-      })
+      logger.warn(
+        `Could not fetch model details for ${model}:`,
+        error instanceof Error ? error : new Error(String(error))
+      )
       return null
     }
   }
-
-  /**
-   * Extract max tokens from model information
-   */
-  private extractMaxTokensFromModelInfo(modelInfo: OllamaModel): number | null {
-    // Try to extract from details first
-    if (modelInfo.details?.context_length) {
-      return modelInfo.details.context_length
-    }
-
-    // Try to extract from parameters string
-    if (modelInfo.parameters) {
-      const contextMatch = modelInfo.parameters.match(/num_ctx\s+(\d+)/i)
-      if (contextMatch && contextMatch[1]) {
-        return parseInt(contextMatch[1])
-      }
-    }
-
-    // Try to extract from modelfile
-    if (modelInfo.modelfile) {
-      const contextMatch = modelInfo.modelfile.match(/PARAMETER\s+num_ctx\s+(\d+)/i)
-      if (contextMatch && contextMatch[1]) {
-        return parseInt(contextMatch[1])
-      }
-    }
-
-    // Default context lengths for common models
-    const modelName = modelInfo.name.toLowerCase()
-    if (modelName.includes('qwen3')) {
-      return 32768 // Qwen3 typically has 32k context
-    }
-    if (modelName.includes('qwen')) {
-      return 8192 // Other Qwen models typically 8k
-    }
-
-    return null
-  }
-
   /**
    * Truncate text to specified maximum character limit
    */
@@ -406,7 +339,7 @@ Is this document relevant to the query? Answer:`
   /**
    * Get available models from Ollama server (/api/tags)
    */
-  async getTags(): Promise<OllamaModel[]> {
+  async isAvailableModel(model: string): Promise<boolean> {
     try {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 5000)
@@ -419,46 +352,45 @@ Is this document relevant to the query? Answer:`
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        return []
+        return false
       }
 
-      const data = (await response.json()) as { models: OllamaModel[] }
-      return data.models
+      const data = (await response.json()) as { models: { name: string }[] }
+
+      return !!data.models.find(({ name }) => name === model)
     } catch (error) {
       logger.warn(
         'Failed to get Ollama tags:',
         error instanceof Error ? error : new Error(String(error))
       )
-      return []
+      return false
     }
-  }
-
-  /**
-   * Health check for the reranking service
-   */
-  async healthCheck(): Promise<boolean> {
-    const models = await this.getTags()
-    return models.length > 0
   }
 
   /**
    * Check if service is ready
    */
   isReady(): boolean {
-    return this.isInitialized
+    return this.cachedModelInfo !== null
   }
 
   /**
-   * Get model information
+   * Get model information (ModelInfo interface compatible)
    */
-  getModelInfo(): ModelInfo {
-    return (
-      this.cachedModelInfo || {
-        name: this.model,
+  getModelInfo(): RerankerModelInfo {
+    if (this.cachedModelInfo) {
+      return {
+        name: this.cachedModelInfo.name,
         service: 'ollama',
-        dimensions: 0, // Rerankers don't have fixed dimensions like embeddings
-        maxTokens: 0,
+        maxTokens: this.cachedModelInfo.maxTokens,
       }
-    )
+    }
+
+    // Return minimal info if not cached yet
+    return {
+      name: this.model,
+      service: 'ollama',
+      maxTokens: 0,
+    }
   }
 }
