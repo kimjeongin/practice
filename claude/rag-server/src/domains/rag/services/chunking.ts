@@ -25,17 +25,17 @@ export class ChunkingService {
   }
 
   private initializeSplitters(): void {
-    // Default text splitter
+    // Default text splitter (enhanced separators for better semantic boundaries)
     this.splitters.set(
       'default',
       new RecursiveCharacterTextSplitter({
         chunkSize: this.config.chunkSize,
         chunkOverlap: this.config.chunkOverlap,
-        separators: ['\n\n', '\n', '. ', '? ', '! ', '; ', ', ', ' ', ''],
+        separators: ['\n\n', '\n', '. ', '? ', '! ', ': ', '; ', ', ', ' ', ''],
       })
     )
 
-    // Markdown-specific splitter
+    // Markdown-specific splitter (enhanced with punctuation priority)
     this.splitters.set(
       'md',
       new RecursiveCharacterTextSplitter({
@@ -57,13 +57,16 @@ export class ChunkingService {
           '. ',
           '? ',
           '! ',
+          ': ',
+          '; ',
+          ', ',
           ' ',
           '',
         ],
       })
     )
 
-    // Code-specific splitter
+    // Code-specific splitter (enhanced with import/export and punctuation)
     this.splitters.set(
       'code',
       new RecursiveCharacterTextSplitter({
@@ -73,6 +76,8 @@ export class ChunkingService {
           '\n\nclass ',
           '\n\nfunction ',
           '\n\ndef ',
+          '\n\nexport ',
+          '\n\nimport ',
           '\n\nconst ',
           '\n\nlet ',
           '\n\nvar ',
@@ -80,6 +85,7 @@ export class ChunkingService {
           '\n\n/* ',
           '\n\n',
           '\n',
+          '; ',
           ' ',
           '',
         ],
@@ -110,19 +116,23 @@ export class ChunkingService {
     }
 
     try {
+      // Preprocess text for better chunking
+      const preprocessedText = this.preprocessText(text)
+      
       const fileType = filePath ? this.getFileTypeFromPath(filePath) : 'default'
       const splitter = this.getSplitterForFileType(fileType)
 
       logger.debug('🔄 Chunking text', {
-        textLength: text.length,
+        originalLength: text.length,
+        preprocessedLength: preprocessedText.length,
         fileType,
         filePath,
         component: 'ChunkingService',
       })
 
-      // Create document
+      // Create document with preprocessed text
       const document = new Document({
-        pageContent: text,
+        pageContent: preprocessedText,
         metadata: { source: filePath || 'unknown' },
       })
 
@@ -138,8 +148,9 @@ export class ChunkingService {
 
       logger.debug('✅ Text chunking completed', {
         originalLength: text.length,
+        preprocessedLength: preprocessedText.length,
         chunksCount: chunks.length,
-        averageChunkSize: Math.round(text.length / chunks.length),
+        averageChunkSize: Math.round(preprocessedText.length / chunks.length),
         fileType,
         component: 'ChunkingService',
       })
@@ -159,7 +170,7 @@ export class ChunkingService {
     }
   }
 
-  private getFileTypeFromPath(filePath: string): string {
+  protected getFileTypeFromPath(filePath: string): string {
     const extension = extname(filePath).slice(1).toLowerCase()
     
     // Map extensions to splitter types
@@ -187,6 +198,27 @@ export class ChunkingService {
 
   private getSplitterForFileType(fileType: string): RecursiveCharacterTextSplitter {
     return this.splitters.get(fileType) || this.splitters.get('default')!
+  }
+
+  /**
+   * Preprocess text for better chunking quality
+   * Normalizes whitespace, punctuation, and sentence boundaries
+   */
+  private preprocessText(text: string): string {
+    // 1. Remove excessive whitespace and normalize line breaks
+    text = text.replace(/\n{3,}/g, '\n\n') // Max 2 consecutive line breaks
+    text = text.replace(/[ \t]{2,}/g, ' ') // Remove multiple spaces/tabs
+    
+    // 2. Normalize special characters for better splitting
+    text = text.replace(/[""]/g, '"') // Normalize quotes
+    text = text.replace(/['']/g, "'") // Normalize apostrophes
+    
+    // 3. Ensure proper sentence ending punctuation spacing
+    text = text.replace(/([.!?])\s*\n/g, '$1\n') // Consistent sentence-end spacing
+    text = text.replace(/([.!?])([A-Z])/g, '$1 $2') // Space after sentence punctuation
+    
+    // 4. Clean up and trim
+    return text.trim()
   }
 
   /**

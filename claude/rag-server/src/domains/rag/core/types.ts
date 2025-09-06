@@ -124,8 +124,9 @@ export interface IndexStats {
  * GPT recommended approach: vector, text, doc_id, chunk_id, metadata (JSON string)
  */
 export interface RAGDocumentRecord extends Record<string, unknown> {
-  vector: number[] // embedding vector
+  vector: number[] // embedding vector (from contextual text)
   text: string // original text to pass to LLM (chunk content)
+  contextual_text: string // contextual text used for embedding
   doc_id: string // document identifier (file path based)
   chunk_id: number // chunk index
   metadata: string // metadata stored as JSON string

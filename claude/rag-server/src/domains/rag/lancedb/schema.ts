@@ -25,7 +25,8 @@ export function createLanceDBSchema(embeddingDimensions: number = 768) {
       'vector',
       new arrow.FixedSizeList(embeddingDimensions, new arrow.Field('item', new arrow.Float32()))
     ),
-    new arrow.Field('text', new arrow.Utf8()),
+    new arrow.Field('text', new arrow.Utf8()), // Original chunk text for LLM
+    new arrow.Field('contextual_text', new arrow.Utf8()), // Contextual text used for embedding
     new arrow.Field('doc_id', new arrow.Utf8()),
     new arrow.Field('chunk_id', new arrow.Int32()),
     new arrow.Field('metadata', new arrow.Utf8()), // Stored as JSON string
@@ -59,6 +60,7 @@ export function convertVectorDocumentToRAGRecord(document: VectorDocument): RAGD
   return {
     vector: document.vector || [],
     text: document.content,
+    contextual_text: document.content, // Use content as contextual_text for backward compatibility
     doc_id: document.doc_id,
     chunk_id: document.chunk_id,
     metadata: JSON.stringify(documentMetadata), // Store as JSON string

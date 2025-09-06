@@ -71,9 +71,9 @@ export class ConfigFactory {
       dataDir: process.env['DATA_DIR'] || './.data',
       logLevel: process.env['LOG_LEVEL'] || 'info',
 
-      // Document processing
-      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '1024'),
-      chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '20'),
+      // Document processing (optimized for 2024 research)
+      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '400'),
+      chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'),
 
       // Ollama configuration
       embeddingModel: process.env['EMBEDDING_MODEL'] || 'dengcao/Qwen3-Embedding-0.6B:Q8_0',

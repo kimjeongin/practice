@@ -6,13 +6,15 @@
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { StructuredError, ErrorCode } from '@/shared/errors/index.js'
 import type { IFileProcessingService } from '@/domains/rag/core/interfaces.js'
-import type { VectorDocument, DocumentMetadata } from '@/domains/rag/core/types.js'
+import type { DocumentMetadata } from '@/domains/rag/core/types.js'
 import { FileReader } from './reader.js'
-import { ChunkingService } from './chunking.js'
+import { ContextualChunkingService } from './contextual-chunking.js'
+import { EmbeddingService } from '../ollama/embedding.js'
 import { extractFileId, extractFileMetadata } from '@/shared/utils/file-metadata.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
 import { LanceDBProvider } from '@/domains/rag/lancedb/index.js'
+import type { RAGDocumentRecord } from '@/domains/rag/core/types.js'
 
 /**
  * Document Processor - Simplified Version (GPT Best Practice)
@@ -21,11 +23,13 @@ import { LanceDBProvider } from '@/domains/rag/lancedb/index.js'
 export class DocumentProcessor implements IFileProcessingService {
   private processingQueue = new Set<string>()
   private fileReader: FileReader
-  private textChunker: ChunkingService
+  private contextualChunker: ContextualChunkingService
+  private embeddingService: EmbeddingService
 
-  constructor(private vectorStoreProvider: LanceDBProvider, private config: ServerConfig) {
+  constructor(private vectorStoreProvider: LanceDBProvider, config: ServerConfig) {
     this.fileReader = new FileReader()
-    this.textChunker = new ChunkingService(config)
+    this.embeddingService = new EmbeddingService(config)
+    this.contextualChunker = new ContextualChunkingService(config, this.embeddingService)
   }
 
   /**
@@ -80,24 +84,66 @@ export class DocumentProcessor implements IFileProcessingService {
         processedAt: new Date().toISOString(),
       }
 
-      // Chunk the document
-      const chunks = await this.textChunker.chunkText(document.pageContent, filePath)
+      // Initialize embedding service if not ready
+      if (!this.embeddingService.isReady()) {
+        await this.embeddingService.initialize()
+      }
 
-      // Create vector documents
-      const vectorDocuments: VectorDocument[] = chunks.map((chunk, index) => ({
-        id: `${fileMetadata.id}_chunk_${index}`,
-        doc_id: fileMetadata.id,
-        chunk_id: index,
-        content: chunk.content,
-        metadata: documentMetadata,
-      }))
+      // Use contextual chunking for better performance
+      const contextualChunks = await this.contextualChunker.chunkTextWithContext(
+        document.pageContent, 
+        filePath
+      )
 
-      // Add to vector store
-      await this.vectorStoreProvider.addDocuments(vectorDocuments)
+      // Create RAG document records directly with contextual embeddings
+      const ragDocuments: RAGDocumentRecord[] = []
+      const currentModelName = this.embeddingService.getModelInfo().name || 'unknown'
 
-      logger.info('✅ File processed successfully', {
+      for (const { chunk, contextualText } of contextualChunks) {
+        try {
+          // Generate embedding from contextual text (safe method handles overflow)
+          const embedding = await this.contextualChunker.createSafeEmbedding(contextualText)
+
+          ragDocuments.push({
+            vector: embedding,
+            text: chunk.content, // Original chunk for LLM
+            contextual_text: contextualText, // Contextual text used for embedding
+            doc_id: fileMetadata.id,
+            chunk_id: chunk.index,
+            metadata: JSON.stringify(documentMetadata),
+            model_name: currentModelName,
+          })
+        } catch (error) {
+          logger.error(
+            'Failed to process contextual chunk',
+            error instanceof Error ? error : new Error(String(error)),
+            {
+              chunkIndex: chunk.index,
+              component: 'DocumentProcessor',
+            }
+          )
+          
+          // Fallback: use original chunk without context
+          const fallbackEmbedding = await this.embeddingService.embedQuery(chunk.content)
+          ragDocuments.push({
+            vector: fallbackEmbedding,
+            text: chunk.content,
+            contextual_text: chunk.content, // Use chunk content as fallback contextual text
+            doc_id: fileMetadata.id,
+            chunk_id: chunk.index,
+            metadata: JSON.stringify(documentMetadata),
+            model_name: currentModelName,
+          })
+        }
+      }
+
+      // Add directly to LanceDB table
+      await this.addRAGDocuments(ragDocuments)
+
+      logger.info('✅ File processed successfully with contextual chunking', {
         filePath,
-        chunksCount: chunks.length,
+        chunksCount: contextualChunks.length,
+        ragDocumentsCount: ragDocuments.length,
         component: 'DocumentProcessor',
       })
     } catch (error) {
@@ -114,6 +160,39 @@ export class DocumentProcessor implements IFileProcessingService {
     } finally {
       this.processingQueue.delete(filePath)
       endTiming()
+    }
+  }
+
+  /**
+   * Add RAG documents directly to LanceDB
+   */
+  private async addRAGDocuments(ragDocuments: RAGDocumentRecord[]): Promise<void> {
+    if (ragDocuments.length === 0) return
+
+    // Access LanceDB table directly for RAG documents
+    await this.vectorStoreProvider.initialize()
+    const table = (this.vectorStoreProvider as any).table
+
+    if (!table) {
+      throw new Error('LanceDB table not initialized')
+    }
+
+    try {
+      await table.add(ragDocuments as any)
+      logger.debug('✅ RAG documents added to LanceDB', {
+        count: ragDocuments.length,
+        component: 'DocumentProcessor',
+      })
+    } catch (error) {
+      logger.error(
+        '❌ Failed to add RAG documents',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          count: ragDocuments.length,
+          component: 'DocumentProcessor',
+        }
+      )
+      throw error
     }
   }
 

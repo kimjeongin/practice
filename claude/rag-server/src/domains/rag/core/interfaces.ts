@@ -72,7 +72,4 @@ export interface IRerankingService {
   // Model and health info
   getModelInfo(): RerankerModelInfo
   isReady(): boolean
-
-  // Health check
-  healthCheck(): Promise<boolean>
 }
