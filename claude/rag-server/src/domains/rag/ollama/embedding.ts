@@ -12,11 +12,13 @@ export class EmbeddingService extends Embeddings {
   private baseUrl: string
   private model: string
   private cachedModelInfo: EmbeddingModelInfo | null = null
+  private batchSize: number
 
   constructor(config: ServerConfig) {
     super({})
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
     this.model = config.embeddingModel
+    this.batchSize = config.embeddingBatchSize
   }
 
   /**
@@ -58,6 +60,62 @@ export class EmbeddingService extends Embeddings {
   }
 
   /**
+   * Generate embeddings for multiple documents using batch API
+   */
+  private async embedBatch(documents: string[], batchSize?: number): Promise<number[][]> {
+    const actualBatchSize = batchSize || this.getBatchSizeFromConfig()
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/embed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          input: documents.slice(0, actualBatchSize),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = (await response.json()) as { embeddings: number[][] }
+
+      if (!data.embeddings || !Array.isArray(data.embeddings)) {
+        throw new Error('Invalid batch embedding data received from Ollama')
+      }
+
+      // Normalize vectors for cosine similarity
+      return data.embeddings.map(embedding => this.normalizeVector(embedding))
+    } catch (error) {
+      logger.error(
+        'Error generating batch embeddings:',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      throw error
+    }
+  }
+
+  /**
+   * Get batch size from config or use dynamic calculation
+   */
+  private getBatchSizeFromConfig(): number {
+    // Use configured batch size
+    const configBatchSize = this.batchSize
+    
+    // Dynamic batch size based on available model info
+    if (this.cachedModelInfo && this.cachedModelInfo.maxTokens > 0) {
+      // Conservative estimate: assume average text is 100 tokens
+      const estimatedBatchSize = Math.floor(this.cachedModelInfo.maxTokens / 200)
+      return Math.min(Math.max(estimatedBatchSize, 1), configBatchSize)
+    }
+    
+    return configBatchSize
+  }
+
+  /**
    * Generate embeddings for multiple documents
    */
   async embedDocuments(documents: string[]): Promise<number[][]> {
@@ -70,41 +128,53 @@ export class EmbeddingService extends Embeddings {
         model: this.model,
         component: 'EmbeddingService',
       })
+      
       const embeddings: number[][] = []
+      const batchSize = this.getBatchSizeFromConfig()
+      const startTime = Date.now()
 
-      // Process with limited concurrency for optimal performance
-      const concurrency = 3
-      for (let i = 0; i < documents.length; i += concurrency) {
-        const batch = documents.slice(i, i + concurrency)
-        const batchPromises = batch.map((doc) => this.embedQuery(doc))
+      // First, try batch processing
+      try {
+        for (let i = 0; i < documents.length; i += batchSize) {
+          const batch = documents.slice(i, i + batchSize)
+          
+          logger.debug(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(documents.length / batchSize)}`, {
+            batchSize: batch.length,
+            remaining: documents.length - i,
+            component: 'EmbeddingService',
+          })
 
-        try {
-          const batchEmbeddings = await Promise.all(batchPromises)
+          const batchEmbeddings = await this.embedBatch(batch)
           embeddings.push(...batchEmbeddings)
 
-          // Progress logging
-          if (i % (concurrency * 5) === 0) {
-            logger.debug(
-              `Progress: ${Math.min(i + concurrency, documents.length)}/${
-                documents.length
-              } embeddings generated`,
-              { component: 'EmbeddingService' }
-            )
+          // Progress logging for large batches
+          if (documents.length > 20 && i % (batchSize * 5) === 0) {
+            const progress = Math.min(i + batchSize, documents.length)
+            logger.debug(`Progress: ${progress}/${documents.length} embeddings generated`, {
+              component: 'EmbeddingService',
+            })
           }
-        } catch (error) {
-          logger.error(
-            `Error in batch ${i}-${i + concurrency}:`,
-            error instanceof Error ? error : new Error(String(error))
-          )
-          throw error
         }
-      }
 
-      logger.info(`Successfully generated ${embeddings.length} embeddings`, {
-        model: this.model,
-        component: 'EmbeddingService',
-      })
-      return embeddings
+        const totalTime = Date.now() - startTime
+        logger.info(`Successfully generated ${embeddings.length} embeddings using batch API`, {
+          model: this.model,
+          batchSize,
+          totalTime: `${totalTime}ms`,
+          avgPerDoc: `${Math.round(totalTime / documents.length)}ms`,
+          component: 'EmbeddingService',
+        })
+
+        return embeddings
+      } catch (batchError) {
+        logger.warn('Batch processing failed, falling back to individual processing', {
+          error: batchError instanceof Error ? batchError.message : String(batchError),
+          component: 'EmbeddingService',
+        })
+
+        // Fallback to individual processing
+        return this.embedDocumentsIndividually(documents)
+      }
     } catch (error) {
       logger.error(
         'Error generating Ollama embeddings for documents:',
@@ -112,6 +182,52 @@ export class EmbeddingService extends Embeddings {
       )
       throw error
     }
+  }
+
+  /**
+   * Fallback method: Generate embeddings individually with concurrency control
+   */
+  private async embedDocumentsIndividually(documents: string[]): Promise<number[][]> {
+    const embeddings: number[][] = []
+    const startTime = Date.now()
+
+    // Process with limited concurrency for optimal performance
+    const concurrency = 3
+    for (let i = 0; i < documents.length; i += concurrency) {
+      const batch = documents.slice(i, i + concurrency)
+      const batchPromises = batch.map((doc) => this.embedQuery(doc))
+
+      try {
+        const batchEmbeddings = await Promise.all(batchPromises)
+        embeddings.push(...batchEmbeddings)
+
+        // Progress logging
+        if (i % (concurrency * 5) === 0) {
+          logger.debug(
+            `Fallback progress: ${Math.min(i + concurrency, documents.length)}/${
+              documents.length
+            } embeddings generated`,
+            { component: 'EmbeddingService' }
+          )
+        }
+      } catch (error) {
+        logger.error(
+          `Error in fallback batch ${i}-${i + concurrency}:`,
+          error instanceof Error ? error : new Error(String(error))
+        )
+        throw error
+      }
+    }
+
+    const totalTime = Date.now() - startTime
+    logger.info(`Successfully generated ${embeddings.length} embeddings using fallback method`, {
+      model: this.model,
+      totalTime: `${totalTime}ms`,
+      avgPerDoc: `${Math.round(totalTime / documents.length)}ms`,
+      component: 'EmbeddingService',
+    })
+    
+    return embeddings
   }
 
   /**
