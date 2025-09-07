@@ -1,5 +1,5 @@
-import { SearchService } from '@/domains/rag/services/search.js'
 import type { SearchOptions } from '@/domains/rag/core/types.js'
+import { RAGService } from '@/domains/rag/index.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
@@ -13,7 +13,7 @@ export interface SearchArgs {
 }
 
 export class SearchHandler {
-  constructor(private searchService: SearchService, private config?: ServerConfig) {}
+  constructor(private ragService: RAGService, private config?: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
     const { query, topK = 5, enableReranking = false, scoreThreshold } = args
@@ -50,7 +50,7 @@ export class SearchHandler {
         enableReranking,
       }
 
-      const results = await this.searchService.search(query, searchOptions)
+      const results = await this.ragService.search(query, searchOptions)
 
       // Detect if reranking was used by checking if any result has rerank scores
       const rerankingUsed = results.some((result) => result.rerankingScore !== undefined)

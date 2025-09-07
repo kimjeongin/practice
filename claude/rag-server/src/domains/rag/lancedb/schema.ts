@@ -12,7 +12,6 @@ import type {
   DocumentMetadata,
   VectorDocument,
   VectorSearchResult,
-  SearchFilters,
 } from '@/domains/rag/core/types.js'
 
 /**
@@ -82,7 +81,7 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
     // Proper conversion for normalized vectors: cosine similarity = 1 - (distance / 2)
     // Clamp distance to [0, 2] range for safety
     const clampedDistance = Math.max(0, Math.min(2, result._distance))
-    score = Math.max(0, 1 - (clampedDistance / 2))
+    score = Math.max(0, 1 - clampedDistance / 2)
   } else if (result.score !== undefined) {
     score = result.score
   } else {
@@ -91,7 +90,8 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
 
   logger.debug('🔍 LanceDB search result conversion (improved):', {
     rawDistance: result._distance,
-    clampedDistance: result._distance !== undefined ? Math.max(0, Math.min(2, result._distance)) : undefined,
+    clampedDistance:
+      result._distance !== undefined ? Math.max(0, Math.min(2, result._distance)) : undefined,
     calculatedScore: score,
     docId: result.doc_id,
     chunkId: result.chunk_id,

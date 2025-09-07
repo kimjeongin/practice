@@ -54,7 +54,7 @@ export interface IVectorStoreProvider {
 
   // Health and info
   isHealthy(): boolean
-  getIndexStats(): Promise<any>
+  getVectorStoreInfo(): Promise<any>
 
   getDocumentCount(): Promise<number>
   hasDocumentsForFileId(fileId: string): Promise<boolean>
@@ -65,6 +65,9 @@ export interface IVectorStoreProvider {
  * Reranking Service Interface
  */
 export interface IRerankingService {
+  // Initialization
+  initialize(): Promise<void>
+
   // Core reranking operation
   rerank(input: RerankingInput, options?: RerankingOptions): Promise<RerankingResult[]>
 

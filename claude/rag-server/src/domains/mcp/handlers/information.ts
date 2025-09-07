@@ -1,17 +1,23 @@
-import { LanceDBProvider } from '@/domains/rag/lancedb/index.js'
+import { RAGService } from '@/domains/rag/index.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
 
 export class InformationHandler {
-  constructor(private vectorStoreProvider: LanceDBProvider) {}
+  constructor(private ragService: RAGService) {}
 
   async handleVectorDBInfo() {
     try {
-      // Get basic vector db information from VectorStore
-      const result = await this.extractVectorDBInfo()
+      // Get comprehensive RAG system information via RAGService
+      const ragInfo = await this.ragService.getRagInfo()
 
       const responseData = {
-        vectordb_info: result[0] || {},
+        rag_system_info: ragInfo,
+        vectordb_info: {
+          provider: 'lancedb',
+          isHealthy: ragInfo.vectorStore.isHealthy,
+          documentCount: ragInfo.vectorStore.documentCount,
+          info: ragInfo.vectorStore.info,
+        },
       }
 
       return {
@@ -35,7 +41,8 @@ export class InformationHandler {
               {
                 error: 'VectorDBInfoFailed',
                 message: error instanceof Error ? error.message : 'Failed to get vector db info',
-                suggestion: 'This usually indicates database initialization issues. Try: 1) Restart the MCP server, 2) Check if the database directory exists and has proper permissions, 3) Verify the LANCEDB_URI environment variable, 4) Run yarn db:setup if using the development setup',
+                suggestion:
+                  'This usually indicates database initialization issues. Try: 1) Restart the MCP server, 2) Check if the database directory exists and has proper permissions, 3) Verify the LANCEDB_URI environment variable, 4) Run yarn db:setup if using the development setup',
               },
               null,
               2
@@ -62,31 +69,5 @@ export class InformationHandler {
     ]
   }
 
-  /**
-   * Extract basic vector db information from VectorStore metadata
-   */
-  private async extractVectorDBInfo(): Promise<any[]> {
-    try {
-      // Get basic info about the vector store
-      const indexStats = await this.vectorStoreProvider.getIndexStats()
-      const documentCount = await this.vectorStoreProvider.getDocumentCount()
-
-      return [
-        {
-          name: 'Vector Store Documents',
-          vectordb: 'lancedb',
-          total_files: documentCount || 0,
-          total_vectors: indexStats?.totalVectors || 0,
-          dimensions: indexStats?.dimensions || 0,
-          embedding_odel: indexStats?.embeddingModel || 'unknown',
-        },
-      ]
-    } catch (error) {
-      logger.warn(
-        'Failed to extract vector db info from VectorStore',
-        error instanceof Error ? error : new Error(String(error))
-      )
-      return []
-    }
-  }
+  // extractVectorDBInfo method removed - now using RAGService.getRagInfo() for comprehensive information
 }

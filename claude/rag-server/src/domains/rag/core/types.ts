@@ -107,7 +107,7 @@ export interface VectorSearchOptions {
 /**
  * Index statistics
  */
-export interface IndexStats {
+export interface VectorStoreInfo {
   totalVectors: number // total vector count
   dimensions: number // vector dimensions
   indexSize?: number // index size (bytes)
@@ -157,19 +157,6 @@ export interface LanceDBTableOptions {
   embeddingDimensions: number
   mode?: 'create' | 'overwrite' | 'append'
   embeddingFunction?: any // LanceDBEmbeddingFunction
-}
-
-/**
- * Search filter options (simplified)
- */
-export interface SearchFilters {
-  fileTypes?: string[]
-  docIds?: string[]
-  tags?: string[]
-  dateRange?: {
-    start: string
-    end: string
-  }
 }
 
 // ========================================

@@ -6,7 +6,8 @@ import { EventEmitter } from 'events'
 import { extractFileMetadata } from '@/shared/utils/file-metadata.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
 import { glob } from 'glob'
-import { DocumentProcessor } from '@/domains/rag/services/processor.js'
+import type { IFileProcessingService } from '@/domains/rag/core/interfaces.js'
+import type { RAGService } from '@/domains/rag/index.js'
 import { FileMetadata } from '../../rag/core/types.js'
 import { ConfigFactory } from '@/shared/config/config-factory.js'
 
@@ -18,9 +19,9 @@ export class FileWatcher extends EventEmitter {
   private config = ConfigFactory.getCurrentConfig()
   private visitedPaths: Set<string> = new Set()
   private scanAbortController: AbortController | null = null
-  private documentProcessor: DocumentProcessor | null = null
+  private documentProcessor: IFileProcessingService | RAGService | null = null
 
-  constructor(documentsDir: string, documentProcessor?: DocumentProcessor) {
+  constructor(documentsDir: string, documentProcessor?: IFileProcessingService | RAGService) {
     super()
     this.documentsDir = documentsDir
     this.documentProcessor = documentProcessor || null
@@ -259,7 +260,7 @@ export class FileWatcher extends EventEmitter {
         let processedCount = 0
         for (const filePath of currentFilePaths) {
           try {
-            await this.documentProcessor.processFile(filePath)
+            await this.processFile(filePath)
             processedCount++
           } catch (error) {
             logger.error(
@@ -320,7 +321,7 @@ export class FileWatcher extends EventEmitter {
               filePath: fileMetadata.path,
             })
 
-            await this.documentProcessor.processFile(filePath)
+            await this.processFile(filePath)
 
             if (isNew) {
               newFiles++
@@ -542,7 +543,32 @@ export class FileWatcher extends EventEmitter {
   }
 
   // Set document processor for file processing
-  setDocumentProcessor(documentProcessor: DocumentProcessor): void {
+  setDocumentProcessor(documentProcessor: IFileProcessingService | RAGService): void {
     this.documentProcessor = documentProcessor
+  }
+
+  // Helper methods to handle both RAGService and IFileProcessingService
+  private async processFile(filePath: string): Promise<void> {
+    if (!this.documentProcessor) return
+
+    if ('addDocuments' in this.documentProcessor) {
+      // RAGService
+      await this.documentProcessor.addDocuments([filePath])
+    } else {
+      // IFileProcessingService
+      await this.documentProcessor.processFile(filePath)
+    }
+  }
+
+  private async removeFile(filePath: string): Promise<void> {
+    if (!this.documentProcessor) return
+
+    if ('removeDocument' in this.documentProcessor) {
+      // RAGService
+      await this.documentProcessor.removeDocument(filePath)
+    } else {
+      // IFileProcessingService
+      await this.documentProcessor.removeFile(filePath)
+    }
   }
 }

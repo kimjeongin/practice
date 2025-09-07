@@ -16,41 +16,18 @@ import { InformationHandler } from '@/domains/mcp/handlers/information.js'
  * Initialize all dependencies and create MCPServer instance
  */
 async function initializeServices(config: any) {
-  // Initialize LanceDB provider directly
-  const { LanceDBProvider } = await import('@/domains/rag/lancedb/index.js')
+  // Initialize RAG Service (replaces individual service initialization)
+  const { RAGService } = await import('@/domains/rag/index.js')
+  const ragService = new RAGService()
+  await ragService.initialize(config)
 
-  const vectorStoreProvider = new LanceDBProvider(
-    config,
-    {
-      uri: config.vectorStore.config.uri,
-    },
-    'documents'
-  )
-
-  // Initialize reranking service
-  const { RerankingService } = await import('@/domains/rag/ollama/reranker.js')
-  const rerankingService = new RerankingService(config)
-  await rerankingService.initialize()
-
-  logger.info('✅ Ollama services initialized', {
-    rerankingReady: rerankingService.isReady(),
+  logger.info('✅ RAG services initialized via RAGService', {
+    ragReady: ragService.isReady(),
   })
 
-  // Initialize SearchService with direct LanceDB provider, config, and reranking service
-  const { SearchService } = await import('@/domains/rag/services/search.js')
-  const searchService = new SearchService(
-    vectorStoreProvider,
-    config,
-    rerankingService
-  )
-
-  // Initialize DocumentProcessor for file processing
-  const { DocumentProcessor } = await import('@/domains/rag/services/processor.js')
-  const documentProcessor = new DocumentProcessor(vectorStoreProvider, config)
-
-  // Initialize FileWatcher for automatic file processing
+  // Initialize FileWatcher with RAGService directly
   const { FileWatcher } = await import('@/domains/filesystem/index.js')
-  const fileWatcher = new FileWatcher(config.documentsDir, documentProcessor)
+  const fileWatcher = new FileWatcher(config.documentsDir, ragService)
 
   // Create a processing queue to limit concurrency
   const processingQueue: Promise<void>[] = []
@@ -76,12 +53,12 @@ async function initializeServices(config: any) {
             path: event.path,
             fileName: event.metadata?.name,
           })
-          await documentProcessor.processFile(event.path)
+          await ragService.addDocuments([event.path])
         } else if (event.type === 'deleted') {
           logger.info('File deletion detected, removing from VectorStore', {
             path: event.path,
           })
-          await documentProcessor.removeFile(event.path)
+          await ragService.removeDocument(event.path)
         }
       } catch (error) {
         logger.error(
@@ -132,9 +109,9 @@ async function initializeServices(config: any) {
     // Continue startup even if file watcher fails
   }
 
-  // Initialize MCP handlers with SearchService and config
-  const searchHandler = new SearchHandler(searchService, config)
-  const informationHandler = new InformationHandler(vectorStoreProvider)
+  // Initialize MCP handlers using RAGService directly
+  const searchHandler = new SearchHandler(ragService, config)
+  const informationHandler = new InformationHandler(ragService)
 
   // Create MCP Server
   const mcpServer = new MCPServer(searchHandler, informationHandler, config)

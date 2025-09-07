@@ -3,14 +3,16 @@
  * Consolidated exports for the refactored RAG domain
  */
 
+// Main RAG Service - High-level facade (recommended for external use)
+export { RAGService } from './rag-service.js'
+export type { RagInfo } from './rag-service.js'
+
 // Core types and interfaces
 export * from './core/types.js'
 export * from './core/interfaces.js'
 
-// LanceDB implementation
+// Internal services (for advanced use cases)
 export { LanceDBProvider } from './lancedb/index.js'
-
-// Services
 export { SearchService } from './services/search.js'
 export { DocumentProcessor } from './services/processor.js'
 export { FileReader } from './services/reader.js'

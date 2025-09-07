@@ -10,9 +10,8 @@ import type {
   VectorDocument,
   VectorSearchResult,
   VectorSearchOptions,
-  IndexStats,
+  VectorStoreInfo,
   RAGDocumentRecord,
-  SearchFilters,
   RAGSearchResult,
 } from '@/domains/rag/core/types.js'
 import { EmbeddingService } from '@/domains/rag/ollama/embedding.js'
@@ -387,7 +386,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
     return this.isInitialized && this.db !== null && this.table !== null
   }
 
-  async getIndexStats(): Promise<IndexStats> {
+  async getVectorStoreInfo(): Promise<VectorStoreInfo> {
     await this.initialize()
 
     if (!this.table) {
