@@ -70,26 +70,29 @@ export function convertVectorDocumentToRAGRecord(document: VectorDocument): RAGD
 
 /**
  * Convert LanceDB RAGSearchResult to Core VectorSearchResult
- * GPT approach: parse JSON string metadata
+ * Improved conversion with proper normalized vector score calculation
  */
 export function convertRAGResultToVectorSearchResult(result: any): VectorSearchResult {
-  // Calculate score for cosine similarity
-  // Since vectors are normalized, cosine distance is in [0, 2] range
-  // For normalized vectors, cosine similarity = 1 - cosine_distance
+  // Calculate score for cosine similarity with normalized vectors
+  // For normalized vectors: cosine_distance = 2 * (1 - cosine_similarity)
+  // Therefore: cosine_similarity = 1 - (cosine_distance / 2)
+  // But we need to ensure cosine_distance is in [0, 2] range
   let score: number
   if (result._distance !== undefined) {
-    // Convert cosine distance to similarity (0~1 range) for normalized vectors
-    score = Math.max(0, 1 - result._distance)
+    // Proper conversion for normalized vectors: cosine similarity = 1 - (distance / 2)
+    // Clamp distance to [0, 2] range for safety
+    const clampedDistance = Math.max(0, Math.min(2, result._distance))
+    score = Math.max(0, 1 - (clampedDistance / 2))
   } else if (result.score !== undefined) {
     score = result.score
   } else {
     score = 0
   }
 
-  logger.info('🔍 LanceDB search result conversion:', {
+  logger.debug('🔍 LanceDB search result conversion (improved):', {
     rawDistance: result._distance,
+    clampedDistance: result._distance !== undefined ? Math.max(0, Math.min(2, result._distance)) : undefined,
     calculatedScore: score,
-    vectorScore: result.score,
     docId: result.doc_id,
     chunkId: result.chunk_id,
   })

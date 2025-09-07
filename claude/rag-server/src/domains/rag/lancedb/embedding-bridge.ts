@@ -91,13 +91,13 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
 
       let newEmbeddings: number[][] = []
       if (uncachedTexts.length > 0) {
-        // Generate embeddings for uncached texts
-        newEmbeddings = await this.embeddingService.embedDocuments(uncachedTexts)
+        // Generate embeddings for uncached texts (raw vectors from EmbeddingService)
+        const rawEmbeddings = await this.embeddingService.embedDocuments(uncachedTexts)
 
-        // Normalize vectors for cosine similarity
-        newEmbeddings = normalizeBatchVectors(newEmbeddings)
+        // Normalize vectors for cosine similarity (single normalization point)
+        newEmbeddings = normalizeBatchVectors(rawEmbeddings)
 
-        // Update cache
+        // Update cache with normalized vectors
         uncachedTexts.forEach((text, idx) => {
           if (this.cache.size >= this.maxCacheSize) {
             // Simple eviction: remove first entry
@@ -161,24 +161,24 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
 
     // 캐시 미스 - 임베딩 생성 (성능 측정)
     const startTime = Date.now()
-    const embedding = await this.embeddingService.embedQuery(query)
+    const rawEmbedding = await this.embeddingService.embedQuery(query)
     const embeddingTime = Date.now() - startTime
 
     logger.debug(`⚡ Query embedding generated in ${embeddingTime}ms`, {
       queryLength: query.length,
-      embeddingDimensions: embedding.length,
+      embeddingDimensions: rawEmbedding.length,
       cached: false,
     })
 
-    // 코사인 유사도를 위한 벡터 정규화
-    const normalizedEmbedding = normalizeVector(embedding)
+    // 코사인 유사도를 위한 벡터 정규화 (single normalization point)
+    const normalizedEmbedding = normalizeVector(rawEmbedding)
 
     logger.debug(`📏 Query vector normalized for cosine similarity`, {
-      originalMagnitude: Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0)),
+      originalMagnitude: Math.sqrt(rawEmbedding.reduce((sum, val) => sum + val * val, 0)),
       normalizedMagnitude: Math.sqrt(normalizedEmbedding.reduce((sum, val) => sum + val * val, 0)),
     })
 
-    // 캐시 크기 제한
+    // 캐시에 정규화된 벡터 저장
     if (this.cache.size >= this.maxCacheSize) {
       // 가장 오래된 항목 제거
       const firstKey = this.cache.keys().next().value

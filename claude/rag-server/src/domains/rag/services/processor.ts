@@ -108,6 +108,7 @@ export class DocumentProcessor implements IFileProcessingService {
         for (const { chunk, contextualText } of contextualChunks) {
           try {
             // Generate embedding from contextual text (safe method handles overflow)
+            // Note: EmbeddingService returns raw vectors, will be normalized later
             const embedding = await this.contextualChunker.createSafeEmbedding(contextualText)
 
             ragDocuments.push({
@@ -130,6 +131,7 @@ export class DocumentProcessor implements IFileProcessingService {
             )
             
             // Fallback: use original chunk without context
+            // Note: EmbeddingService returns raw vectors, will be normalized later
             const fallbackEmbedding = await this.embeddingService.embedQuery(chunk.content)
             ragDocuments.push({
               vector: fallbackEmbedding,
@@ -155,6 +157,7 @@ export class DocumentProcessor implements IFileProcessingService {
 
         for (const chunk of normalChunks) {
           try {
+            // Note: EmbeddingService returns raw vectors, will be normalized later
             const embedding = await this.embeddingService.embedQuery(chunk.content)
 
             ragDocuments.push({
@@ -186,7 +189,7 @@ export class DocumentProcessor implements IFileProcessingService {
         })
       }
 
-      // Add directly to LanceDB table
+      // Normalize vectors and add to LanceDB table
       await this.addRAGDocuments(ragDocuments)
     } catch (error) {
       const structuredError = new StructuredError(
@@ -206,36 +209,32 @@ export class DocumentProcessor implements IFileProcessingService {
   }
 
   /**
-   * Add RAG documents directly to LanceDB
+   * Add RAG documents using LanceDBProvider to ensure consistent normalization
    */
   private async addRAGDocuments(ragDocuments: RAGDocumentRecord[]): Promise<void> {
     if (ragDocuments.length === 0) return
 
-    // Access LanceDB table directly for RAG documents
-    await this.vectorStoreProvider.initialize()
-    const table = (this.vectorStoreProvider as any).table
+    // Convert RAG documents to VectorDocuments format for LanceDBProvider
+    const vectorDocuments = ragDocuments.map((ragDoc) => {
+      const metadata = JSON.parse(ragDoc.metadata)
+      return {
+        id: `${ragDoc.doc_id}_chunk_${ragDoc.chunk_id}`, // Generate unique chunk ID
+        content: ragDoc.text,
+        vector: ragDoc.vector, // Raw vector - will be normalized by LanceDBProvider
+        doc_id: ragDoc.doc_id,
+        chunk_id: ragDoc.chunk_id,
+        metadata: metadata,
+        modelName: ragDoc.model_name,
+      }
+    })
 
-    if (!table) {
-      throw new Error('LanceDB table not initialized')
-    }
+    // Use LanceDBProvider's addDocuments method for consistent normalization
+    await this.vectorStoreProvider.addDocuments(vectorDocuments)
 
-    try {
-      await table.add(ragDocuments as any)
-      logger.debug('✅ RAG documents added to LanceDB', {
-        count: ragDocuments.length,
-        component: 'DocumentProcessor',
-      })
-    } catch (error) {
-      logger.error(
-        '❌ Failed to add RAG documents',
-        error instanceof Error ? error : new Error(String(error)),
-        {
-          count: ragDocuments.length,
-          component: 'DocumentProcessor',
-        }
-      )
-      throw error
-    }
+    logger.debug('✅ RAG documents added via LanceDBProvider with consistent normalization', {
+      count: ragDocuments.length,
+      component: 'DocumentProcessor',
+    })
   }
 
   /**

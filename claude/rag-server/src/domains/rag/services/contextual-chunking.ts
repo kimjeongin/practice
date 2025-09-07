@@ -236,6 +236,7 @@ export class ContextualChunkingService extends ChunkingService {
 
   /**
    * Create safe embedding that handles token overflow
+   * Note: EmbeddingService now returns raw vectors, normalization handled by LanceDBEmbeddingBridge
    */
   async createSafeEmbedding(contextualText: string): Promise<number[]> {
     const tokenCount = this.estimateTokens(contextualText)

@@ -262,9 +262,9 @@ export class LanceDBProvider implements IVectorStoreProvider {
         { timeoutMs: 15000, operation: 'generate_query_embedding' }
       )
 
-      // 2. GPT 방식의 간단한 검색 - 코사인 유사도 사용
+      // 2. 정규화된 벡터를 사용한 코사인 유사도 검색
       let searchQuery = (this.table.search(queryEmbedding) as any)
-        .distanceType('cosine') // 코사인 유사도 사용
+        .distanceType('cosine') // 코사인 거리 계산 (정규화된 벡터에서는 [0,2] 범위)
         .limit(options.topK || 10)
 
       // 3. 검색 실행

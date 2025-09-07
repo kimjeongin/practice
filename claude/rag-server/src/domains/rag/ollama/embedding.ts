@@ -47,8 +47,8 @@ export class EmbeddingService extends Embeddings {
         throw new Error('Invalid embedding data received from Ollama')
       }
 
-      // Normalize vector for cosine similarity
-      return this.normalizeVector(data.embeddings[0])
+      // Return raw vector - normalization will be handled by LanceDBEmbeddingBridge
+      return data.embeddings[0]
     } catch (error) {
       logger.error(
         'Error generating Ollama embedding for query:',
@@ -86,8 +86,8 @@ export class EmbeddingService extends Embeddings {
         throw new Error('Invalid batch embedding data received from Ollama')
       }
 
-      // Normalize vectors for cosine similarity
-      return data.embeddings.map((embedding) => this.normalizeVector(embedding))
+      // Return raw vectors - normalization will be handled by LanceDBEmbeddingBridge
+      return data.embeddings
     } catch (error) {
       logger.error(
         'Error generating batch embeddings:',
@@ -368,21 +368,5 @@ export class EmbeddingService extends Embeddings {
    */
   isReady(): boolean {
     return this.cachedModelInfo !== null
-  }
-
-  /**
-   * Normalize vector (L2 norm) for cosine similarity calculation
-   */
-  private normalizeVector(vector: number[]): number[] {
-    const norm = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0))
-
-    if (norm === 0) {
-      logger.warn('Zero vector detected during normalization', {
-        component: 'EmbeddingService',
-      })
-      return vector
-    }
-
-    return vector.map((val) => val / norm)
   }
 }
