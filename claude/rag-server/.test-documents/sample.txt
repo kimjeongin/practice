@@ -1,9 +1,0 @@
-RAG 시스템 테스트 문서
-
-이 문서는 다음을 테스트합니다:
-1. 파일 읽기 및 메타데이터 추출
-2. 텍스트 청킹
-3. 벡터 임베딩
-4. LanceDB 저장
-
-키워드: artificial intelligence, machine learning, vector database

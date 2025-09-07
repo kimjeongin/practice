@@ -1,61 +1,186 @@
 # RAG MCP Server
 
-A Model Context Protocol (MCP) server that provides RAG (Retrieval Augmented Generation) capabilities with semantic document search and automatic file processing.
+MCP server implementing RAG (Retrieval Augmented Generation) with semantic document search and automatic file processing.
 
 ## Features
 
 - **Semantic Search**: Vector-based document search using embedding models
-- **Automatic File Processing**: Watch directories and process documents automatically
-- **Multiple Embedding Providers**: Support for local Transformers models and Ollama
-- **MCP Protocol**: Compatible with Claude Desktop and other MCP clients
-- **Multiple Transport**: Support for both stdio and HTTP transport
-- **File Processing**: Support for text, markdown, PDF, and other document formats
+- **Automatic Processing**: File watching with real-time document indexing  
+- **Multiple Transports**: stdio (Claude Desktop) and HTTP support
+- **Embedding Providers**: Local Transformers and Ollama models
+- **File Format Support**: Text, Markdown, PDF, HTML, JSON
+- **Reranking**: Improves search result relevance
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Installation
 
 ```bash
 yarn install
 ```
 
-### 2. Setup Environment
+### 2. Configuration
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` to configure your setup. Key settings:
+Configure key settings:
 
-- `EMBEDDING_SERVICE`: Choose `transformers` (local) or `ollama` (external)
-- `MCP_TRANSPORT`: Choose `stdio` (for Claude Desktop) or `streamable-http` (for HTTP clients)
-- `DOCUMENTS_DIR`: Directory to watch for documents
+```bash
+# Choose embedding service: transformers or ollama
+EMBEDDING_SERVICE=ollama
+EMBEDDING_MODEL=dengcao/Qwen3-Embedding-0.6B:Q8_0
 
-### 3. Setup Database
+# MCP transport: stdio or streamable-http
+MCP_TRANSPORT=stdio
+
+# Document directory
+DOCUMENTS_DIR=./documents
+```
+
+### 3. Database Setup
 
 ```bash
 yarn db:setup
 ```
 
-### 4. Add Documents
-
-Place your documents in the `./documents` directory (or the directory specified in `DOCUMENTS_DIR`). The server will automatically process them.
-
-### 5. Start Server
+### 4. Start Server
 
 ```bash
-# Development mode with file watching
+# Development with file watching
 yarn dev
 
-# Production mode
+# Production
 yarn build && yarn start
 ```
 
-## MCP Client Usage
+## Architecture
 
-### Claude Desktop Integration
+### Application Flow
 
-Add to your Claude Desktop configuration:
+1. **Startup**: RAGService initializes embedding models, vector store (LanceDB), and reranking service
+2. **File Watching**: FileWatcher monitors document directory for changes
+3. **Document Processing**: Files are chunked, embedded, and stored in vector database
+4. **MCP Server**: Handles client connections via stdio or HTTP transport
+5. **Search Pipeline**: Query → Embedding → Vector Search → Reranking → Results
+
+### Domain Structure
+
+```
+src/
+├── app/                    # Application entry point
+├── domains/
+│   ├── filesystem/         # File watching and monitoring
+│   ├── mcp/               # MCP protocol implementation
+│   │   ├── handlers/       # Tool handlers (search, info)
+│   │   ├── server/         # MCP server core
+│   │   └── transport/      # stdio/HTTP transports
+│   └── rag/               # RAG domain
+│       ├── core/           # Types and interfaces
+│       ├── lancedb/        # Vector store provider
+│       ├── ollama/         # Embedding/reranking services
+│       ├── services/       # Search, processing, chunking
+│       └── rag-service.ts  # Main RAG facade
+└── shared/                 # Common utilities
+    ├── config/             # Configuration management
+    ├── logger/             # Logging
+    └── utils/              # Utilities
+```
+
+## MCP Tools
+
+### search
+
+Search documents using natural language queries with semantic similarity.
+
+**Parameters:**
+- `query` (required): Search query text
+- `topK` (optional): Maximum results (1-50, default: 5)
+
+**Request:**
+```json
+{
+  "name": "search",
+  "arguments": {
+    "query": "machine learning algorithms",
+    "topK": 5
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "query": "machine learning algorithms",
+  "results_count": 3,
+  "results": [
+    {
+      "rank": 1,
+      "content": "Machine learning algorithms are...",
+      "relevance_score": 0.85,
+      "source": {
+        "filename": "ml-guide.txt",
+        "filepath": "./documents/ml-guide.txt",
+        "file_type": "text/plain",
+        "chunk_index": 0
+      },
+      "metadata": {}
+    }
+  ],
+  "search_info": {
+    "total_results": 3,
+    "search_method": "semantic",
+    "max_requested": 5
+  }
+}
+```
+
+### get_vectordb_info
+
+Get vector database statistics and model information.
+
+**Request:**
+```json
+{
+  "name": "get_vectordb_info",
+  "arguments": {}
+}
+```
+
+**Response:**
+```json
+{
+  "status": "connected",
+  "database_info": {
+    "provider": "lancedb",
+    "uri": "./.data/lancedb",
+    "table_name": "documents"
+  },
+  "index_stats": {
+    "total_vectors": 1250,
+    "dimensions": 768,
+    "model_name": "gte-multilingual-base"
+  },
+  "embedding_info": {
+    "service": "transformers",
+    "model": "gte-multilingual-base", 
+    "dimensions": 768
+  },
+  "document_stats": {
+    "total_documents": 45,
+    "total_chunks": 1250,
+    "avg_chunks_per_document": 27.8,
+    "supported_file_types": ["txt", "md", "pdf", "html", "json"]
+  }
+}
+```
+
+## Client Integration
+
+### Claude Desktop
+
+Add to Claude Desktop configuration:
 
 ```json
 {
@@ -71,104 +196,76 @@ Add to your Claude Desktop configuration:
 }
 ```
 
-### HTTP Client Usage
+### HTTP Client
 
-Set `MCP_TRANSPORT=streamable-http` in your `.env` and use HTTP clients:
+Set `MCP_TRANSPORT=streamable-http` and connect to `http://localhost:3000`.
 
 ```bash
-# Test with example client
+# Test HTTP client
 cd examples/http-client
-npm install
-npm start
+npm install && npm start
 ```
-
-## Available Tools
-
-### search
-
-Search through indexed documents using natural language queries.
-
-**Parameters:**
-
-- `query` (required): Search query text
-- `topK` (optional): Maximum results to return (1-50, default: 5)
-
-### get_vectordb_info
-
-Get information about the vector database including document count and model information.
 
 ## Configuration
 
 ### Environment Variables
 
-Key configuration options:
-
 ```bash
-# Basic setup
+# Basic
 NODE_ENV=development
 DOCUMENTS_DIR=./documents
 LOG_LEVEL=info
 
-# Embedding configuration
-EMBEDDING_SERVICE=transformers
-EMBEDDING_MODEL=gte-multilingual-base
+# Embedding (Ollama)
+OLLAMA_BASE_URL=http://localhost:11434
+EMBEDDING_MODEL=dengcao/Qwen3-Embedding-0.6B:Q8_0
+RERANKING_MODEL=dengcao/Qwen3-Reranker-0.6B:Q8_0
 
-# Vector store
-VECTOR_STORE_PROVIDER=lancedb
+# Vector Store
 LANCEDB_URI=./.data/lancedb
 
-# MCP transport
-MCP_TRANSPORT=stdio
+# MCP Transport
+MCP_TRANSPORT=stdio           # stdio or streamable-http
 MCP_PORT=3000
+MCP_HOST=localhost
+
+# Document Processing
+CHUNK_SIZE=1024
+CHUNK_OVERLAP=20
+MAX_CONCURRENT_PROCESSING=3
 ```
 
 ### Embedding Models
 
-**Transformers (Local):**
-
-- `gte-multilingual-base`: Good multilingual support
-
 **Ollama (External):**
+- Requires Ollama server running
+- Shared model cache
+- Better GPU acceleration
+- Recommended: `nomic-embed-text`, `dengcao/Qwen3-Embedding-0.6B:Q8_0`
 
-- `nomic-embed-text`: Recommended general use
+**Transformers (Local):**
+- No external dependencies
+- CPU/GPU acceleration
+- Models cached locally
+- Available: `gte-multilingual-base`
 
 ## Development
-
-### Project Structure
-
-```
-src/
-├── app/                 # Application entry point
-├── domains/
-│   ├── mcp/            # MCP protocol implementation
-│   │   ├── handlers/   # Tool handlers (search, information)
-│   │   └── server/     # MCP server
-│   ├── rag/            # RAG domain logic
-│   │   ├── services/   # Search, document processing
-│   │   ├── lancedb/    # Vector store implementation
-│   │   └── embeddings/ # Embedding providers
-│   └── filesystem/     # File watching and processing
-└── shared/             # Shared utilities
-    ├── config/         # Configuration management
-    ├── logger/         # Logging utilities
-    └── utils/          # Common utilities
-```
 
 ### Scripts
 
 ```bash
 # Development
-yarn dev                # Development mode with file watching
-yarn typecheck          # Type checking
-yarn lint               # Linting
+yarn dev                    # Watch mode with auto-restart
+yarn typecheck              # TypeScript checking
+yarn lint                   # Code linting
 
 # Build
-yarn build              # Build for production
-yarn build:executable   # Create platform-specific binaries
+yarn build                  # Production build
+yarn build:executable       # Platform-specific binaries
 
 # Database
-yarn db:setup           # Initialize database
-yarn db:reset           # Reset database
+yarn db:setup               # Initialize database
+yarn db:reset               # Reset and reindex all documents
 ```
 
 ### Testing
@@ -177,7 +274,7 @@ yarn db:reset           # Reset database
 # Test stdio transport
 cd examples/stdio-client && npm start
 
-# Test HTTP transport
+# Test HTTP transport  
 cd examples/http-client && npm start
 ```
 
@@ -186,10 +283,7 @@ cd examples/http-client && npm start
 ### Docker
 
 ```bash
-# Build
 docker build -t rag-server .
-
-# Run
 docker run -p 3000:3000 -v ./documents:/app/documents rag-server
 ```
 
@@ -199,27 +293,55 @@ docker run -p 3000:3000 -v ./documents:/app/documents rag-server
 yarn build:executable
 ```
 
-Generates platform-specific binaries in `deploy/dist/`.
+Creates platform-specific binaries in `deploy/dist/`.
+
+## Error Responses
+
+All tools return structured errors:
+
+```json
+{
+  "error": "SearchFailed",
+  "message": "Search operation failed: Connection timeout", 
+  "suggestion": "Try a different query or check if documents are indexed properly"
+}
+```
+
+**Error Types:**
+- `InvalidQuery`: Missing or invalid parameters
+- `SearchFailed`: Search operation error
+- `UnknownTool`: Tool not available
+- `ToolExecutionFailed`: Execution error
+
+## Performance
+
+### Search Performance
+- Semantic search: 100-500ms for small-medium collections
+- Performance scales with document count and model complexity
+- Results ranked by similarity score (0-1, higher = more relevant)
+
+### Indexing Performance
+- Documents processed automatically when added to watched directory
+- Processing speed depends on document size and embedding model
+- Large documents chunked for optimal search performance
 
 ## Troubleshooting
 
-### Common Issues
+**Common Issues:**
 
-1. **Documents not being processed**: Check `DOCUMENTS_DIR` path and file permissions
-2. **Search returns no results**: Ensure documents are processed and indexed
-3. **Embedding errors**: Check `EMBEDDING_SERVICE` configuration and model availability
-4. **MCP connection issues**: Verify transport configuration and port availability
+1. **Documents not processing**: Check `DOCUMENTS_DIR` path and permissions
+2. **No search results**: Ensure documents are indexed (`yarn db:reset`)
+3. **Embedding errors**: Verify `OLLAMA_BASE_URL` and model availability
+4. **MCP connection**: Check transport configuration and ports
 
-### Logging
-
-Set `LOG_LEVEL=debug` for detailed logs. Check logs in `./logs` directory.
-
-### Database Issues
-
+**Debug Logging:**
 ```bash
-# Reset database and reprocess all documents
-yarn db:reset
-yarn dev
+LOG_LEVEL=debug yarn dev
+```
+
+**Reset Database:**
+```bash
+yarn db:reset && yarn dev
 ```
 
 ## License
