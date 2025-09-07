@@ -35,6 +35,20 @@ export interface ServerConfig {
   chunkOverlap: number
   chunkingStrategy: 'contextual' | 'normal'
   contextualChunkingModel: string
+  minChunkSize: number
+
+  // File watcher configuration
+  watcherDebounceDelay: number
+  watcherMaxScanDepth: number
+  watcherMaxProcessingQueue: number
+
+  // Processing configuration
+  maxConcurrentProcessing: number
+  maxErrorHistory: number
+
+  // Embedding configuration
+  embeddingConcurrency: number
+  rerankerBatchSize: number
 
   // Ollama configuration
   embeddingModel: string
@@ -78,6 +92,20 @@ export class ConfigFactory {
       chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'),
       chunkingStrategy: (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'contextual',
       contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:0.6b',
+      minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '100'),
+
+      // File watcher configuration
+      watcherDebounceDelay: parseInt(process.env['WATCHER_DEBOUNCE_DELAY'] || '300'),
+      watcherMaxScanDepth: parseInt(process.env['WATCHER_MAX_SCAN_DEPTH'] || '5'),
+      watcherMaxProcessingQueue: parseInt(process.env['WATCHER_MAX_PROCESSING_QUEUE'] || '100'),
+
+      // Processing configuration
+      maxConcurrentProcessing: parseInt(process.env['MAX_CONCURRENT_PROCESSING'] || '3'),
+      maxErrorHistory: parseInt(process.env['MAX_ERROR_HISTORY'] || '1000'),
+
+      // Embedding configuration
+      embeddingConcurrency: parseInt(process.env['EMBEDDING_CONCURRENCY'] || '3'),
+      rerankerBatchSize: parseInt(process.env['RERANKER_BATCH_SIZE'] || '1'),
 
       // Ollama configuration
       embeddingModel: process.env['EMBEDDING_MODEL'] || 'dengcao/Qwen3-Embedding-0.6B:Q8_0',

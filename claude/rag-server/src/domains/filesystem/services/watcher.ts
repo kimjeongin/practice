@@ -8,22 +8,14 @@ import { logger, startTiming } from '@/shared/logger/index.js'
 import { glob } from 'glob'
 import { DocumentProcessor } from '@/domains/rag/services/processor.js'
 import { FileMetadata } from '../../rag/core/types.js'
-
-export interface FileChangeEvent {
-  type: 'added' | 'changed' | 'deleted'
-  path: string
-  metadata?: Omit<FileMetadata, 'id'>
-}
+import { ConfigFactory } from '@/shared/config/config-factory.js'
 
 export class FileWatcher extends EventEmitter {
   private watcher: any | null = null
   private documentsDir: string
   private supportedExtensions: Set<string>
   private processingFiles: Map<string, NodeJS.Timeout> = new Map()
-  private readonly DEBOUNCE_DELAY = 300 // 300ms debounce
-  private readonly MAX_SCAN_DEPTH = 5
-  private readonly MAX_SCAN_TIME_MS = 30000
-  private readonly MAX_PROCESSING_QUEUE = 100
+  private config = ConfigFactory.getCurrentConfig()
   private visitedPaths: Set<string> = new Set()
   private scanAbortController: AbortController | null = null
   private documentProcessor: DocumentProcessor | null = null
@@ -93,7 +85,7 @@ export class FileWatcher extends EventEmitter {
         stabilityThreshold: 200,
         pollInterval: 100,
       },
-      depth: this.MAX_SCAN_DEPTH, // Reduced depth limit
+      depth: this.config.watcherMaxScanDepth, // Reduced depth limit
     })
 
     this.watcher
@@ -133,8 +125,8 @@ export class FileWatcher extends EventEmitter {
    */
   private debounceFileEvent(path: string, eventType: 'add' | 'change'): void {
     // Check if processing queue is full to prevent memory issues
-    if (this.processingFiles.size >= this.MAX_PROCESSING_QUEUE) {
-      logger.warn(`Processing queue full (${this.MAX_PROCESSING_QUEUE}), skipping file: ${path}`)
+    if (this.processingFiles.size >= this.config.watcherMaxProcessingQueue) {
+      logger.warn(`Processing queue full (${this.config.watcherMaxProcessingQueue}), skipping file: ${path}`)
       return
     }
 
@@ -161,7 +153,7 @@ export class FileWatcher extends EventEmitter {
         )
         this.emit('error', error)
       }
-    }, this.DEBOUNCE_DELAY)
+    }, this.config.watcherDebounceDelay)
 
     this.processingFiles.set(path, timeout)
   }

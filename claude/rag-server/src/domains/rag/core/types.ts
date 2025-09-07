@@ -119,6 +119,9 @@ export interface IndexStats {
 // LanceDB Types (formerly in separate files)
 // ========================================
 
+// Re-export LanceDB config types for compatibility
+export type { LanceDBTableConfig, LanceDBConnectionOptions } from '../lancedb/config.js'
+
 /**
  * RAG-optimized simple document schema for LanceDB
  * GPT recommended approach: vector, text, doc_id, chunk_id, metadata (JSON string)
@@ -147,10 +150,11 @@ export interface RAGSearchResult {
 }
 
 /**
- * LanceDB table creation options (simplified)
+ * LanceDB table creation options (consolidated)
  */
 export interface LanceDBTableOptions {
-  tableName: string
+  name: string // table name
+  embeddingDimensions: number
   mode?: 'create' | 'overwrite' | 'append'
   embeddingFunction?: any // LanceDBEmbeddingFunction
 }
@@ -247,14 +251,10 @@ export interface RerankerModelInfo {
 }
 
 // ========================================
-// Event Types
+// Event Types (Re-exported from shared)
 // ========================================
 
-export interface FileWatcherEvent {
-  type: 'added' | 'changed' | 'deleted'
-  path: string
-  metadata?: FileMetadata
-}
+export type { FileWatcherEvent } from '@/shared/types/index.js'
 
 // ========================================
 // Constants

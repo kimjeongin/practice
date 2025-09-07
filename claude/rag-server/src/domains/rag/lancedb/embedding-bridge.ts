@@ -144,22 +144,22 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
   }
 
   /**
-   * 단일 쿼리 임베딩 생성 (편의 메서드)
-   * @param query 임베딩할 쿼리 텍스트
-   * @returns 임베딩 벡터
+   * Generate single query embedding (convenience method)
+   * @param query Query text to embed
+   * @returns Embedding vector
    */
   async embedQuery(query: string): Promise<number[]> {
-    // 캐시 확인
+    // Check cache
     if (this.cache.has(query)) {
       const cached = this.cache.get(query)!
-      // LRU 구현: 재사용된 항목을 끝으로 이동
+      // LRU implementation: move reused item to end
       this.cache.delete(query)
       this.cache.set(query, cached)
       logger.info('🎯 Cache hit for query embedding')
       return cached
     }
 
-    // 캐시 미스 - 임베딩 생성 (성능 측정)
+    // Cache miss - generate embedding (performance measurement)
     const startTime = Date.now()
     const rawEmbedding = await this.embeddingService.embedQuery(query)
     const embeddingTime = Date.now() - startTime
@@ -170,7 +170,7 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
       cached: false,
     })
 
-    // 코사인 유사도를 위한 벡터 정규화 (single normalization point)
+    // Vector normalization for cosine similarity (single normalization point)
     const normalizedEmbedding = normalizeVector(rawEmbedding)
 
     logger.debug(`📏 Query vector normalized for cosine similarity`, {
@@ -178,9 +178,9 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
       normalizedMagnitude: Math.sqrt(normalizedEmbedding.reduce((sum, val) => sum + val * val, 0)),
     })
 
-    // 캐시에 정규화된 벡터 저장
+    // Store normalized vector in cache
     if (this.cache.size >= this.maxCacheSize) {
-      // 가장 오래된 항목 제거
+      // Remove oldest item
       const firstKey = this.cache.keys().next().value
       if (firstKey) {
         this.cache.delete(firstKey)

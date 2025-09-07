@@ -54,7 +54,7 @@ async function initializeServices(config: any) {
 
   // Create a processing queue to limit concurrency
   const processingQueue: Promise<void>[] = []
-  const MAX_CONCURRENT_PROCESSING = 3 // Limit concurrent file processing
+  const MAX_CONCURRENT_PROCESSING = config.maxConcurrentProcessing // Limit concurrent file processing
 
   // Connect FileWatcher to DocumentProcessor
   fileWatcher.on('change', async (event) => {

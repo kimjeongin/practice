@@ -17,10 +17,11 @@ import { logger } from '@/shared/logger/index.js'
 export class RerankingService implements IRerankingService {
   private baseUrl: string
   private model: string
-  private cachedModelInfo: ModelInfo | null = null
-  private modelDetails: RerankerModelInfo | null = null
+  private config: ServerConfig
+  private cachedModelInfo: RerankerModelInfo | null = null
 
   constructor(config: ServerConfig) {
+    this.config = config
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
     this.model = config.rerankingModel
 
@@ -61,7 +62,7 @@ export class RerankingService implements IRerankingService {
       }
 
       logger.info(`✅ Ollama reranker initialized successfully with model: ${this.model}`, {
-        maxTokens: this.modelDetails?.maxTokens || 0,
+        maxTokens: this.cachedModelInfo?.maxTokens || 0,
         component: 'RerankingService',
       })
     } catch (error) {
@@ -98,7 +99,7 @@ export class RerankingService implements IRerankingService {
       const startTime = Date.now()
 
       // Process in batches for memory efficiency
-      const batchSize = 1
+      const batchSize = this.config.rerankerBatchSize
       const rerankingScores: number[] = []
 
       for (let i = 0; i < documents.length; i += batchSize) {
@@ -107,7 +108,7 @@ export class RerankingService implements IRerankingService {
         // Process batch with concurrent requests (limited concurrency)
         const batchPromises = batch.map(async (doc) => {
           // Use model's actual maxTokens if available
-          const maxTokens = this.modelDetails?.maxTokens || 8192
+          const maxTokens = this.cachedModelInfo?.maxTokens || 8192
           const queryMaxChars = Math.floor(maxTokens * 0.3 * 3) // 30% for query, ~3 chars per token
           const docMaxChars = Math.floor(maxTokens * 0.6 * 3) // 60% for document, ~3 chars per token
 

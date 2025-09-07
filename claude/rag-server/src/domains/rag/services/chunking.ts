@@ -10,7 +10,7 @@ import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 import { extname } from 'path'
 
-interface TextChunk {
+export interface TextChunk {
   content: string
   index: number
   metadata?: Record<string, any>
@@ -141,7 +141,7 @@ export class ChunkingService {
 
       // Convert to our chunk format and filter out too-short chunks
       const chunks: TextChunk[] = []
-      const minChunkSize = 100 // Minimum characters for a meaningful chunk
+      const minChunkSize = this.config.minChunkSize // Minimum characters for a meaningful chunk
 
       for (let i = 0; i < splitDocs.length; i++) {
         const doc = splitDocs[i]!

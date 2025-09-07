@@ -1,11 +1,12 @@
 /**
- * 에러 모니터링 및 집계 시스템
- * 실시간 에러 추적, 알림, 통계 제공
+ * Error monitoring and aggregation system
+ * Real-time error tracking, alerts, and statistics
  */
 
 import { EventEmitter } from 'events'
 import { StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index.js'
 import { logger } from '@/shared/logger/index.js'
+import { ConfigFactory } from '@/shared/config/config-factory.js'
 
 export interface ErrorMetric {
   code: ErrorCode
@@ -44,7 +45,7 @@ export interface SystemHealth {
 }
 
 /**
- * 에러 모니터링 시스템
+ * Error monitoring system
  */
 export class ErrorMonitor extends EventEmitter {
   private static instance: ErrorMonitor
@@ -53,7 +54,7 @@ export class ErrorMonitor extends EventEmitter {
   private componentErrors: Map<string, number> = new Map()
   private alertThresholds: AlertThreshold[] = []
   private startTime: Date = new Date()
-  private maxErrorHistory = 1000
+  private maxErrorHistory = ConfigFactory.getCurrentConfig().maxErrorHistory
   private cleanupInterval: NodeJS.Timeout | null = null
 
   private constructor() {
@@ -70,7 +71,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 기본 알림 임계값 설정
+   * Set up default alert thresholds
    */
   private setupDefaultThresholds() {
     this.alertThresholds = [
@@ -104,29 +105,29 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 에러 기록
+   * Record error
    */
   recordError(error: StructuredError) {
-    // 에러 히스토리에 추가
+    // Add to error history
     this.errors.push(error)
     if (this.errors.length > this.maxErrorHistory) {
-      this.errors.shift() // 오래된 에러 제거
+      this.errors.shift() // Remove old errors
     }
 
-    // 에러 카운트 업데이트
+    // Update error count
     const currentCount = this.errorCounts.get(error.code) || 0
     this.errorCounts.set(error.code, currentCount + 1)
 
-    // 컴포넌트별 에러 카운트 업데이트
+    // Update component-specific error count
     if (error.context.component) {
       const componentCount = this.componentErrors.get(error.context.component) || 0
       this.componentErrors.set(error.context.component, componentCount + 1)
     }
 
-    // 알림 체크
+    // Check alert thresholds
     this.checkAlertThresholds(error)
 
-    // 이벤트 발생
+    // Emit event
     this.emit('error_recorded', error)
 
     logger.debug('Error recorded in monitor', {
@@ -137,7 +138,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 알림 임계값 체크
+   * Check alert thresholds
    */
   private checkAlertThresholds(error: StructuredError) {
     const threshold = this.alertThresholds.find((t) => t.errorCode === error.code)
@@ -171,7 +172,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 시스템 헬스 상태 조회
+   * Get system health status
    */
   getSystemHealth(): SystemHealth {
     const now = Date.now()
@@ -183,7 +184,7 @@ export class ErrorMonitor extends EventEmitter {
     const errorRate = recentErrors.length / (uptime / (60 * 1000)) // errors per minute
     const totalErrors = this.errors.length
 
-    // 컴포넌트 헬스 상태 계산
+    // Calculate component health status
     const componentHealth = new Map<
       string,
       {
@@ -213,7 +214,7 @@ export class ErrorMonitor extends EventEmitter {
       componentHealth.set(component, healthStatus)
     }
 
-    // 전체 시스템 상태 결정
+    // Determine overall system status
     let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy'
     if (errorRate > 10) {
       status = 'unhealthy'
@@ -243,7 +244,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 에러 통계 조회
+   * Get error statistics
    */
   getErrorStatistics(timeWindowMs = 24 * 60 * 60 * 1000): {
     byCode: Map<ErrorCode, number>
@@ -254,30 +255,30 @@ export class ErrorMonitor extends EventEmitter {
     const cutoff = Date.now() - timeWindowMs
     const recentErrors = this.errors.filter((e) => e.timestamp.getTime() > cutoff)
 
-    // 에러 코드별 통계
+    // Statistics by error code
     const byCode = new Map<ErrorCode, number>()
     const byComponent = new Map<string, number>()
     const byOperation = new Map<string, number>()
 
     recentErrors.forEach((error) => {
-      // 에러 코드별
+      // By error code
       const codeCount = byCode.get(error.code) || 0
       byCode.set(error.code, codeCount + 1)
 
-      // 컴포넌트별
+      // By component
       if (error.context.component) {
         const componentCount = byComponent.get(error.context.component) || 0
         byComponent.set(error.context.component, componentCount + 1)
       }
 
-      // 작업별
+      // By operation
       if (error.context.operation) {
         const operationCount = byOperation.get(error.context.operation) || 0
         byOperation.set(error.context.operation, operationCount + 1)
       }
     })
 
-    // 시간대별 타임라인 (24시간을 1시간 단위로)
+    // Timeline by time period (24 hours in 1-hour units)
     const timeline: { hour: number; count: number }[] = []
     const hoursAgo = Math.min(24, timeWindowMs / (60 * 60 * 1000))
 
@@ -296,7 +297,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 알림 임계값 설정
+   * Set alert threshold
    */
   setAlertThreshold(threshold: AlertThreshold) {
     const existingIndex = this.alertThresholds.findIndex((t) => t.errorCode === threshold.errorCode)
@@ -315,14 +316,14 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 에러 히스토리 조회
+   * Get error history
    */
   getErrorHistory(limit = 100): StructuredError[] {
-    return this.errors.slice(-limit).reverse() // 최신 순으로 반환
+    return this.errors.slice(-limit).reverse() // Return in newest first order
   }
 
   /**
-   * 특정 에러 코드의 최근 발생 현황
+   * Recent occurrence status of specific error code
    */
   getErrorTrend(
     errorCode: ErrorCode,
@@ -338,7 +339,7 @@ export class ErrorMonitor extends EventEmitter {
       (e) => e.code === errorCode && e.timestamp.getTime() > cutoff
     )
 
-    // 시간별 데이터 생성
+    // Generate hourly data
     const hourlyData: { hour: string; count: number }[] = []
     for (let i = 0; i < hoursBack; i++) {
       const hourStart = now - (i + 1) * 60 * 60 * 1000
@@ -354,7 +355,7 @@ export class ErrorMonitor extends EventEmitter {
       })
     }
 
-    // 트렌드 계산 (최근 6시간 vs 이전 6시간)
+    // Calculate trend (recent 6 hours vs previous 6 hours)
     const recentHalf = hourlyData.slice(-6).reduce((sum, h) => sum + h.count, 0)
     const previousHalf = hourlyData.slice(-12, -6).reduce((sum, h) => sum + h.count, 0)
 
@@ -373,7 +374,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 메트릭 리셋
+   * Reset metrics
    */
   reset() {
     this.errors = []
@@ -385,15 +386,15 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 주기적 정리 작업 시작
+   * Start periodic cleanup task
    */
   private startCleanup() {
-    // 테스트 환경에서는 정리 작업을 시작하지 않음
+    // Don't start cleanup task in test environment
     if (process.env.NODE_ENV === 'test') {
       return
     }
 
-    // 기존 인터벌이 있다면 정리
+    // Clear existing interval if present
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval)
     }
@@ -410,7 +411,7 @@ export class ErrorMonitor extends EventEmitter {
           remaining: this.errors.length,
         })
       }
-    }, 24 * 60 * 60 * 1000) // 매일 정리
+    }, 24 * 60 * 60 * 1000) // Daily cleanup
 
     if (!this.cleanupInterval) {
       logger.warn('Failed to start error monitor cleanup interval')
@@ -418,7 +419,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 정리 작업 중지
+   * Stop cleanup task
    */
   destroy() {
     if (this.cleanupInterval) {
@@ -429,7 +430,7 @@ export class ErrorMonitor extends EventEmitter {
   }
 
   /**
-   * 테스트용 인스턴스 리셋
+   * Reset instance for testing
    */
   static resetForTesting() {
     if (ErrorMonitor.instance) {
@@ -439,10 +440,10 @@ export class ErrorMonitor extends EventEmitter {
   }
 }
 
-// 전역 에러 모니터 인스턴스
+// Global error monitor instance
 export const errorMonitor = ErrorMonitor.getInstance()
 
-// 글로벌 에러 핸들러 설정
+// Set up global error handler
 export function setupGlobalErrorHandling() {
   // Unhandled Promise Rejection
   process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {

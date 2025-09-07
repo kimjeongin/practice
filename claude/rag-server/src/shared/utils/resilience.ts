@@ -1,6 +1,6 @@
 /**
- * 복원력(Resilience) 유틸리티
- * 타임아웃, 재시도, 서킷 브레이커 등 안정성 패턴 구현
+ * Resilience utilities
+ * Implementation of stability patterns such as timeout, retry, circuit breaker
  */
 
 import pTimeout from 'p-timeout'
@@ -33,11 +33,11 @@ export interface CircuitBreakerOptions {
 }
 
 /**
- * 타임아웃 래퍼
+ * Timeout wrapper
  */
 export class TimeoutWrapper {
   /**
-   * Promise에 타임아웃 적용
+   * Apply timeout to Promise
    */
   static async withTimeout<T>(promise: Promise<T>, options: TimeoutOptions): Promise<T> {
     const { timeoutMs, operation, fallback } = options
@@ -52,7 +52,7 @@ export class TimeoutWrapper {
         const timeoutError = new TimeoutError(operation, timeoutMs)
         logger.error(`Timeout in ${operation}`, timeoutError)
 
-        // Fallback이 있으면 실행
+        // Execute fallback if available
         if (fallback) {
           logger.warn(`Executing fallback for ${operation}`)
           return await fallback()
@@ -65,7 +65,7 @@ export class TimeoutWrapper {
   }
 
   /**
-   * 함수에 타임아웃 적용하는 데코레이터
+   * Decorator that applies timeout to function
    */
   static withTimeoutDecorator<T extends any[], R>(
     fn: (...args: T) => Promise<R>,
@@ -79,11 +79,11 @@ export class TimeoutWrapper {
 }
 
 /**
- * 재시도 래퍼
+ * Retry wrapper
  */
 export class RetryWrapper {
   /**
-   * 기본 재시도 옵션
+   * Default retry options
    */
   private static defaultOptions: Required<RetryOptions> = {
     retries: 3,
@@ -95,7 +95,7 @@ export class RetryWrapper {
   }
 
   /**
-   * Promise에 재시도 로직 적용
+   * Apply retry logic to Promise
    */
   static async withRetry<T>(
     fn: () => Promise<T>,
@@ -108,7 +108,7 @@ export class RetryWrapper {
       try {
         return await fn()
       } catch (error) {
-        // 재시도 가능한 에러인지 확인
+        // Check if error is retryable
         if (!ErrorUtils.isRetryable(error as Error)) {
           logger.debug(`Error not retryable for ${operation}`, { error })
           throw new AbortError(error as Error)
@@ -139,7 +139,7 @@ export class RetryWrapper {
   }
 
   /**
-   * 함수에 재시도 로직 적용하는 데코레이터
+   * Decorator that applies retry logic to function
    */
   static withRetryDecorator<T extends any[], R>(
     fn: (...args: T) => Promise<R>,
@@ -153,13 +153,13 @@ export class RetryWrapper {
 }
 
 /**
- * 서킷 브레이커 관리자
+ * Circuit breaker manager
  */
 export class CircuitBreakerManager {
   private static breakers = new Map<string, CircuitBreaker>()
 
   /**
-   * 서킷 브레이커 생성 또는 조회
+   * Create or retrieve circuit breaker
    */
   static getBreaker(
     name: string,
@@ -185,7 +185,7 @@ export class CircuitBreakerManager {
     const breakerOptions = { ...defaultOptions, ...options }
     const breaker = new CircuitBreaker(fn, breakerOptions)
 
-    // 이벤트 리스너 설정
+    // Set up event listeners
     breaker.on('open', () => {
       logger.warn(`Circuit breaker opened for ${name}`, { component: name })
     })
@@ -207,7 +207,7 @@ export class CircuitBreakerManager {
   }
 
   /**
-   * 모든 서킷 브레이커 상태 조회
+   * Retrieve status of all circuit breakers
    */
   static getStatus(): { name: string; state: string; stats: any }[] {
     const status: { name: string; state: string; stats: any }[] = []
@@ -224,7 +224,7 @@ export class CircuitBreakerManager {
   }
 
   /**
-   * 서킷 브레이커 리셋
+   * Reset circuit breaker
    */
   static reset(name?: string) {
     if (name) {
@@ -243,12 +243,12 @@ export class CircuitBreakerManager {
 }
 
 /**
- * 통합 복원력 래퍼
- * 타임아웃 + 재시도 + 서킷 브레이커를 조합
+ * Integrated resilience wrapper
+ * Combination of timeout + retry + circuit breaker
  */
 export class ResilienceWrapper {
   /**
-   * 완전한 복원력 패턴 적용
+   * Apply complete resilience pattern
    */
   static async withResilience<T>(
     fn: () => Promise<T>,
@@ -264,19 +264,19 @@ export class ResilienceWrapper {
 
     let wrappedFn = fn
 
-    // 1. 타임아웃 적용
+    // 1. Apply timeout
     if (timeout) {
       const originalFn = wrappedFn
       wrappedFn = () => TimeoutWrapper.withTimeout(originalFn(), timeout)
     }
 
-    // 2. 재시도 적용
+    // 2. Apply retry
     if (retry) {
       const originalFn = wrappedFn
       wrappedFn = () => RetryWrapper.withRetry(originalFn, operation, retry)
     }
 
-    // 3. 서킷 브레이커 적용
+    // 3. Apply circuit breaker
     if (useCircuitBreaker) {
       const breaker = CircuitBreakerManager.getBreaker(operation, wrappedFn, circuitBreaker)
       return breaker.fire() as Promise<T>
@@ -287,11 +287,11 @@ export class ResilienceWrapper {
 }
 
 /**
- * 배치 처리 유틸리티
+ * Batch processing utility
  */
 export class BatchProcessor {
   /**
-   * 배열을 청크 단위로 처리 (동시성 제한)
+   * Process array in chunks (with concurrency limit)
    */
   static async processBatch<T, R>(
     items: T[],
@@ -328,7 +328,7 @@ export class BatchProcessor {
           }
         })
 
-        // 동시성 제한하여 배치 처리
+        // Process batch with concurrency limit
         const batchResults = await Promise.all(batchPromises)
         results.push(...batchResults)
 
@@ -346,7 +346,7 @@ export class BatchProcessor {
   }
 }
 
-// 편의 함수들
+// Convenience functions
 export const withTimeout = TimeoutWrapper.withTimeout
 export const withRetry = RetryWrapper.withRetry
 export const withResilience = ResilienceWrapper.withResilience

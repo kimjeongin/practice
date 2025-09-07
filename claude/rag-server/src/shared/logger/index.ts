@@ -1,6 +1,6 @@
 /**
- * 구조화된 로깅 시스템
- * Pino 기반 고성능 로거 (2025 표준)
+ * Structured logging system
+ * High-performance Pino-based logger (2025 standard)
  */
 
 import pino, { Logger as PinoLogger } from 'pino'
@@ -28,7 +28,7 @@ export enum LogLevel {
 }
 
 /**
- * 중앙집중식 로거 클래스
+ * Centralized logger class
  */
 export class Logger {
   private static instance: Logger
@@ -37,22 +37,22 @@ export class Logger {
   private lastErrorTime: Map<ErrorCode, Date> = new Map()
 
   private constructor() {
-    // 환경에 따른 로거 구성
+    // Configure logger based on environment
     const isDevelopment = process.env.NODE_ENV !== 'production'
 
-    // 로그 디렉토리 생성
+    // Create log directory
     const logDir = join(process.cwd(), 'logs')
     if (!existsSync(logDir)) {
       mkdirSync(logDir, { recursive: true })
     }
 
-    // 로그 파일 경로
+    // Log file paths
     const logFile = join(logDir, 'rag-server.log')
     const errorLogFile = join(logDir, 'rag-server-error.log')
 
-    // 간소화된 로거 설정
+    // Simplified logger configuration
     if (isDevelopment) {
-      // 개발 환경: pretty printing
+      // Development environment: pretty printing
       this.pino = pino({
         level: process.env.LOG_LEVEL || 'debug',
         transport: {
@@ -71,7 +71,7 @@ export class Logger {
         },
       })
     } else {
-      // 프로덕션 환경: JSON 로깅
+      // Production environment: JSON logging
       this.pino = pino({
         level: process.env.LOG_LEVEL || 'info',
         timestamp: pino.stdTimeFunctions.isoTime,
@@ -84,20 +84,20 @@ export class Logger {
       })
     }
 
-    // 파일 로깅을 위한 별도 스트림 생성
+    // Create separate stream for file logging
     this.setupFileLogging(logFile, errorLogFile)
 
-    // 로그 파일 위치 안내
-    this.pino.info('📝 로그 파일 저장 위치:')
-    this.pino.info(`   - 전체 로그: ${logFile}`)
-    this.pino.info(`   - 에러 로그: ${errorLogFile}`)
+    // Guide to log file location
+    this.pino.info('📝 Log file save location:')
+    this.pino.info(`   - All logs: ${logFile}`)
+    this.pino.info(`   - Error logs: ${errorLogFile}`)
   }
 
   /**
-   * 파일 로깅 설정
+   * Set up file logging
    */
   private setupFileLogging(logFile: string, errorLogFile: string): void {
-    // 단순한 파일 로깅 (똑같은 형식으로 파일에 저장)
+    // Simple file logging (save to file in same format)
     const logStream = pino.destination({
       dest: logFile,
       sync: false,
@@ -108,7 +108,7 @@ export class Logger {
       sync: false,
     })
 
-    // 파일 로깅을 위한 logger 인스턴스
+    // Logger instance for file logging
     const fileLogger = pino(
       {
         timestamp: pino.stdTimeFunctions.isoTime,
@@ -129,7 +129,7 @@ export class Logger {
       errorLogStream
     )
 
-    // 원본 메서드 랙핑
+    // Wrap original methods
     const originalMethods = {
       info: this.pino.info.bind(this.pino),
       debug: this.pino.debug.bind(this.pino),
@@ -138,7 +138,7 @@ export class Logger {
       fatal: this.pino.fatal.bind(this.pino),
     }
 
-    // 파일 로깅 기능 추가
+    // Add file logging functionality
     this.pino.info = (obj: any, msg?: string) => {
       originalMethods.info(obj, msg)
       fileLogger.info(obj, msg)
@@ -175,43 +175,43 @@ export class Logger {
   }
 
   /**
-   * 정보 로그
+   * Info log
    */
   info(message: string, context: LogContext = {}) {
     this.pino.info({ ...context }, message)
   }
 
   /**
-   * 디버그 로그
+   * Debug log
    */
   debug(message: string, context: LogContext = {}) {
     this.pino.debug({ ...context }, message)
   }
 
   /**
-   * 경고 로그
+   * Warning log
    */
   warn(message: string, context: LogContext = {}) {
     this.pino.warn({ ...context }, message)
   }
 
   /**
-   * 에러 로그 (구조화된 에러 지원)
+   * Error log (supports structured errors)
    */
   error(message: string, error?: Error | StructuredError, context: LogContext = {}) {
     const errorData: any = { ...context }
 
     if (error) {
       if (error instanceof StructuredError) {
-        // 구조화된 에러 처리
+        // Process structured error
         errorData.error = ErrorUtils.sanitize(error)
         errorData.errorCode = error.code
         errorData.isOperational = error.isOperational
 
-        // 에러 메트릭 업데이트
+        // Update error metrics
         this.updateErrorMetrics(error.code)
       } else {
-        // 일반 에러 처리
+        // Process general error
         errorData.error = {
           name: error.name,
           message: error.message,
@@ -227,7 +227,7 @@ export class Logger {
   }
 
   /**
-   * 치명적 오류 로그
+   * Fatal error log
    */
   fatal(message: string, error?: Error | StructuredError, context: LogContext = {}) {
     const errorData: any = { ...context }
@@ -250,7 +250,7 @@ export class Logger {
   }
 
   /**
-   * 성능 측정 시작
+   * Start performance measurement
    */
   startTiming(operation: string, context: LogContext = {}): () => void {
     const startTime = Date.now()
@@ -267,7 +267,7 @@ export class Logger {
   }
 
   /**
-   * 에러 메트릭 업데이트
+   * Update error metrics
    */
   private updateErrorMetrics(errorCode: ErrorCode) {
     const currentCount = this.errorMetrics.get(errorCode) || 0
@@ -276,7 +276,7 @@ export class Logger {
   }
 
   /**
-   * 에러 메트릭 조회
+   * Get error metrics
    */
   getErrorMetrics(): { code: ErrorCode; count: number; lastOccurred: Date }[] {
     const metrics: { code: ErrorCode; count: number; lastOccurred: Date }[] = []
@@ -294,7 +294,7 @@ export class Logger {
   }
 
   /**
-   * 헬스체크 로그
+   * Health check log
    */
   health(component: string, status: 'healthy' | 'unhealthy', context: LogContext = {}) {
     const level = status === 'healthy' ? 'info' : 'warn'
@@ -310,7 +310,7 @@ export class Logger {
   }
 
   /**
-   * 비즈니스 이벤트 로그
+   * Business event log
    */
   event(event: string, context: LogContext = {}) {
     this.pino.info(
@@ -324,14 +324,14 @@ export class Logger {
   }
 
   /**
-   * 로그 레벨 변경
+   * Change log level
    */
   setLevel(level: LogLevel) {
     this.pino.level = level
   }
 
   /**
-   * 메트릭 리셋
+   * Reset metrics
    */
   resetMetrics() {
     this.errorMetrics.clear()
@@ -339,14 +339,14 @@ export class Logger {
   }
 
   /**
-   * 로거 인스턴스 직접 접근 (필요시)
+   * Direct access to logger instance (if needed)
    */
   getPinoInstance(): PinoLogger {
     return this.pino
   }
 }
 
-// 전역 로거 인스턴스
+// Global logger instance
 export const logger = Logger.getInstance()
 
 export const startTiming = (operation: string, context?: LogContext) =>

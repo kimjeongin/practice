@@ -16,8 +16,7 @@ import type {
   RerankerModelInfo,
 } from './types.js'
 
-// Re-export types that are used in interfaces
-export type { ModelInfo } from './types.js'
+// Re-export types that are used in interfaces (removed unused ModelInfo)
 
 /**
  * Search Service Interface

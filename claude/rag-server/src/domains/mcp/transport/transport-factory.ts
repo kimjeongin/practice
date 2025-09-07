@@ -47,9 +47,9 @@ export class TransportFactory {
     context: HTTPTransportContext
   }> {
     const timeoutConfig = {
-      connectionTimeout: parseInt(process.env.MCP_CONNECTION_TIMEOUT_MS || '120000'), // 2분
-      keepAliveTimeout: parseInt(process.env.MCP_KEEP_ALIVE_TIMEOUT_MS || '65000'), // 65초
-      requestTimeout: parseInt(process.env.MCP_REQUEST_TIMEOUT_MS || '90000'), // 90초 - 검색 작업 고려
+      connectionTimeout: parseInt(process.env.MCP_CONNECTION_TIMEOUT_MS || '120000'), // 2 minutes
+      keepAliveTimeout: parseInt(process.env.MCP_KEEP_ALIVE_TIMEOUT_MS || '65000'), // 65 seconds
+      requestTimeout: parseInt(process.env.MCP_REQUEST_TIMEOUT_MS || '90000'), // 90 seconds - considering search operations
     }
 
     logger.info('🔧 Configuring MCP HTTP server with timeouts', {

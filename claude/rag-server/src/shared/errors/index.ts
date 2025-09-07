@@ -1,6 +1,6 @@
 /**
- * 구조화된 에러 클래스들
- * 2025 오픈소스 표준을 따른 에러 처리 시스템
+ * Structured error classes
+ * Error handling system following 2025 open source standards
  */
 
 export enum ErrorCode {
@@ -51,7 +51,7 @@ export interface ErrorContext {
 }
 
 /**
- * 기본 구조화된 에러 클래스
+ * Base structured error class
  */
 export class StructuredError extends Error {
   public readonly code: ErrorCode
@@ -99,7 +99,7 @@ export class StructuredError extends Error {
 }
 
 /**
- * 파일 처리 관련 에러
+ * File processing related errors
  */
 export class FileProcessingError extends StructuredError {
   constructor(message: string, filePath: string, operation: string, originalError?: Error) {
@@ -114,7 +114,7 @@ export class FileProcessingError extends StructuredError {
 }
 
 /**
- * 벡터 스토어 관련 에러
+ * Vector store related errors
  */
 export class VectorStoreError extends StructuredError {
   constructor(
@@ -134,7 +134,7 @@ export class VectorStoreError extends StructuredError {
 }
 
 /**
- * 검색 관련 에러
+ * Search related errors
  */
 export class SearchError extends StructuredError {
   constructor(
@@ -154,7 +154,7 @@ export class SearchError extends StructuredError {
 }
 
 /**
- * 타임아웃 에러
+ * Timeout errors
  */
 export class TimeoutError extends StructuredError {
   constructor(operation: string, timeoutMs: number, context: ErrorContext = {}) {
@@ -168,7 +168,7 @@ export class TimeoutError extends StructuredError {
 }
 
 /**
- * 데이터베이스 관련 에러
+ * Database related errors
  */
 export class DatabaseError extends StructuredError {
   constructor(message: string, operation: string, originalError?: Error) {
@@ -182,7 +182,7 @@ export class DatabaseError extends StructuredError {
 }
 
 /**
- * 임베딩 관련 에러
+ * Embedding related errors
  */
 export class EmbeddingError extends StructuredError {
   constructor(message: string, model: string, originalError?: Error) {
@@ -196,7 +196,7 @@ export class EmbeddingError extends StructuredError {
 }
 
 /**
- * 구성 관련 에러
+ * Configuration related errors
  */
 export class ConfigurationError extends StructuredError {
   constructor(message: string, configKey: string, expectedType?: string) {
@@ -214,11 +214,11 @@ export class ConfigurationError extends StructuredError {
 }
 
 /**
- * 에러 유틸리티 함수들
+ * Error utility functions
  */
 export class ErrorUtils {
   /**
-   * 에러가 재시도 가능한지 확인
+   * Check if error is retryable
    */
   static isRetryable(error: Error): boolean {
     if (error instanceof StructuredError) {
@@ -230,7 +230,7 @@ export class ErrorUtils {
       ].includes(error.code)
     }
 
-    // 일반 에러의 경우 메시지 기반 판단
+    // For general errors, judge based on message
     const retryableMessages = [
       'timeout',
       'rate limit',
@@ -243,22 +243,22 @@ export class ErrorUtils {
   }
 
   /**
-   * 에러가 운영상 에러인지 확인
+   * Check if error is operational
    */
   static isOperational(error: Error): boolean {
     if (error instanceof StructuredError) {
       return error.isOperational
     }
-    return true // 기본적으로 운영상 에러로 간주
+    return true // Consider as operational error by default
   }
 
   /**
-   * 에러에서 민감한 정보 제거
+   * Remove sensitive information from error
    */
   static sanitize(error: StructuredError): Partial<StructuredError> {
     const sanitized = { ...error.toJSON() }
 
-    // API 키, 비밀번호 등 민감한 정보 제거
+    // Remove sensitive information like API keys, passwords, etc.
     if (sanitized.context) {
       delete sanitized.context.apiKey
       delete sanitized.context.password

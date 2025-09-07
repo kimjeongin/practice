@@ -182,23 +182,23 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
       const currentModelName = this.embeddingService?.getModelInfo().name || 'unknown'
 
-      // 배치 처리
+      // Process in batches
       const batchSize = LANCEDB_CONSTANTS.DEFAULT_BATCH_SIZE
       const records: RAGDocumentRecord[] = []
 
       for (let i = 0; i < documents.length; i += batchSize) {
         const batch = documents.slice(i, i + batchSize)
 
-        // 임베딩 생성
+        // Generate embeddings
         const contents = batch.map((doc) => doc.content)
         const embeddings = await this.embeddingBridge.embed(contents)
 
-        // 새로운 변환 함수 사용
+        // Use new conversion function
         for (let j = 0; j < batch.length; j++) {
           const doc = batch[j]!
           const embedding = embeddings[j]!
 
-          // VectorDocument를 RAGDocumentRecord로 변환
+          // Convert VectorDocument to RAGDocumentRecord
           const ragRecord = convertVectorDocumentToRAGRecord({
             ...doc,
             vector: embedding,
@@ -208,7 +208,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
         }
       }
 
-      // LanceDB에 직접 추가 (중복 검사 없이)
+      // Add directly to LanceDB (without duplicate checking)
       if (records.length > 0) {
         await this.table.add(records as any)
       }
@@ -256,18 +256,18 @@ export class LanceDBProvider implements IVectorStoreProvider {
         component: 'LanceDBProvider',
       })
 
-      // 1. 쿼리 임베딩 생성
+      // 1. Generate query embedding
       const queryEmbedding = await TimeoutWrapper.withTimeout(
         this.embeddingBridge.embedQuery(query),
         { timeoutMs: 15000, operation: 'generate_query_embedding' }
       )
 
-      // 2. 정규화된 벡터를 사용한 코사인 유사도 검색
+      // 2. Cosine similarity search using normalized vectors
       let searchQuery = (this.table.search(queryEmbedding) as any)
-        .distanceType('cosine') // 코사인 거리 계산 (정규화된 벡터에서는 [0,2] 범위)
+        .distanceType('cosine') // Calculate cosine distance (range [0,2] for normalized vectors)
         .limit(options.topK || 10)
 
-      // 3. 검색 실행
+      // 3. Execute search
       const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
         searchQuery.toArray(),
         { timeoutMs: 30000, operation: 'lancedb_search' }
@@ -279,10 +279,10 @@ export class LanceDBProvider implements IVectorStoreProvider {
         component: 'LanceDBProvider',
       })
 
-      // 4. 결과 변환 (새로운 core 타입으로)
+      // 4. Convert results (to new core types)
       let results = rawResults.map(convertRAGResultToVectorSearchResult)
 
-      // 5. 스코어 필터링 (단순화)
+      // 5. Score filtering (simplified)
       if (options.scoreThreshold) {
         results = results.filter((result) => result.score >= options.scoreThreshold!)
         logger.info('📊 After score filtering', {
@@ -461,7 +461,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
   }
 
   /**
-   * 모든 파일 메타데이터 조회 (간소화)
+   * Retrieve all file metadata (simplified)
    */
   async getAllFileMetadata(): Promise<Map<string, any>> {
     await this.initialize()
@@ -470,13 +470,13 @@ export class LanceDBProvider implements IVectorStoreProvider {
     const fileMetadataMap = new Map<string, any>()
 
     try {
-      // 모든 문서의 메타데이터만 조회
+      // Query only metadata of all documents
       const results = await this.table
-        .query() // 빈 벡터로 모든 문서 조회
+        .query() // Query all documents with empty vector
         .select(['doc_id', 'metadata'])
         .toArray()
 
-      // doc_id 기준으로 중복 제거하며 메타데이터 수집
+      // Collect metadata while removing duplicates based on doc_id
       for (const result of results) {
         const docId = result.doc_id
         if (docId && !fileMetadataMap.has(docId)) {

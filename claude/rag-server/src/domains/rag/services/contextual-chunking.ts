@@ -4,17 +4,11 @@
  * Based on Anthropic's Contextual Retrieval (2024)
  */
 
-import { ChunkingService } from './chunking.js'
+import { ChunkingService, type TextChunk } from './chunking.js'
 import { EmbeddingService } from '../ollama/embedding.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 import fetch from 'node-fetch'
-
-interface TextChunk {
-  content: string
-  index: number
-  metadata?: Record<string, any>
-}
 
 interface ContextualChunk {
   chunk: TextChunk
@@ -117,16 +111,16 @@ export class ContextualChunkingService extends ChunkingService {
     if (targetContextTokens < 20) {
       // Not enough space for meaningful context
       const fileType = filePath ? this.getFileTypeFromPath(filePath) : 'unknown'
-      return `[${fileType} 파일의 내용]`
+      return `[Content from ${fileType} file]`
     }
 
     // Simplified prompt to avoid model thinking noise
-    const prompt = `주어진 청크가 문서에서 어떤 부분인지 한 문장으로 설명하세요. 무조건 다른 내용 없이 **설명**만 답변해줘.
-문서: "${fullDocument}"
+    const prompt = `Describe in one sentence what part of the document this chunk represents. Only provide the **description** without any other content.
+Document: "${fullDocument}"
 
-청크: "${chunk.substring(0, 200)}..."
+Chunk: "${chunk.substring(0, 200)}..."
 
-설명:`
+Description:`
 
     try {
       const response = await this.generateWithOllama({
@@ -136,7 +130,7 @@ export class ContextualChunkingService extends ChunkingService {
           temperature: 0.1, // Deterministic output
           top_p: 0.8,
           num_predict: Math.floor(targetContextTokens * 1.2), // Short responses only
-          // stop: ['\n\n', '<think>', '</think>', '청크:', '문서:'], // Removed due to type issue
+          // stop: ['\n\n', '<think>', '</think>', 'chunk:', 'document:'], // Removed due to type issue
         },
       })
 
@@ -155,7 +149,7 @@ export class ContextualChunkingService extends ChunkingService {
 
       // Fallback to basic context
       const fileType = filePath ? this.getFileTypeFromPath(filePath) : 'unknown'
-      return `[${fileType} 파일에서 추출된 텍스트]`
+      return `[Text extracted from ${fileType} file]`
     }
   }
 
@@ -167,7 +161,7 @@ export class ContextualChunkingService extends ChunkingService {
     response = response.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
 
     // Remove common noise patterns
-    response = response.replace(/^(설명:|답변:|응답:)/i, '').trim()
+    response = response.replace(/^(설명:|답변:|응답:|Description:|Answer:|Response:)/i, '').trim()
 
     // Remove multiple newlines
     response = response.replace(/\n{2,}/g, ' ').trim()
@@ -185,7 +179,7 @@ export class ContextualChunkingService extends ChunkingService {
 
     // If empty or too short, provide fallback
     if (!response || response.length < 10) {
-      return '이 텍스트는 문서의 일부입니다'
+      return 'This text is part of the document'
     }
 
     return response
@@ -345,7 +339,7 @@ export class ContextualChunkingService extends ChunkingService {
     // Simple context based on file type and first few lines
     const firstLines = text.split('\n').slice(0, 3).join(' ').substring(0, 200)
 
-    return `이 내용은 ${fileName} (${fileType} 파일)에서 추출된 부분입니다. 문서 시작: "${firstLines}..."`
+    return `This content is extracted from ${fileName} (${fileType} file). Document starts with: "${firstLines}..."`
   }
 
   /**

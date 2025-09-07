@@ -11,11 +11,13 @@ import { logger } from '@/shared/logger/index.js'
 export class EmbeddingService extends Embeddings {
   private baseUrl: string
   private model: string
+  private config: ServerConfig
   private cachedModelInfo: EmbeddingModelInfo | null = null
   private batchSize: number
 
   constructor(config: ServerConfig) {
     super({})
+    this.config = config
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
     this.model = config.embeddingModel
     this.batchSize = config.embeddingBatchSize
@@ -196,7 +198,7 @@ export class EmbeddingService extends Embeddings {
     const startTime = Date.now()
 
     // Process with limited concurrency for optimal performance
-    const concurrency = 3
+    const concurrency = this.config.embeddingConcurrency
     for (let i = 0; i < documents.length; i += concurrency) {
       const batch = documents.slice(i, i + concurrency)
       const batchPromises = batch.map((doc) => this.embedQuery(doc))
