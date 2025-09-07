@@ -42,17 +42,17 @@ export class ChunkingService {
         chunkSize: this.config.chunkSize,
         chunkOverlap: this.config.chunkOverlap,
         separators: [
-          '\n\n# ',
-          '\n\n## ',
-          '\n\n### ',
-          '\n\n#### ',
-          '\n\n##### ',
-          '\n\n###### ', // Headers
           '\n\n---',
           '\n\n***',
-          '\n\n___', // Horizontal rules
-          '\n\n```',
-          '\n\n',
+          '\n\n___', // Horizontal rules first
+          '\n\n```', // Code blocks
+          '\n\n', // Double newlines
+          '\n# ',
+          '\n## ',
+          '\n### ',
+          '\n#### ',
+          '\n##### ',
+          '\n###### ', // Headers - moved down to include more context
           '\n',
           '. ',
           '? ',
@@ -139,12 +139,28 @@ export class ChunkingService {
       // Split document
       const splitDocs = await splitter.splitDocuments([document])
 
-      // Convert to our chunk format
-      const chunks: TextChunk[] = splitDocs.map((doc, index) => ({
-        content: doc.pageContent,
-        index,
-        metadata: doc.metadata,
-      }))
+      // Convert to our chunk format and filter out too-short chunks
+      const chunks: TextChunk[] = []
+      const minChunkSize = 100 // Minimum characters for a meaningful chunk
+
+      for (let i = 0; i < splitDocs.length; i++) {
+        const doc = splitDocs[i]!
+        let content = doc.pageContent
+
+        // If chunk is too short, try to merge with next chunk
+        if (content.trim().length < minChunkSize && i < splitDocs.length - 1) {
+          const nextDoc = splitDocs[i + 1]!
+          content = content + '\n\n' + nextDoc.pageContent
+          // Skip the next document since we merged it
+          i++
+        }
+
+        chunks.push({
+          content,
+          index: chunks.length,
+          metadata: doc.metadata,
+        })
+      }
 
       logger.debug('✅ Text chunking completed', {
         originalLength: text.length,

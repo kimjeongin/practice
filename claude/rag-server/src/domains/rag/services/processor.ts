@@ -9,6 +9,7 @@ import type { IFileProcessingService } from '@/domains/rag/core/interfaces.js'
 import type { DocumentMetadata } from '@/domains/rag/core/types.js'
 import { FileReader } from './reader.js'
 import { ContextualChunkingService } from './contextual-chunking.js'
+import { ChunkingService } from './chunking.js'
 import { EmbeddingService } from '../ollama/embedding.js'
 import { extractFileId, extractFileMetadata } from '@/shared/utils/file-metadata.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
@@ -24,12 +25,16 @@ export class DocumentProcessor implements IFileProcessingService {
   private processingQueue = new Set<string>()
   private fileReader: FileReader
   private contextualChunker: ContextualChunkingService
+  private normalChunker: ChunkingService
   private embeddingService: EmbeddingService
+  private config: ServerConfig
 
   constructor(private vectorStoreProvider: LanceDBProvider, config: ServerConfig) {
+    this.config = config
     this.fileReader = new FileReader()
     this.embeddingService = new EmbeddingService(config)
     this.contextualChunker = new ContextualChunkingService(config, this.embeddingService)
+    this.normalChunker = new ChunkingService(config)
   }
 
   /**
@@ -89,63 +94,100 @@ export class DocumentProcessor implements IFileProcessingService {
         await this.embeddingService.initialize()
       }
 
-      // Use contextual chunking for better performance
-      const contextualChunks = await this.contextualChunker.chunkTextWithContext(
-        document.pageContent, 
-        filePath
-      )
-
-      // Create RAG document records directly with contextual embeddings
+      // Use chunking strategy based on configuration
       const ragDocuments: RAGDocumentRecord[] = []
       const currentModelName = this.embeddingService.getModelInfo().name || 'unknown'
 
-      for (const { chunk, contextualText } of contextualChunks) {
-        try {
-          // Generate embedding from contextual text (safe method handles overflow)
-          const embedding = await this.contextualChunker.createSafeEmbedding(contextualText)
+      if (this.config.chunkingStrategy === 'contextual') {
+        // Use contextual chunking for better performance
+        const contextualChunks = await this.contextualChunker.chunkTextWithContext(
+          document.pageContent, 
+          filePath
+        )
 
-          ragDocuments.push({
-            vector: embedding,
-            text: chunk.content, // Original chunk for LLM
-            contextual_text: contextualText, // Contextual text used for embedding
-            doc_id: fileMetadata.id,
-            chunk_id: chunk.index,
-            metadata: JSON.stringify(documentMetadata),
-            model_name: currentModelName,
-          })
-        } catch (error) {
-          logger.error(
-            'Failed to process contextual chunk',
-            error instanceof Error ? error : new Error(String(error)),
-            {
-              chunkIndex: chunk.index,
-              component: 'DocumentProcessor',
-            }
-          )
-          
-          // Fallback: use original chunk without context
-          const fallbackEmbedding = await this.embeddingService.embedQuery(chunk.content)
-          ragDocuments.push({
-            vector: fallbackEmbedding,
-            text: chunk.content,
-            contextual_text: chunk.content, // Use chunk content as fallback contextual text
-            doc_id: fileMetadata.id,
-            chunk_id: chunk.index,
-            metadata: JSON.stringify(documentMetadata),
-            model_name: currentModelName,
-          })
+        for (const { chunk, contextualText } of contextualChunks) {
+          try {
+            // Generate embedding from contextual text (safe method handles overflow)
+            const embedding = await this.contextualChunker.createSafeEmbedding(contextualText)
+
+            ragDocuments.push({
+              vector: embedding,
+              text: chunk.content, // Original chunk for LLM
+              contextual_text: contextualText, // Contextual text used for embedding
+              doc_id: fileMetadata.id,
+              chunk_id: chunk.index,
+              metadata: JSON.stringify(documentMetadata),
+              model_name: currentModelName,
+            })
+          } catch (error) {
+            logger.error(
+              'Failed to process contextual chunk',
+              error instanceof Error ? error : new Error(String(error)),
+              {
+                chunkIndex: chunk.index,
+                component: 'DocumentProcessor',
+              }
+            )
+            
+            // Fallback: use original chunk without context
+            const fallbackEmbedding = await this.embeddingService.embedQuery(chunk.content)
+            ragDocuments.push({
+              vector: fallbackEmbedding,
+              text: chunk.content,
+              contextual_text: chunk.content, // Use chunk content as fallback contextual text
+              doc_id: fileMetadata.id,
+              chunk_id: chunk.index,
+              metadata: JSON.stringify(documentMetadata),
+              model_name: currentModelName,
+            })
+          }
         }
+
+        logger.info('✅ File processed successfully with contextual chunking', {
+          filePath,
+          chunksCount: contextualChunks.length,
+          ragDocumentsCount: ragDocuments.length,
+          component: 'DocumentProcessor',
+        })
+      } else {
+        // Use normal chunking
+        const normalChunks = await this.normalChunker.chunkText(document.pageContent, filePath)
+
+        for (const chunk of normalChunks) {
+          try {
+            const embedding = await this.embeddingService.embedQuery(chunk.content)
+
+            ragDocuments.push({
+              vector: embedding,
+              text: chunk.content,
+              contextual_text: chunk.content, // Same as text for normal chunking
+              doc_id: fileMetadata.id,
+              chunk_id: chunk.index,
+              metadata: JSON.stringify(documentMetadata),
+              model_name: currentModelName,
+            })
+          } catch (error) {
+            logger.error(
+              'Failed to process normal chunk',
+              error instanceof Error ? error : new Error(String(error)),
+              {
+                chunkIndex: chunk.index,
+                component: 'DocumentProcessor',
+              }
+            )
+          }
+        }
+
+        logger.info('✅ File processed successfully with normal chunking', {
+          filePath,
+          chunksCount: normalChunks.length,
+          ragDocumentsCount: ragDocuments.length,
+          component: 'DocumentProcessor',
+        })
       }
 
       // Add directly to LanceDB table
       await this.addRAGDocuments(ragDocuments)
-
-      logger.info('✅ File processed successfully with contextual chunking', {
-        filePath,
-        chunksCount: contextualChunks.length,
-        ragDocumentsCount: ragDocuments.length,
-        component: 'DocumentProcessor',
-      })
     } catch (error) {
       const structuredError = new StructuredError(
         `Failed to process file: ${filePath}`,

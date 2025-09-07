@@ -26,7 +26,6 @@ export class EmbeddingService extends Embeddings {
    */
   async embedQuery(query: string): Promise<number[]> {
     try {
-      logger.info('@@@@@@@@@@@@@@@@@@@@', { model: this.model, input: query })
       const response = await fetch(`${this.baseUrl}/api/embed`, {
         method: 'POST',
         headers: {
@@ -88,7 +87,7 @@ export class EmbeddingService extends Embeddings {
       }
 
       // Normalize vectors for cosine similarity
-      return data.embeddings.map(embedding => this.normalizeVector(embedding))
+      return data.embeddings.map((embedding) => this.normalizeVector(embedding))
     } catch (error) {
       logger.error(
         'Error generating batch embeddings:',
@@ -104,14 +103,14 @@ export class EmbeddingService extends Embeddings {
   private getBatchSizeFromConfig(): number {
     // Use configured batch size
     const configBatchSize = this.batchSize
-    
+
     // Dynamic batch size based on available model info
     if (this.cachedModelInfo && this.cachedModelInfo.maxTokens > 0) {
       // Conservative estimate: assume average text is 100 tokens
       const estimatedBatchSize = Math.floor(this.cachedModelInfo.maxTokens / 200)
       return Math.min(Math.max(estimatedBatchSize, 1), configBatchSize)
     }
-    
+
     return configBatchSize
   }
 
@@ -128,7 +127,7 @@ export class EmbeddingService extends Embeddings {
         model: this.model,
         component: 'EmbeddingService',
       })
-      
+
       const embeddings: number[][] = []
       const batchSize = this.getBatchSizeFromConfig()
       const startTime = Date.now()
@@ -137,12 +136,17 @@ export class EmbeddingService extends Embeddings {
       try {
         for (let i = 0; i < documents.length; i += batchSize) {
           const batch = documents.slice(i, i + batchSize)
-          
-          logger.debug(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(documents.length / batchSize)}`, {
-            batchSize: batch.length,
-            remaining: documents.length - i,
-            component: 'EmbeddingService',
-          })
+
+          logger.debug(
+            `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+              documents.length / batchSize
+            )}`,
+            {
+              batchSize: batch.length,
+              remaining: documents.length - i,
+              component: 'EmbeddingService',
+            }
+          )
 
           const batchEmbeddings = await this.embedBatch(batch)
           embeddings.push(...batchEmbeddings)
@@ -226,7 +230,7 @@ export class EmbeddingService extends Embeddings {
       avgPerDoc: `${Math.round(totalTime / documents.length)}ms`,
       component: 'EmbeddingService',
     })
-    
+
     return embeddings
   }
 

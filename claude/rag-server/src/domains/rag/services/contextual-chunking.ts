@@ -31,10 +31,12 @@ interface TokenBudget {
 export class ContextualChunkingService extends ChunkingService {
   private tokenBudget: TokenBudget
   private ollamaBaseUrl: string
+  private contextualModel: string
 
   constructor(config: ServerConfig, private embeddingService: EmbeddingService) {
     super(config)
     this.ollamaBaseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
+    this.contextualModel = config.contextualChunkingModel || 'qwen3:0.6b'
     this.tokenBudget = this.calculateTokenBudget()
   }
 
@@ -128,7 +130,7 @@ export class ContextualChunkingService extends ChunkingService {
 
     try {
       const response = await this.generateWithOllama({
-        model: 'qwen3:0.6b', // More stable model
+        model: this.contextualModel,
         prompt,
         options: {
           temperature: 0.1, // Deterministic output
@@ -286,11 +288,6 @@ export class ContextualChunkingService extends ChunkingService {
         if (finalTokenCount > this.tokenBudget.embeddingModelMaxTokens) {
           contextOverflows++
         }
-
-        logger.info('@@@@@@@@@@@@@@@@@@@@@@@@@@', {
-          chunck: chunk,
-          contextualText: contextualText,
-        })
 
         contextualChunks.push({
           chunk,

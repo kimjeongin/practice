@@ -75,6 +75,7 @@ async function testStreamableHTTPClient(): Promise<void> {
             firstResult: [
               ...result.results.map((res) => ({
                 filename: res.source?.filename,
+                content: res.content,
                 vector_score: res.vector_score,
                 reranking_score: res.reranking_score,
               })),

@@ -33,6 +33,8 @@ export interface ServerConfig {
   // Document processing
   chunkSize: number
   chunkOverlap: number
+  chunkingStrategy: 'contextual' | 'normal'
+  contextualChunkingModel: string
 
   // Ollama configuration
   embeddingModel: string
@@ -74,6 +76,8 @@ export class ConfigFactory {
       // Document processing (optimized for 2024 research)
       chunkSize: parseInt(process.env['CHUNK_SIZE'] || '400'),
       chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'),
+      chunkingStrategy: (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'contextual',
+      contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:0.6b',
 
       // Ollama configuration
       embeddingModel: process.env['EMBEDDING_MODEL'] || 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
@@ -161,6 +165,14 @@ export class ConfigFactory {
 
     if (config.chunkOverlap < 0 || config.chunkOverlap >= config.chunkSize) {
       errors.push('Chunk overlap must be between 0 and chunk size')
+    }
+
+    if (!['contextual', 'normal'].includes(config.chunkingStrategy)) {
+      errors.push('Chunking strategy must be "contextual" or "normal"')
+    }
+
+    if (!config.contextualChunkingModel) {
+      errors.push('Contextual chunking model is required')
     }
 
     // Ollama validation

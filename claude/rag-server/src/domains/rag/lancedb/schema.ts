@@ -74,12 +74,12 @@ export function convertVectorDocumentToRAGRecord(document: VectorDocument): RAGD
  */
 export function convertRAGResultToVectorSearchResult(result: any): VectorSearchResult {
   // Calculate score for cosine similarity
-  // LanceDB cosine distance is in [0, 2] range, closer to 0 means more similar
-  // Convert to similarity: 1 - (distance / 2) or simply 1 - distance (for normalized vectors)
+  // Since vectors are normalized, cosine distance is in [0, 2] range
+  // For normalized vectors, cosine similarity = 1 - cosine_distance
   let score: number
   if (result._distance !== undefined) {
-    // Convert cosine distance to similarity (0~1 range)
-    score = Math.max(0, 1 - result._distance / 2)
+    // Convert cosine distance to similarity (0~1 range) for normalized vectors
+    score = Math.max(0, 1 - result._distance)
   } else if (result.score !== undefined) {
     score = result.score
   } else {
@@ -132,42 +132,4 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
     },
     chunkIndex: result.chunk_id,
   }
-}
-
-/**
- * Build simple WHERE clause for filtering
- * Direct access to metadata object fields
- */
-function buildWhereClause(filters?: SearchFilters): string | undefined {
-  if (!filters) return undefined
-
-  const conditions: string[] = []
-
-  // File type filter
-  if (filters.fileTypes?.length) {
-    const types = filters.fileTypes.map((t) => `'${t}'`).join(', ')
-    conditions.push(`metadata['fileType'] IN (${types})`)
-  }
-
-  // Document ID filter
-  if (filters.docIds?.length) {
-    const ids = filters.docIds.map((id) => `'${id}'`).join(', ')
-    conditions.push(`doc_id IN (${ids})`)
-  }
-
-  // Tag filter
-  if (filters.tags?.length) {
-    const tagConditions = filters.tags
-      .map((tag) => `array_contains(metadata['tags'], '${tag}')`)
-      .join(' OR ')
-    conditions.push(`(${tagConditions})`)
-  }
-
-  // Date range filter
-  if (filters.dateRange) {
-    conditions.push(`metadata['modifiedAt'] >= '${filters.dateRange.start}'`)
-    conditions.push(`metadata['modifiedAt'] <= '${filters.dateRange.end}'`)
-  }
-
-  return conditions.length > 0 ? conditions.join(' AND ') : undefined
 }
