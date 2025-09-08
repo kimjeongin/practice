@@ -8,7 +8,6 @@ import type { ServerConfig } from '@/shared/config/config-factory.js'
 export interface SearchArgs {
   query: string
   topK?: number
-  enableReranking?: boolean
   scoreThreshold?: number
   searchType?: SearchType
 }
@@ -17,7 +16,7 @@ export class SearchHandler {
   constructor(private ragService: RAGService, private config?: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
-    const { query, topK = 5, enableReranking = false, scoreThreshold, searchType = 'semantic' } = args
+    const { query, topK = 5, scoreThreshold, searchType = 'semantic' } = args
 
     if (!query) {
       return {
@@ -48,21 +47,15 @@ export class SearchHandler {
           scoreThreshold !== undefined
             ? Math.max(0.0, Math.min(1.0, scoreThreshold)) // Clamp between 0.0-1.0
             : 0.5, // Default threshold
-        enableReranking,
         searchType: searchType,
       }
 
       const results = await this.ragService.search(query, searchOptions)
 
-      // Detect if reranking was used by checking if any result has rerank scores
-      const rerankingUsed = results.some((result) => result.rerankingScore !== undefined)
-      
       // Determine the actual search method description for display
       let actualSearchMethodDescription: string = searchType
       if (searchType === 'hybrid') {
-        actualSearchMethodDescription = 'hybrid (semantic + keyword + reranking)'
-      } else if (rerankingUsed) {
-        actualSearchMethodDescription = `${searchType} + reranking`
+        actualSearchMethodDescription = 'hybrid (semantic + keyword)'
       }
 
       return {
@@ -79,7 +72,6 @@ export class SearchHandler {
                   search_type: result.searchType || searchType,
                   vector_score: result.vectorScore,
                   keyword_score: result.keywordScore,
-                  reranking_score: result.rerankingScore,
                   source: {
                     filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
                     filepath: result.metadata?.filePath || result.metadata?.path || 'unknown',
@@ -94,7 +86,6 @@ export class SearchHandler {
                   search_method: actualSearchMethodDescription,
                   max_requested: topK,
                   score_threshold: searchOptions.scoreThreshold,
-                  reranking_enabled: enableReranking,
                 },
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
@@ -156,7 +147,7 @@ export class SearchHandler {
       {
         name: 'search',
         description:
-          'Advanced document search tool supporting multiple search methods: semantic (vector-based), keyword (full-text), and hybrid (combines both with reranking). Use this when users ask questions about document content, need to find specific information, or want to explore available knowledge. Returns ranked results with content, metadata, and confidence scores.',
+          'Advanced document search tool supporting multiple search methods: semantic (vector-based), keyword (full-text), and hybrid (combines both). Use this when users ask questions about document content, need to find specific information, or want to explore available knowledge. Returns ranked results with content, metadata, and confidence scores.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -173,16 +164,10 @@ export class SearchHandler {
               minimum: 1,
               maximum: 50,
             },
-            enableReranking: {
-              type: 'boolean',
-              description:
-                'Enable 2-stage search (vector + rerank) for improved accuracy. Use TRUE for critical queries where precision matters more than speed (adds ~2-3s latency). Use FALSE for exploratory searches or when speed is priority. Reranking significantly improves result quality by re-scoring matches with a cross-encoder model.',
-              default: false,
-            },
             scoreThreshold: {
               type: 'number',
               description:
-                'Minimum similarity score threshold (0.0-1.0) for filtering results. Higher values = more relevant but fewer results. Lower values = more results but may include less relevant matches. Guidelines: 0.8+ = Very similar content only, 0.6-0.8 = Moderately similar content, 0.3-0.6 = Broadly related content, 0.1-0.3 = Loosely related content. Use higher thresholds (0.7+) for precise searches, lower thresholds (0.3-0.5) for exploratory searches. When reranking is enabled, you can use lower vector thresholds (0.1-0.3) as reranking will improve final quality.',
+                'Minimum similarity score threshold (0.0-1.0) for filtering results. Higher values = more relevant but fewer results. Lower values = more results but may include less relevant matches. Guidelines: 0.8+ = Very similar content only, 0.6-0.8 = Moderately similar content, 0.3-0.6 = Broadly related content, 0.1-0.3 = Loosely related content. Use higher thresholds (0.7+) for precise searches, lower thresholds (0.3-0.5) for exploratory searches.',
               default: 0.5,
               minimum: 0.0,
               maximum: 1.0,
@@ -191,7 +176,7 @@ export class SearchHandler {
               type: 'string',
               enum: ['semantic', 'keyword', 'hybrid'],
               description:
-                'Search method to use. SEMANTIC: Vector-based similarity search for conceptual understanding (best for questions, concepts). KEYWORD: Full-text search for exact term matching (best for specific terms, names, codes). HYBRID: Combines semantic + keyword with built-in reranking for best accuracy (recommended for comprehensive searches). Default is semantic for backward compatibility.',
+                'Search method to use. SEMANTIC: Vector-based similarity search for conceptual understanding (best for questions, concepts). KEYWORD: Full-text search for exact term matching (best for specific terms, names, codes). HYBRID: Combines semantic + keyword search for balanced results (recommended for comprehensive searches). Default is semantic for backward compatibility.',
               default: 'semantic',
             },
           },

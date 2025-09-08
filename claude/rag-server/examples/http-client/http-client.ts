@@ -86,9 +86,6 @@ async function testStreamableHTTPClient(): Promise<void> {
               embeddingService: result.rag_system_info.embeddingService?.isHealthy
                 ? '✅ healthy'
                 : '❌ unhealthy',
-              rerankingService: result.rag_system_info.rerankingService?.isHealthy
-                ? '✅ healthy'
-                : '❌ unhealthy',
             })
           }
         }
@@ -139,7 +136,6 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               filename: result.results[0].source?.filename,
               vectorScore: result.results[0].vector_score,
-              rerankingScore: result.results[0].reranking_score,
               contentPreview: result.results[0].content?.substring(0, 100) + '...',
             })
           }
@@ -274,8 +270,6 @@ async function testStreamableHTTPClient(): Promise<void> {
         console.log('⚠️  Hybrid search test failed:', (error as Error).message)
       }
 
-      // Test semantic with reranking
-      console.log('🧠➕ Running semantic search with reranking test...')
       try {
         const startTime = performance.now()
         const searchResult = await client.callTool({
@@ -291,31 +285,28 @@ async function testStreamableHTTPClient(): Promise<void> {
         const endTime = performance.now()
         const toolCallDuration = endTime - startTime
 
-        console.log(`⏱️  Semantic+reranking duration: ${toolCallDuration.toFixed(2)}ms`)
 
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
-          console.log('🎯 Semantic+reranking results:', {
+          console.log('🎯 Search results:', {
             query: result.query,
             searchType: result.search_info?.search_type || 'unknown',
             searchMethod: result.search_info?.search_method || 'unknown',
-            rerankingEnabled: result.search_info?.reranking_enabled || false,
             totalResults: result.results_count || 0,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
 
           if (result.results && result.results.length > 0) {
-            console.log('📄 Top semantic+reranking result:', {
+            console.log('📄 Top result:', {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
               vectorScore: result.results[0].vector_score,
-              rerankingScore: result.results[0].reranking_score,
             })
           }
         }
       } catch (error) {
-        console.log('⚠️  Semantic+reranking test failed:', (error as Error).message)
+        console.log('⚠️  Search test failed:', (error as Error).message)
       }
       console.log('')
     }
@@ -354,7 +345,6 @@ async function testStreamableHTTPClient(): Promise<void> {
 async function startInteractiveSearch(client: Client): Promise<void> {
   const searchOptions = {
     topK: 5,
-    enableReranking: false,
     scoreThreshold: 0.3,
   }
 
@@ -383,7 +373,6 @@ async function startInteractiveSearch(client: Client): Promise<void> {
         arguments: {
           query: query.trim(),
           topK: searchOptions.topK,
-          enableReranking: searchOptions.enableReranking,
           scoreThreshold: searchOptions.scoreThreshold,
         },
       })
@@ -403,9 +392,6 @@ async function startInteractiveSearch(client: Client): Promise<void> {
           result.results.forEach((res: any, index: number) => {
             console.log(`\n${index + 1}. ${res.source?.filename || 'Unknown file'}`)
             console.log(`   Score: ${res.vector_score?.toFixed(3) || 'N/A'}`)
-            if (res.reranking_score !== undefined) {
-              console.log(`   Rerank: ${res.reranking_score.toFixed(3)}`)
-            }
             console.log(
               `   Content: ${res.content?.substring(0, 150)}${
                 res.content?.length > 150 ? '...' : ''
@@ -430,7 +416,6 @@ async function startInteractiveSearch(client: Client): Promise<void> {
     console.log('   • exit         - Quit the application')
     console.log('\n💡 Current settings:')
     console.log(`   • topK: ${searchOptions.topK}`)
-    console.log(`   • reranking: ${searchOptions.enableReranking}`)
     console.log(`   • threshold: ${searchOptions.scoreThreshold}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   }

@@ -51,7 +51,6 @@ async function testStdioClient(): Promise<void> {
         CONTEXTUAL_CHUNKING_MODEL: 'qwen3:0.6b',
         OLLAMA_BASE_URL: 'http://localhost:11434',
         EMBEDDING_MODEL: 'qllama/multilingual-e5-large-instruct:latest',
-        RERANKING_MODEL: 'qllama/bge-reranker-v2-m3:latest',
         LANCEDB_URI: '/Users/jeongin/workspace/practice/claude/rag-server/.data/lancedb',
         MCP_TRANSPORT: 'stdio',
         MAX_CONCURRENT_PROCESSING: '3',
@@ -136,9 +135,6 @@ async function testStdioClient(): Promise<void> {
               embeddingService: result.rag_system_info.embeddingService?.isHealthy
                 ? '✅ healthy'
                 : '❌ unhealthy',
-              rerankingService: result.rag_system_info.rerankingService?.isHealthy
-                ? '✅ healthy'
-                : '❌ unhealthy',
             })
           }
         }
@@ -189,7 +185,6 @@ async function testStdioClient(): Promise<void> {
               rank: result.results[0].rank,
               filename: result.results[0].source?.filename,
               vectorScore: result.results[0].vector_score,
-              rerankingScore: result.results[0].reranking_score,
               contentPreview: result.results[0].content?.substring(0, 100) + '...',
             })
           }
@@ -198,45 +193,43 @@ async function testStdioClient(): Promise<void> {
         console.log('⚠️  Basic search test failed:', (error as Error).message)
       }
 
-      // Test reranking search
-      console.log('🔍 Running reranking search test...')
       try {
+        // Test semantic search
+        console.log('🔍 Running semantic search test...')
         const startTime = performance.now()
         const searchResult = await client.callTool({
           name: 'search',
           arguments: {
             query: 'error handling patterns',
             topK: 5,
-            enableReranking: true,
             scoreThreshold: 0.2,
+            searchType: 'semantic',
           },
         })
         const endTime = performance.now()
         const toolCallDuration = endTime - startTime
 
-        console.log(`⏱️  Reranking tool call duration: ${toolCallDuration.toFixed(2)}ms`)
+        console.log(`⏱️  Search tool call duration: ${toolCallDuration.toFixed(2)}ms`)
 
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
-          console.log('🎯 Reranking search results:', {
+          console.log('🎯 Search results:', {
             query: result.query,
             totalResults: result.results_count || 0,
             searchMethod: result.search_info?.search_method || 'unknown',
-            rerankingEnabled: result.search_info?.reranking_enabled || false,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
 
           if (result.results && result.results.length > 0) {
-            console.log('📄 Top reranked result:', {
+            console.log('📄 Sample result:', {
               rank: result.results[0].rank,
               filename: result.results[0].source?.filename,
               vectorScore: result.results[0].vector_score,
-              rerankingScore: result.results[0].reranking_score,
             })
           }
         }
       } catch (error) {
-        console.log('⚠️  Reranking search test failed:', (error as Error).message)
+        console.log('⚠️  Search test failed:', (error as Error).message)
       }
       console.log('')
     }
@@ -266,7 +259,6 @@ async function testStdioClient(): Promise<void> {
             arguments: {
               query,
               topK: 3,
-              enableReranking: i % 2 === 1, // Alternate between with/without reranking
               scoreThreshold: 0.3,
             },
           })

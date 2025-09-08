@@ -40,11 +40,9 @@ The client will:
    - Spawn the server as a child process with stdio transport
    - List available tools
    - Test `get_vectordb_info` tool
-   - Test `search` tool with basic and reranking searches
 
 2. **Additional Search Tests**: Run predefined search queries
    - Test 5 different search queries automatically
-   - Alternate between vector search and reranking search
    - Display results summary for each query
 
 3. **Test Completion**: After all tests complete, client automatically disconnects
@@ -78,7 +76,6 @@ The client will:
 📝 Test 2/5: "database configuration"
    ⏱️  Duration: 112.45ms
    📊 Results: 0
-   🔍 Method: 2-stage (vector + rerank)
    📄 No results found
 
 [Additional tests...]

@@ -48,12 +48,10 @@ export interface ServerConfig {
 
   // Embedding configuration
   embeddingConcurrency: number
-  rerankerBatchSize: number
 
   // Ollama configuration
   embeddingModel: string
   embeddingBatchSize: number
-  rerankingModel: string
   ollamaBaseUrl: string
 
   // Vector store
@@ -105,12 +103,10 @@ export class ConfigFactory {
 
       // Embedding configuration
       embeddingConcurrency: parseInt(process.env['EMBEDDING_CONCURRENCY'] || '3'),
-      rerankerBatchSize: parseInt(process.env['RERANKER_BATCH_SIZE'] || '1'),
 
       // Ollama configuration
       embeddingModel: process.env['EMBEDDING_MODEL'] || 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
       embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '8'),
-      rerankingModel: process.env['RERANKING_MODEL'] || 'dengcao/Qwen3-Reranker-0.6B:Q8_0',
       ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434',
 
       // Vector store
@@ -212,9 +208,6 @@ export class ConfigFactory {
       errors.push('Embedding batch size must be at least 1')
     }
 
-    if (!config.rerankingModel) {
-      errors.push('Reranking model is required')
-    }
 
     if (!config.ollamaBaseUrl) {
       errors.push('Ollama base URL is required')
@@ -240,7 +233,6 @@ export class ConfigFactory {
 
     logger.debug('✅ Configuration validation passed', {
       embeddingModel: config.embeddingModel,
-      rerankingModel: config.rerankingModel,
       ollamaBaseUrl: config.ollamaBaseUrl,
       vectorStoreProvider: config.vectorStore.provider,
       mcpTransport: config.mcp.type,
