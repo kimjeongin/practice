@@ -167,18 +167,12 @@ export class RerankingService implements IRerankingService {
   }
 
   /**
-   * Get reranking score for query-document pair using Ollama API
+   * Get reranking score for query-document pair using Ollama with BGE-Reranker-v2-m3
    */
   private async getRerankingScore(query: string, document: string): Promise<number> {
     try {
-      // Create a reranking input for the model
-      const input = this.createRerankingPrompt(query, document)
-
-      // Use direct binary format - force the model to choose between tokens
-      const chatPrompt = `Query: ${query}
-Document: ${document}
-
-Is this document relevant to the query? Answer:`
+      // First try generate API with a reranking-specific prompt
+      const rerankPrompt = `Query: ${query}\nDocument: ${document}.\n\nReturn ONLY a score between 0 and 1.`
 
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
@@ -187,13 +181,8 @@ Is this document relevant to the query? Answer:`
         },
         body: JSON.stringify({
           model: this.model,
-          prompt: chatPrompt,
+          prompt: rerankPrompt,
           stream: false,
-          options: {
-            temperature: 0,
-            num_predict: 10, // Allow slightly more tokens
-            stop: ['\n', '\n\n', '.', 'Query:', 'Document:'], // More specific stops
-          },
         }),
       })
 
@@ -202,19 +191,31 @@ Is this document relevant to the query? Answer:`
       }
 
       const data = (await response.json()) as any
-      logger.info('🤖 Qwen3-Reranker raw response:', {
+
+      logger.info('!!!!!!!!!!!!!!!!!!!!!!!', { response: data.response })
+
+      logger.debug('🤖 BGE-Reranker-v2-m3 generate response:', {
         response: data.response,
         query: query.substring(0, 50) + '...',
         document: document.substring(0, 50) + '...',
         component: 'RerankingService',
       })
 
-      // Extract numerical score from response
-      const score = this.parseRerankingScore(data.response)
+      // Try to extract numerical score from response
+      let score = 0.5 // default neutral score
+      const cleanResponse = data.response?.trim() || ''
 
-      logger.debug('🎯 Ollama reranking score:', {
-        input: input.substring(0, 100) + '...',
-        rawResponse: data.response.trim(),
+      // Look for number between 0 and 1
+      const scoreMatch = cleanResponse.match(/([0-1]\.?\d*)/)
+      if (scoreMatch) {
+        const parsedScore = parseFloat(scoreMatch[1])
+        if (!isNaN(parsedScore) && parsedScore >= 0 && parsedScore <= 1) {
+          score = parsedScore
+        }
+      }
+
+      logger.debug('🎯 BGE reranking score computed:', {
+        rawResponse: cleanResponse,
         extractedScore: score,
         component: 'RerankingService',
       })
@@ -222,7 +223,71 @@ Is this document relevant to the query? Answer:`
       return score
     } catch (error) {
       logger.error(
-        'Error getting reranking score from Ollama:',
+        'Generate API failed, trying embeddings API as fallback:',
+        error instanceof Error ? error : new Error(String(error)),
+        { component: 'RerankingService' }
+      )
+
+      // Fallback to embeddings API
+      return this.getRerankingScoreFromEmbeddings(query, document)
+    }
+  }
+
+  /**
+   * Fallback method using embeddings API
+   */
+  private async getRerankingScoreFromEmbeddings(query: string, document: string): Promise<number> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          prompt: `${query} [SEP] ${document}`,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Ollama embeddings API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = (await response.json()) as any
+
+      logger.debug('🤖 BGE-Reranker embeddings fallback:', {
+        embeddingLength: data.embedding?.length || 0,
+        firstFew: data.embedding?.slice(0, 3),
+        component: 'RerankingService',
+      })
+
+      // For long embedding arrays, we need to compute similarity differently
+      if (data.embedding && Array.isArray(data.embedding) && data.embedding.length > 1) {
+        // Option 1: Use cosine similarity with a reference vector
+        // Option 2: Use the mean of the embedding as relevance indicator
+        // Option 3: Use the first dimension as primary relevance score
+
+        // Let's try using the mean as it represents overall activation
+        const sum = data.embedding.reduce((a: number, b: number) => a + b, 0)
+        const mean = sum / data.embedding.length
+
+        // Normalize using sigmoid
+        const score = this.sigmoid(mean)
+
+        logger.debug('🔢 Embedding-based score calculation:', {
+          embeddingLength: data.embedding.length,
+          mean: mean,
+          normalizedScore: score,
+          component: 'RerankingService',
+        })
+
+        return score
+      }
+
+      return 0.5
+    } catch (error) {
+      logger.error(
+        'Embeddings API fallback also failed:',
         error instanceof Error ? error : new Error(String(error)),
         { component: 'RerankingService' }
       )
@@ -231,63 +296,10 @@ Is this document relevant to the query? Answer:`
   }
 
   /**
-   * Create reranking prompt for the model
+   * Sigmoid function to normalize raw logit scores to 0-1 range
    */
-  private createRerankingPrompt(query: string, document: string): string {
-    // Use separator similar to cross-encoder training
-    return `${query}</s></s>${document}`
-  }
-
-  /**
-   * Parse binary yes/no response from Qwen3-Reranker model
-   */
-  private parseRerankingScore(response: string): number {
-    try {
-      const cleanResponse = response.trim().toLowerCase()
-
-      logger.debug('🔍 Parsing reranker response:', {
-        originalResponse: response,
-        cleanResponse: cleanResponse,
-        component: 'RerankingService',
-      })
-
-      // Extract the first word from the response
-      const firstWord = cleanResponse.split(/\s+/)[0]
-
-      // Handle yes/no responses directly
-      if (firstWord === 'yes') {
-        return 1.0
-      }
-      if (firstWord === 'no') {
-        return 0.0
-      }
-
-      // Fallback: check if yes/no appears anywhere in the response
-      if (cleanResponse.includes('yes')) {
-        return 1.0
-      }
-      if (cleanResponse.includes('no')) {
-        return 0.0
-      }
-
-      // If neither yes nor no found, log warning and return neutral score
-      logger.warn('⚠️ No clear yes/no response found in reranker output:', {
-        response: response,
-        component: 'RerankingService',
-      })
-
-      return 0.5 // Neutral score when unclear
-    } catch (error) {
-      logger.error(
-        '❌ Error parsing binary reranking response:',
-        error instanceof Error ? error : new Error(String(error)),
-        {
-          response,
-          component: 'RerankingService',
-        }
-      )
-      return 0.0
-    }
+  private sigmoid(x: number): number {
+    return 1 / (1 + Math.exp(-x))
   }
 
   /**

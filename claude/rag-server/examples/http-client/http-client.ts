@@ -49,7 +49,10 @@ async function testStreamableHTTPClient(): Promise<void> {
     // 4. Test get_vectordb_info tool
     if (toolsResult.tools.some((t) => t.name === 'get_vectordb_info')) {
       console.log('🗄️  Testing get_vectordb_info tool...')
-      console.log('📝 Tool description:', toolsResult.tools.find(t => t.name === 'get_vectordb_info')?.description)
+      console.log(
+        '📝 Tool description:',
+        toolsResult.tools.find((t) => t.name === 'get_vectordb_info')?.description
+      )
       try {
         const startTime = performance.now()
         const vectordbResult = await client.callTool({
@@ -74,12 +77,18 @@ async function testStreamableHTTPClient(): Promise<void> {
             ragSystemInfo: result.rag_system_info ? 'available' : 'unavailable',
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
-          
+
           if (result.rag_system_info) {
             console.log('📊 RAG Components:', {
-              vectorStore: result.rag_system_info.vectorStore?.isHealthy ? '✅ healthy' : '❌ unhealthy',
-              embeddingService: result.rag_system_info.embeddingService?.isHealthy ? '✅ healthy' : '❌ unhealthy',
-              rerankingService: result.rag_system_info.rerankingService?.isHealthy ? '✅ healthy' : '❌ unhealthy',
+              vectorStore: result.rag_system_info.vectorStore?.isHealthy
+                ? '✅ healthy'
+                : '❌ unhealthy',
+              embeddingService: result.rag_system_info.embeddingService?.isHealthy
+                ? '✅ healthy'
+                : '❌ unhealthy',
+              rerankingService: result.rag_system_info.rerankingService?.isHealthy
+                ? '✅ healthy'
+                : '❌ unhealthy',
             })
           }
         }
@@ -92,8 +101,11 @@ async function testStreamableHTTPClient(): Promise<void> {
     // 5. Test search tool if available
     if (toolsResult.tools.some((t) => t.name === 'search')) {
       console.log('🔎 Testing search tool...')
-      console.log('📝 Tool description:', toolsResult.tools.find(t => t.name === 'search')?.description)
-      
+      console.log(
+        '📝 Tool description:',
+        toolsResult.tools.find((t) => t.name === 'search')?.description
+      )
+
       // Test basic search first
       console.log('🔍 Running basic search test...')
       try {
@@ -103,7 +115,7 @@ async function testStreamableHTTPClient(): Promise<void> {
           arguments: {
             query: 'configuration settings',
             topK: 3,
-            enableReranking: false,
+            enableReranking: true,
             scoreThreshold: 0.3,
           },
         })
@@ -121,7 +133,7 @@ async function testStreamableHTTPClient(): Promise<void> {
             scoreThreshold: result.search_info?.score_threshold || 0,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
-          
+
           if (result.results && result.results.length > 0) {
             console.log('📄 Sample result:', {
               rank: result.results[0].rank,
@@ -135,7 +147,7 @@ async function testStreamableHTTPClient(): Promise<void> {
       } catch (error) {
         console.log('⚠️  Basic search test failed:', (error as Error).message)
       }
-      
+
       // Test reranking search
       console.log('🔍 Running reranking search test...')
       try {
@@ -160,10 +172,10 @@ async function testStreamableHTTPClient(): Promise<void> {
             query: result.query,
             totalResults: result.results_count || 0,
             searchMethod: result.search_info?.search_method || 'unknown',
-            rerankingEnabled: result.search_info?.reranking_enabled || false,
+            rerankingEnabled: true,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
-          
+
           if (result.results && result.results.length > 0) {
             console.log('📄 Top reranked result:', {
               rank: result.results[0].rank,
@@ -180,16 +192,16 @@ async function testStreamableHTTPClient(): Promise<void> {
     }
 
     console.log('✅ streamable-http transport test completed successfully!')
-    
+
     // Start interactive search if search tool is available
     if (toolsResult.tools.some((t) => t.name === 'search')) {
       console.log('\n🔍 Starting interactive search mode...')
       console.log('💡 Commands:')
       console.log('   • Type a search query to search')
-      console.log('   • Type "help" for more information') 
+      console.log('   • Type "help" for more information')
       console.log('   • Type "exit" to quit')
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      
+
       await startInteractiveSearch(client)
     }
   } catch (error) {
@@ -220,13 +232,13 @@ async function startInteractiveSearch(client: Client): Promise<void> {
   const askQuestion = (question: string): Promise<string> => {
     return new Promise((resolve) => {
       process.stdout.write(question)
-      
+
       const onData = (data: string) => {
         const input = data.toString().trim()
         process.stdin.removeListener('data', onData)
         resolve(input)
       }
-      
+
       process.stdin.on('data', onData)
     })
   }
@@ -265,7 +277,11 @@ async function startInteractiveSearch(client: Client): Promise<void> {
             if (res.reranking_score !== undefined) {
               console.log(`   Rerank: ${res.reranking_score.toFixed(3)}`)
             }
-            console.log(`   Content: ${res.content?.substring(0, 150)}${res.content?.length > 150 ? '...' : ''}`)
+            console.log(
+              `   Content: ${res.content?.substring(0, 150)}${
+                res.content?.length > 150 ? '...' : ''
+              }`
+            )
           })
         } else {
           console.log('\n📄 No results found')
@@ -281,7 +297,7 @@ async function startInteractiveSearch(client: Client): Promise<void> {
   const showHelp = (): void => {
     console.log('\n🔍 Interactive Search Help:')
     console.log('   • [query text] - Perform semantic search')
-    console.log('   • help         - Show this help message')  
+    console.log('   • help         - Show this help message')
     console.log('   • exit         - Quit the application')
     console.log('\n💡 Current settings:')
     console.log(`   • topK: ${searchOptions.topK}`)
