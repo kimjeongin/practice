@@ -69,14 +69,15 @@ The client will:
 
 📝 Test 1/5: "machine learning algorithms"
    ⏱️  Duration: 95.23ms
-   📊 Results: 0
-   🔍 Method: vector search
-   📄 No results found
+   📊 Results: 3
+   🔍 Type: semantic
+   🎯 Top match: ml-guide.txt (Type: semantic)
 
 📝 Test 2/5: "database configuration"
    ⏱️  Duration: 112.45ms
-   📊 Results: 0
-   📄 No results found
+   📊 Results: 2
+   🔍 Type: semantic
+   🎯 Top match: config.md (Type: semantic)
 
 [Additional tests...]
 

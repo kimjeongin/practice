@@ -161,8 +161,7 @@ async function testStdioClient(): Promise<void> {
           arguments: {
             query: 'python programming',
             topK: 3,
-            enableReranking: false,
-            scoreThreshold: 0.3,
+            searchType: 'semantic',
           },
         })
         const endTime = performance.now()
@@ -175,8 +174,7 @@ async function testStdioClient(): Promise<void> {
           console.log('🎯 Search results:', {
             query: result.query,
             totalResults: result.results_count || 0,
-            searchMethod: result.search_info?.search_method || 'unknown',
-            scoreThreshold: result.search_info?.score_threshold || 0,
+            searchType: result.search_info?.search_type || 'unknown',
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
 
@@ -184,7 +182,7 @@ async function testStdioClient(): Promise<void> {
             console.log('📄 Sample result:', {
               rank: result.results[0].rank,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].vector_score,
+              searchType: result.results[0].search_type,
               contentPreview: result.results[0].content?.substring(0, 100) + '...',
             })
           }
@@ -202,7 +200,6 @@ async function testStdioClient(): Promise<void> {
           arguments: {
             query: 'error handling patterns',
             topK: 5,
-            scoreThreshold: 0.2,
             searchType: 'semantic',
           },
         })
@@ -216,7 +213,7 @@ async function testStdioClient(): Promise<void> {
           console.log('🎯 Search results:', {
             query: result.query,
             totalResults: result.results_count || 0,
-            searchMethod: result.search_info?.search_method || 'unknown',
+            searchType: result.search_info?.search_type || 'unknown',
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
 
@@ -224,7 +221,7 @@ async function testStdioClient(): Promise<void> {
             console.log('📄 Sample result:', {
               rank: result.results[0].rank,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].vector_score,
+              searchType: result.results[0].search_type,
             })
           }
         }
@@ -259,7 +256,7 @@ async function testStdioClient(): Promise<void> {
             arguments: {
               query,
               topK: 3,
-              scoreThreshold: 0.3,
+              searchType: 'semantic',
             },
           })
           const endTime = performance.now()
@@ -274,13 +271,13 @@ async function testStdioClient(): Promise<void> {
 
             console.log(`   ⏱️  Duration: ${duration.toFixed(2)}ms`)
             console.log(`   📊 Results: ${result.results_count || 0}`)
-            console.log(`   🔍 Method: ${result.search_info?.search_method || 'unknown'}`)
+            console.log(`   🔍 Type: ${result.search_info?.search_type || 'unknown'}`)
 
             if (result.results && result.results.length > 0) {
               const topResult = result.results[0]
               console.log(
-                `   🎯 Top match: ${topResult.source?.filename || 'Unknown'} (Score: ${
-                  topResult.vector_score?.toFixed(3) || 'N/A'
+                `   🎯 Top match: ${topResult.source?.filename || 'Unknown'} (Type: ${
+                  topResult.search_type || 'N/A'
                 })`
               )
             } else {

@@ -113,7 +113,6 @@ async function testStreamableHTTPClient(): Promise<void> {
             query: 'configuration settings',
             topK: 3,
             enableReranking: false,
-            scoreThreshold: 0.3,
           },
         })
         const endTime = performance.now()
@@ -126,8 +125,6 @@ async function testStreamableHTTPClient(): Promise<void> {
           console.log('🎯 Search results:', {
             query: result.query,
             totalResults: result.results_count || 0,
-            searchMethod: result.search_info?.search_method || 'unknown',
-            scoreThreshold: result.search_info?.score_threshold || 0,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
 
@@ -135,7 +132,6 @@ async function testStreamableHTTPClient(): Promise<void> {
             console.log('📄 Sample result:', {
               rank: result.results[0].rank,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].score,
               contentPreview: result.results[0].content?.substring(0, 100) + '...',
             })
           }
@@ -157,7 +153,6 @@ async function testStreamableHTTPClient(): Promise<void> {
             query: 'machine learning algorithms',
             topK: 3,
             searchType: 'semantic',
-            scoreThreshold: 0.3,
           },
         })
         const endTime = performance.now()
@@ -179,8 +174,6 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].score,
-              keywordScore: result.results[0].keyword_score,
             })
           }
         }
@@ -198,7 +191,6 @@ async function testStreamableHTTPClient(): Promise<void> {
             query: 'Python',
             topK: 3,
             searchType: 'keyword',
-            scoreThreshold: 0.1,
           },
         })
         const endTime = performance.now()
@@ -220,8 +212,6 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].score,
-              keywordScore: result.results[0].keyword_score,
             })
           }
         }
@@ -239,7 +229,6 @@ async function testStreamableHTTPClient(): Promise<void> {
             query: 'what is langchain',
             topK: 5,
             searchType: 'hybrid',
-            scoreThreshold: 0.2,
           },
         })
         const endTime = performance.now()
@@ -261,8 +250,6 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].score,
-              keywordScore: result.results[0].keyword_score,
             })
           }
         }
@@ -279,7 +266,6 @@ async function testStreamableHTTPClient(): Promise<void> {
             topK: 5,
             searchType: 'semantic',
             enableReranking: false,
-            scoreThreshold: 0.2,
           },
         })
         const endTime = performance.now()
@@ -290,7 +276,6 @@ async function testStreamableHTTPClient(): Promise<void> {
           console.log('🎯 Search results:', {
             query: result.query,
             searchType: result.search_info?.search_type || 'unknown',
-            searchMethod: result.search_info?.search_method || 'unknown',
             totalResults: result.results_count || 0,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
@@ -300,7 +285,6 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].score,
             })
           }
         }
@@ -344,7 +328,7 @@ async function testStreamableHTTPClient(): Promise<void> {
 async function startInteractiveSearch(client: Client): Promise<void> {
   const searchOptions = {
     topK: 5,
-    scoreThreshold: 0.3,
+    searchType: 'semantic' as const,
   }
 
   const askQuestion = (question: string): Promise<string> => {
@@ -372,7 +356,7 @@ async function startInteractiveSearch(client: Client): Promise<void> {
         arguments: {
           query: query.trim(),
           topK: searchOptions.topK,
-          scoreThreshold: searchOptions.scoreThreshold,
+          searchType: searchOptions.searchType,
         },
       })
       const endTime = performance.now()
@@ -390,7 +374,6 @@ async function startInteractiveSearch(client: Client): Promise<void> {
           console.log('\n📄 Results:')
           result.results.forEach((res: any, index: number) => {
             console.log(`\n${index + 1}. ${res.source?.filename || 'Unknown file'}`)
-            console.log(`   Score: ${res.score?.toFixed(3) || 'N/A'}`)
             console.log(
               `   Content: ${res.content?.substring(0, 150)}${
                 res.content?.length > 150 ? '...' : ''
@@ -415,7 +398,7 @@ async function startInteractiveSearch(client: Client): Promise<void> {
     console.log('   • exit         - Quit the application')
     console.log('\n💡 Current settings:')
     console.log(`   • topK: ${searchOptions.topK}`)
-    console.log(`   • threshold: ${searchOptions.scoreThreshold}`)
+    console.log(`   • searchType: ${searchOptions.searchType}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   }
 

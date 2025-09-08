@@ -83,12 +83,12 @@ The client will:
 🎯 Search Results (245.67ms):
    Query: "python programming"
    Results: 3
-   Method: vector search
+   Type: semantic
 
 📄 Results:
 
 1. programming_guide.md
-   Score: 0.875
+   Type: semantic
    Content: Python is a high-level programming language that...
 
 🔍 Enter search query (or "help", "exit"): exit
