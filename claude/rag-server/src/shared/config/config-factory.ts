@@ -91,9 +91,10 @@ export class ConfigFactory {
       // Document processing (optimized for 2024 research)
       chunkSize: parseInt(process.env['CHUNK_SIZE'] || '400'),
       chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'),
-      chunkingStrategy: (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'contextual',
+      chunkingStrategy:
+        (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'contextual',
       contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:0.6b',
-      minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '100'),
+      minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '300'),
 
       // File watcher configuration
       watcherDebounceDelay: parseInt(process.env['WATCHER_DEBOUNCE_DELAY'] || '300'),
@@ -213,7 +214,6 @@ export class ConfigFactory {
     if (config.embeddingBatchSize < 1) {
       errors.push('Embedding batch size must be at least 1')
     }
-
 
     if (!config.ollamaBaseUrl) {
       errors.push('Ollama base URL is required')

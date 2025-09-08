@@ -59,11 +59,9 @@ export class SearchHandler {
                   rank: index + 1,
                   content: result.content,
                   search_type: result.searchType,
-                  score: result.score,
                   source: {
                     filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
                     filepath: result.metadata?.filePath || result.metadata?.path || 'unknown',
-                    file_type: result.metadata?.fileType || 'unknown',
                     chunk_index: result.chunkIndex || 0,
                   },
                 })),

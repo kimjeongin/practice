@@ -2,70 +2,43 @@
 
 MCP server implementing RAG (Retrieval Augmented Generation) with semantic document search and automatic file processing.
 
-## Features
-
-- **Semantic Search**: Vector-based document search using embedding models
-- **Automatic Processing**: File watching with real-time document indexing  
-- **Multiple Transports**: stdio (Claude Desktop) and HTTP support
-- **Embedding Providers**: Local Transformers and Ollama models
-- **File Format Support**: Text, Markdown, PDF, HTML, JSON
-- **Reranking**: Improves search result relevance
-
 ## Quick Start
 
-### 1. Installation
+### Prerequisites
+- Node.js >= 22.0.0
+- Yarn package manager
+- Ollama server running locally (for embeddings)
+
+### Installation
 
 ```bash
 yarn install
 ```
 
-### 2. Configuration
+### Configuration
 
 ```bash
 cp .env.example .env
 ```
 
-Configure key settings:
+Key configuration variables:
+- `EMBEDDING_MODEL`: Ollama embedding model (default: qllama/multilingual-e5-large-instruct:latest)
+- `DOCUMENTS_DIR`: Directory to watch for documents (default: ./documents)
+- `MCP_TRANSPORT`: stdio (Claude Desktop) or streamable-http (HTTP client)
+
+### Setup
 
 ```bash
-# Choose embedding service: transformers or ollama
-EMBEDDING_SERVICE=ollama
-EMBEDDING_MODEL=dengcao/Qwen3-Embedding-0.6B:Q8_0
-
-# MCP transport: stdio or streamable-http
-MCP_TRANSPORT=stdio
-
-# Document directory
-DOCUMENTS_DIR=./documents
-```
-
-### 3. Database Setup
-
-```bash
+# Initialize database
 yarn db:setup
-```
 
-### 4. Start Server
-
-```bash
-# Development with file watching
+# Start development server with file watching
 yarn dev
-
-# Production
-yarn build && yarn start
 ```
 
 ## Architecture
 
-### Application Flow
-
-2. **File Watching**: FileWatcher monitors document directory for changes
-3. **Document Processing**: Files are chunked, embedded, and stored in vector database
-4. **MCP Server**: Handles client connections via stdio or HTTP transport
-5. **Search Pipeline**: Query → Embedding → Vector Search → Reranking → Results
-
-### Domain Structure
-
+### Project Structure
 ```
 src/
 ├── app/                    # Application entry point
@@ -75,109 +48,97 @@ src/
 │   │   ├── handlers/       # Tool handlers (search, info)
 │   │   ├── server/         # MCP server core
 │   │   └── transport/      # stdio/HTTP transports
-│   └── rag/               # RAG domain
+│   └── rag/               # RAG domain logic
 │       ├── core/           # Types and interfaces
 │       ├── lancedb/        # Vector store provider
 │       ├── services/       # Search, processing, chunking
 │       └── rag-service.ts  # Main RAG facade
 └── shared/                 # Common utilities
     ├── config/             # Configuration management
-    ├── logger/             # Logging
-    └── utils/              # Utilities
+    ├── logger/             # Logging system
+    └── utils/              # Helper utilities
+```
+
+### Data Flow
+1. **File Monitoring**: Automatic document detection and indexing
+2. **Document Processing**: Chunking and embedding generation
+3. **Vector Storage**: Efficient similarity search with LanceDB
+4. **MCP Interface**: Tool exposure via stdio or HTTP transport
+5. **Search Pipeline**: Query processing with semantic ranking
+
+## Available Commands
+
+### Development
+```bash
+yarn dev                    # Development with auto-restart
+yarn typecheck              # TypeScript validation
+yarn lint                   # Code linting
+```
+
+### Build & Production
+```bash
+yarn build                  # Production build
+yarn start                  # Run production server
+yarn build:executable       # Create platform binaries
+```
+
+### Database Management
+```bash
+yarn db:setup               # Initialize vector database
+yarn db:reset               # Reset and reindex documents
 ```
 
 ## MCP Tools
 
 ### search
-
-Search documents using natural language queries with semantic similarity.
+Semantic document search using natural language queries.
 
 **Parameters:**
-- `query` (required): Search query text
-- `topK` (optional): Maximum results (1-50, default: 5)
-
-**Request:**
-```json
-{
-  "name": "search",
-  "arguments": {
-    "query": "machine learning algorithms",
-    "topK": 5
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "query": "machine learning algorithms",
-  "results_count": 3,
-  "results": [
-    {
-      "rank": 1,
-      "content": "Machine learning algorithms are...",
-      "relevance_score": 0.85,
-      "source": {
-        "filename": "ml-guide.txt",
-        "filepath": "./documents/ml-guide.txt",
-        "file_type": "text/plain",
-        "chunk_index": 0
-      },
-      "metadata": {}
-    }
-  ],
-  "search_info": {
-    "total_results": 3,
-    "search_method": "semantic",
-    "max_requested": 5
-  }
-}
-```
+- `query` (string): Search query text
+- `topK` (number, optional): Maximum results (1-50, default: 5)
 
 ### get_vectordb_info
+Retrieve vector database statistics and configuration.
 
-Get vector database statistics and model information.
+## Configuration
 
-**Request:**
-```json
-{
-  "name": "get_vectordb_info",
-  "arguments": {}
-}
+### Environment Variables
+
+#### Basic Configuration
+```bash
+NODE_ENV=development
+DATA_DIR=./.data
+DOCUMENTS_DIR=./documents
+LOG_LEVEL=info
 ```
 
-**Response:**
-```json
-{
-  "status": "connected",
-  "database_info": {
-    "provider": "lancedb",
-    "uri": "./.data/lancedb",
-    "table_name": "documents"
-  },
-  "index_stats": {
-    "total_vectors": 1250,
-    "dimensions": 768,
-    "model_name": "gte-multilingual-base"
-  },
-  "embedding_info": {
-    "service": "transformers",
-    "model": "gte-multilingual-base", 
-    "dimensions": 768
-  },
-  "document_stats": {
-    "total_documents": 45,
-    "total_chunks": 1250,
-    "avg_chunks_per_document": 27.8,
-    "supported_file_types": ["txt", "md", "pdf", "html", "json"]
-  }
-}
+#### Document Processing
+```bash
+CHUNK_SIZE=400                    # Chunk size in characters
+CHUNK_OVERLAP=100                 # Overlap between chunks
+CHUNKING_STRATEGY=normal          # 'normal' or 'contextual'
+MIN_CHUNK_SIZE=300               # Minimum chunk size
+MAX_CONCURRENT_PROCESSING=3       # Processing concurrency
+```
+
+#### Ollama Integration
+```bash
+OLLAMA_BASE_URL=http://localhost:11434
+EMBEDDING_MODEL=qllama/multilingual-e5-large-instruct:latest
+EMBEDDING_BATCH_SIZE=8
+EMBEDDING_CONCURRENCY=3
+```
+
+#### MCP Transport
+```bash
+MCP_TRANSPORT=streamable-http     # 'stdio' or 'streamable-http'
+MCP_PORT=3000                     # HTTP port (if using HTTP transport)
+MCP_HOST=localhost                # Server host
 ```
 
 ## Client Integration
 
-### Claude Desktop
-
+### Claude Desktop (Recommended)
 Add to Claude Desktop configuration:
 
 ```json
@@ -185,9 +146,10 @@ Add to Claude Desktop configuration:
   "mcpServers": {
     "rag-server": {
       "command": "node",
-      "args": ["/path/to/rag-server/dist/app/index.js"],
+      "args": ["/absolute/path/to/rag-server/dist/app/index.js"],
       "env": {
-        "MCP_TRANSPORT": "stdio"
+        "MCP_TRANSPORT": "stdio",
+        "DOCUMENTS_DIR": "/path/to/your/documents"
       }
     }
   }
@@ -195,151 +157,65 @@ Add to Claude Desktop configuration:
 ```
 
 ### HTTP Client
-
-Set `MCP_TRANSPORT=streamable-http` and connect to `http://localhost:3000`.
+Set `MCP_TRANSPORT=streamable-http` in .env and connect to `http://localhost:3000`.
 
 ```bash
-# Test HTTP client
-cd examples/http-client
+# Test HTTP integration
+cd examples/stdio-client
 npm install && npm start
 ```
 
-## Configuration
+## Supported File Types
 
-### Environment Variables
+- **Text**: .txt, .md
+- **Documents**: .pdf, .html
+- **Data**: .json, .csv
+- **Office**: .docx (via mammoth)
 
-```bash
-# Basic
-NODE_ENV=development
-DOCUMENTS_DIR=./documents
-LOG_LEVEL=info
+## Performance & Optimization
 
-# Embedding (Ollama)
-OLLAMA_BASE_URL=http://localhost:11434
-EMBEDDING_MODEL=dengcao/Qwen3-Embedding-0.6B:Q8_0
-RERANKING_MODEL=dengcao/Qwen3-Reranker-0.6B:Q8_0
-
-# Vector Store
-LANCEDB_URI=./.data/lancedb
-
-# MCP Transport
-MCP_TRANSPORT=stdio           # stdio or streamable-http
-MCP_PORT=3000
-MCP_HOST=localhost
-
-# Document Processing
-CHUNK_SIZE=1024
-CHUNK_OVERLAP=20
-MAX_CONCURRENT_PROCESSING=3
-```
-
-### Embedding Models
-
-**Ollama (External):**
-- Requires Ollama server running
-- Shared model cache
-- Better GPU acceleration
-- Recommended: `nomic-embed-text`, `dengcao/Qwen3-Embedding-0.6B:Q8_0`
-
-**Transformers (Local):**
-- No external dependencies
-- CPU/GPU acceleration
-- Models cached locally
-- Available: `gte-multilingual-base`
+- **Embedding Model**: Lighter models (e.g., qwen3:0.6b) for faster processing
+- **Chunk Strategy**: Normal chunking for general use, contextual for complex documents
+- **Concurrency**: Adjust `MAX_CONCURRENT_PROCESSING` based on system resources
+- **Batch Size**: Optimize `EMBEDDING_BATCH_SIZE` for memory usage
 
 ## Development
 
-### Scripts
-
-```bash
-# Development
-yarn dev                    # Watch mode with auto-restart
-yarn typecheck              # TypeScript checking
-yarn lint                   # Code linting
-
-# Build
-yarn build                  # Production build
-yarn build:executable       # Platform-specific binaries
-
-# Database
-yarn db:setup               # Initialize database
-yarn db:reset               # Reset and reindex all documents
-```
-
 ### Testing
-
 ```bash
 # Test stdio transport
 cd examples/stdio-client && npm start
 
-# Test HTTP transport  
-cd examples/http-client && npm start
-```
-
-## Deployment
-
-### Docker
-
-```bash
-docker build -t rag-server .
-docker run -p 3000:3000 -v ./documents:/app/documents rag-server
-```
-
-### Standalone Binary
-
-```bash
-yarn build:executable
-```
-
-Creates platform-specific binaries in `deploy/dist/`.
-
-## Error Responses
-
-All tools return structured errors:
-
-```json
-{
-  "error": "SearchFailed",
-  "message": "Search operation failed: Connection timeout", 
-  "suggestion": "Try a different query or check if documents are indexed properly"
-}
-```
-
-**Error Types:**
-- `InvalidQuery`: Missing or invalid parameters
-- `SearchFailed`: Search operation error
-- `UnknownTool`: Tool not available
-- `ToolExecutionFailed`: Execution error
-
-## Performance
-
-### Search Performance
-- Semantic search: 100-500ms for small-medium collections
-- Performance scales with document count and model complexity
-- Results ranked by similarity score (0-1, higher = more relevant)
-
-### Indexing Performance
-- Documents processed automatically when added to watched directory
-- Processing speed depends on document size and embedding model
-- Large documents chunked for optimal search performance
-
-## Troubleshooting
-
-**Common Issues:**
-
-1. **Documents not processing**: Check `DOCUMENTS_DIR` path and permissions
-2. **No search results**: Ensure documents are indexed (`yarn db:reset`)
-3. **Embedding errors**: Verify `OLLAMA_BASE_URL` and model availability
-4. **MCP connection**: Check transport configuration and ports
-
-**Debug Logging:**
-```bash
+# Debug with verbose logging
 LOG_LEVEL=debug yarn dev
 ```
 
-**Reset Database:**
+### Adding New Features
+1. Follow domain-driven structure under `src/domains/`
+2. Add configuration to `ConfigFactory`
+3. Update environment templates
+4. Add appropriate logging and error handling
+
+## Troubleshooting
+
+### Common Issues
+
+**Documents not processing**
+- Check `DOCUMENTS_DIR` path and permissions
+- Verify file watcher is monitoring correctly
+
+**No search results**
+- Ensure documents are indexed: `yarn db:reset`
+- Check embedding model availability in Ollama
+
+**Connection errors**
+- Verify Ollama server is running (`ollama serve`)
+- Check `OLLAMA_BASE_URL` configuration
+- For HTTP transport, ensure port 3000 is available
+
+**Debug mode**
 ```bash
-yarn db:reset && yarn dev
+LOG_LEVEL=debug yarn dev
 ```
 
 ## License
