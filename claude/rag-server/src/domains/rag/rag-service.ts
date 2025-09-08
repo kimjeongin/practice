@@ -12,17 +12,14 @@ import type {
   SearchResult,
   VectorStoreInfo,
   EmbeddingModelInfo,
-  RerankerModelInfo,
 } from './core/types.js'
 import type {
   IVectorStoreProvider,
-  IRerankingService,
   IEmbeddingService,
 } from './core/interfaces.js'
 
 // Internal service imports (concrete classes - RAG domain internal)
 import { LanceDBProvider } from './lancedb/index.js'
-import { RerankingService } from './ollama/reranker.js'
 import { EmbeddingService } from './ollama/embedding.js'
 import { SearchService } from './services/search.js'
 import { DocumentProcessor } from './services/processor.js'
@@ -40,10 +37,6 @@ export interface RagInfo {
   embedding: {
     model: EmbeddingModelInfo
   }
-  reranking: {
-    isReady: boolean
-    model: RerankerModelInfo
-  }
 }
 
 /**
@@ -53,7 +46,6 @@ export interface RagInfo {
 export class RAGService {
   // External dependencies (interfaces for flexibility)
   private vectorStoreProvider?: IVectorStoreProvider // Could be LanceDB, Pinecone, etc.
-  private rerankingService?: IRerankingService // Could be Ollama, OpenAI, etc.
   private embeddingService?: IEmbeddingService // Could be Ollama, OpenAI, etc.
 
   // Internal RAG services (concrete classes - domain internal)
@@ -98,22 +90,14 @@ export class RAGService {
       logger.debug('Initializing embedding service...')
       this.embeddingService = new EmbeddingService(config)
 
-      // Initialize reranking service
-      logger.debug('Initializing reranking service...')
-      this.rerankingService = new RerankingService(config)
-      await this.rerankingService.initialize()
-
       logger.info('✅ Ollama services initialized', {
-        rerankingReady: this.rerankingService.isReady(),
         component: 'RAGService',
       })
 
       // Initialize SearchService with dependencies (passing concrete classes)
       logger.debug('Initializing search service...')
       this.searchService = new SearchService(
-        this.vectorStoreProvider as LanceDBProvider,
-        config,
-        this.rerankingService as RerankingService
+        this.vectorStoreProvider as LanceDBProvider
       )
 
       // Initialize DocumentProcessor
@@ -127,7 +111,6 @@ export class RAGService {
 
       logger.info('✅ RAGService fully initialized', {
         vectorStoreHealthy: this.vectorStoreProvider.isHealthy(),
-        rerankingReady: this.rerankingService.isReady(),
         component: 'RAGService',
       })
     } catch (error) {
@@ -246,16 +229,11 @@ export class RAGService {
         embedding: {
           model: this.embeddingService!.getModelInfo(),
         },
-        reranking: {
-          isReady: this.rerankingService!.isReady(),
-          model: this.rerankingService!.getModelInfo(),
-        },
       }
 
       logger.debug('RAG info retrieved', {
         documentCount,
         vectorStoreHealthy: ragInfo.vectorStore.isHealthy,
-        rerankingReady: ragInfo.reranking.isReady,
         component: 'RAGService',
       })
 
@@ -340,8 +318,7 @@ export class RAGService {
   isReady(): boolean {
     return (
       this.isInitialized &&
-      !!this.vectorStoreProvider?.isHealthy() &&
-      !!this.rerankingService?.isReady()
+      !!this.vectorStoreProvider?.isHealthy()
     )
   }
 

@@ -40,7 +40,6 @@ The client will:
    - Connect to the server at `http://localhost:3000/mcp`
    - List available tools
    - Test `get_vectordb_info` tool
-   - Test `search` tool with basic and reranking searches
 
 2. **Interactive Search Mode**: After tests complete, enter interactive mode
    - **Continuous search**: Keep entering queries until you type "exit"

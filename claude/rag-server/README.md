@@ -59,7 +59,6 @@ yarn build && yarn start
 
 ### Application Flow
 
-1. **Startup**: RAGService initializes embedding models, vector store (LanceDB), and reranking service
 2. **File Watching**: FileWatcher monitors document directory for changes
 3. **Document Processing**: Files are chunked, embedded, and stored in vector database
 4. **MCP Server**: Handles client connections via stdio or HTTP transport
@@ -79,7 +78,6 @@ src/
 │   └── rag/               # RAG domain
 │       ├── core/           # Types and interfaces
 │       ├── lancedb/        # Vector store provider
-│       ├── ollama/         # Embedding/reranking services
 │       ├── services/       # Search, processing, chunking
 │       └── rag-service.ts  # Main RAG facade
 └── shared/                 # Common utilities

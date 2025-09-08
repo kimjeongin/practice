@@ -122,7 +122,6 @@ export interface VectorStoreInfo {
   dimensions: number // vector dimensions
   indexSize?: number // index size (bytes)
   embeddingModel?: string // embedding model name
-  rerankingModel?: string // reranking model name
 }
 
 // ========================================
@@ -176,10 +175,7 @@ export interface LanceDBTableOptions {
 
 export interface SearchOptions {
   topK?: number
-  fileTypes?: string[]
-  metadataFilters?: Record<string, string>
   scoreThreshold?: number
-  enableReranking?: boolean
   searchType?: SearchType // search method to use
 }
 
@@ -192,9 +188,8 @@ export interface SearchResult {
   // Search method information
   searchType?: SearchType // The search method that was used
 
-  // Reranking information
-  rerankingScore?: number // Only present if reranking was used
-  vectorScore?: number // Vector search score (when reranking is used)
+  // Additional scoring information
+  vectorScore?: number // Vector search score
   keywordScore?: number // Keyword search score (when available)
 }
 
@@ -202,54 +197,16 @@ export interface SearchResult {
 // Reranking Types
 // ========================================
 
-/**
- * Reranking options for fine-tuning the reranking process
- */
-export interface RerankingOptions {
-  topK?: number // maximum number of results after reranking
-  model?: string // reranking model to use
-}
-
-/**
- * Input for reranking process
- */
-export interface RerankingInput {
-  query: string
-  documents: VectorSearchResult[]
-}
-
-/**
- * Result after reranking process
- */
-export interface RerankingResult {
-  // Document info (same as VectorSearchResult)
-  id: string
-  content: string
-  metadata: DocumentMetadata
-  chunkIndex: number
-
-  // Reranking scores
-  vectorScore: number // vector search score
-  rerankScore: number // reranking model score
-  score: number // final combined/normalized score
-}
-
 // ========================================
 // Model Information Types
 // ========================================
 
-export type ModelInfo = EmbeddingModelInfo | RerankerModelInfo
+export type ModelInfo = EmbeddingModelInfo
 
 export interface EmbeddingModelInfo {
   name: string
   service: string
   dimensions: number
-  maxTokens: number
-}
-
-export interface RerankerModelInfo {
-  name: string
-  service: string
   maxTokens: number
 }
 
@@ -264,9 +221,8 @@ export type { FileWatcherEvent } from '@/shared/types/index.js'
 // ========================================
 
 export const RAG_CONSTANTS = {
-  DEFAULT_CHUNK_SIZE: 1024,
-  DEFAULT_CHUNK_OVERLAP: 20,
+  DEFAULT_CHUNK_SIZE: 400,
+  DEFAULT_CHUNK_OVERLAP: 100,
   DEFAULT_TOP_K: 5,
   DEFAULT_SIMILARITY_THRESHOLD: 0.75,
-  DEFAULT_RERANKING_TOP_K: 5,
 } as const

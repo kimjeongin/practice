@@ -42,11 +42,11 @@ export class LanceDBProvider implements IVectorStoreProvider {
   private embeddingBridge: LanceDBEmbeddingBridge | null = null
   private isInitialized = false
   private initPromise: Promise<void> | null = null
-  private reranker: lancedb.rerankers.RRFReranker | null = null
 
   private connectionOptions: LanceDBConnectionOptions
   private tableName: string
   private embeddingDimensions: number
+  private reranker: lancedb.rerankers.RRFReranker | null = null
 
   constructor(
     private config: ServerConfig,
@@ -91,7 +91,6 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
       // Connect to LanceDB
       this.db = await lancedb.connect(this.connectionOptions.uri)
-      this.reranker = await lancedb.rerankers.RRFReranker.create()
 
       // Initialize embedding service
       this.embeddingService = new EmbeddingService(this.config)
@@ -299,17 +298,6 @@ export class LanceDBProvider implements IVectorStoreProvider {
           throw new Error(`Unsupported search type: ${searchType}`)
       }
 
-      // Score filtering
-      if (options.searchType == 'semantic' && options.scoreThreshold) {
-        results = results.filter((result) => result.score >= options.scoreThreshold!)
-        logger.info('📊 After score filtering', {
-          scoreThreshold: options.scoreThreshold,
-          filteredCount: results.length,
-          searchType,
-          component: 'LanceDBProvider',
-        })
-      }
-
       // Set search type on results
       results.forEach((result) => {
         result.searchType = searchType
@@ -370,8 +358,21 @@ export class LanceDBProvider implements IVectorStoreProvider {
       operation: 'semantic_search',
     })
 
+    let results = rawResults.map(convertRAGResultToVectorSearchResult)
+
+    // Score filtering
+    if (options.scoreThreshold) {
+      results = results.filter((result) => result.score >= options.scoreThreshold!)
+      logger.info('📊 After score filtering', {
+        scoreThreshold: options.scoreThreshold,
+        filteredCount: results.length,
+        searchType: 'semantic',
+        component: 'LanceDBProvider',
+      })
+    }
+
     // Convert results
-    return rawResults.map(convertRAGResultToVectorSearchResult)
+    return results
   }
 
   private async performKeywordSearch(
@@ -422,30 +423,21 @@ export class LanceDBProvider implements IVectorStoreProvider {
         { timeoutMs: 15000, operation: 'generate_query_embedding' }
       )
 
-      // Perform hybrid search using LanceDB's native hybrid search capability
-      let rawResults: RAGSearchResult[] = []
-      if (this.reranker) {
-        rawResults = await TimeoutWrapper.withTimeout(
-          this.table
-            .query()
-            .fullTextSearch(query)
-            .nearestTo(queryEmbedding)
-            .rerank(this.reranker)
-            .limit(options.topK || 10)
-            .toArray(),
-          { timeoutMs: 30000, operation: 'hybrid_search' }
-        )
-      } else {
-        rawResults = await TimeoutWrapper.withTimeout(
-          this.table
-            .query()
-            .fullTextSearch(query)
-            .nearestTo(queryEmbedding)
-            .limit(options.topK || 10)
-            .toArray(),
-          { timeoutMs: 30000, operation: 'hybrid_search' }
-        )
+      if (!this.reranker) {
+        this.reranker = await lancedb.rerankers.RRFReranker.create()
       }
+
+      // Perform hybrid search using LanceDB's native hybrid search capability
+      const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+        this.table
+          .query()
+          .fullTextSearch(query)
+          .nearestTo(queryEmbedding)
+          .rerank(this.reranker)
+          .limit(options.topK || 10)
+          .toArray(),
+        { timeoutMs: 30000, operation: 'hybrid_search' }
+      )
 
       // Convert results and preserve both vector and keyword scores
       return rawResults.map((result) => {
