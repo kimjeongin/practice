@@ -4,7 +4,7 @@
  */
 
 import type { ISearchService, IRerankingService } from '@/domains/rag/core/interfaces.js'
-import type { SearchOptions, SearchResult, RerankingInput } from '@/domains/rag/core/types.js'
+import type { SearchOptions, SearchResult, RerankingInput, SearchType } from '@/domains/rag/core/types.js'
 import { LanceDBProvider } from '@/domains/rag/lancedb/index.js'
 import { SearchError } from '@/shared/errors/index.js'
 import { logger, startTiming } from '@/shared/logger/index.js'
@@ -29,16 +29,19 @@ export class SearchService implements ISearchService {
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
+    const searchType = options.searchType || 'semantic'
     const endTiming = startTiming('search_pipeline', {
       query: query.substring(0, 50),
       rerankingEnabled: options.enableReranking || false,
+      searchType,
       component: 'SearchService',
     })
 
     try {
-      logger.info('🔍 Starting 2-stage search pipeline', {
+      logger.info('🔍 Starting search pipeline', {
         query: query.substring(0, 100),
         topK: options.topK || 10,
+        searchType,
         rerankingRequested: options.enableReranking || false,
         rerankingServiceExists: !!this.rerankingService,
         component: 'SearchService',
@@ -82,9 +85,13 @@ export class SearchService implements ISearchService {
     query: string,
     options: SearchOptions
   ): Promise<SearchResult[]> {
-    // Check if reranking is enabled and try to initialize if needed
+    const searchType = options.searchType || 'semantic'
+    
+    // For hybrid search, reranking is built into LanceDB's native implementation
+    // For keyword search, reranking may not be as relevant
+    // For semantic search, reranking provides the most benefit
     let isRerankingEnabled = false
-    if (options.enableReranking) {
+    if (options.enableReranking && searchType !== 'hybrid') {
       if (!this.rerankingService.isReady()) {
         try {
           // Check if the service has an initialize method (like TransformersReranker)
@@ -129,20 +136,24 @@ export class SearchService implements ISearchService {
     const vectorResults = await this.vectorStore.search(query, {
       topK: vectorTopK,
       scoreThreshold: options.scoreThreshold || 0.0,
+      searchType: searchType,
     })
 
     const vectorDuration = Date.now() - vectorStartTime
-    logger.info(`📊 Stage 1 (Vector Search) completed`, {
+    logger.info(`📊 Stage 1 (${searchType} Search) completed`, {
       query: query.substring(0, 100),
+      searchType,
       candidatesRetrieved: vectorResults.length,
       duration: vectorDuration,
       component: 'SearchService',
     })
 
-    // If no reranking or no results, return vector results without rerank scores
-    if (!isRerankingEnabled) {
-      logger.info(`📊 Stage 1 (Vector Search) only - no reranking`, {
+    // If no reranking or no results, return results without rerank scores
+    // Note: hybrid search already includes reranking in LanceDB's native implementation
+    if (!isRerankingEnabled || searchType === 'hybrid') {
+      logger.info(`📊 Search completed - ${searchType === 'hybrid' ? 'native hybrid with built-in reranking' : 'no additional reranking'}`, {
         query: query.substring(0, 100),
+        searchType,
         resultsCount: vectorResults.length,
         rerankingEnabled: isRerankingEnabled,
         component: 'SearchService',
@@ -152,7 +163,9 @@ export class SearchService implements ISearchService {
         score: result.score,
         metadata: result.metadata,
         chunkIndex: result.chunkIndex,
+        searchType: searchType,
         vectorScore: result.score,
+        keywordScore: result.keywordScore,
       }))
     }
 
@@ -187,6 +200,7 @@ export class SearchService implements ISearchService {
         score: result.score, // Use final combined score (rerank score)
         metadata: result.metadata,
         chunkIndex: result.chunkIndex,
+        searchType: searchType,
         rerankingScore: result.rerankScore,
         vectorScore: result.vectorScore,
       }))
@@ -197,12 +211,15 @@ export class SearchService implements ISearchService {
         { component: 'SearchService' }
       )
 
-      // Fallback to vector search results (no rerank scores)
+      // Fallback to search results (no rerank scores)
       return vectorResults.slice(0, options.topK || 10).map((result) => ({
         content: result.content,
         score: result.score,
         metadata: result.metadata,
         chunkIndex: result.chunkIndex,
+        searchType: searchType,
+        vectorScore: result.score,
+        keywordScore: result.keywordScore,
       }))
     }
   }

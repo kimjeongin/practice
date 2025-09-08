@@ -82,8 +82,10 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
     // Clamp distance to [0, 2] range for safety
     const clampedDistance = Math.max(0, Math.min(2, result._distance))
     score = Math.max(0, 1 - clampedDistance / 2)
-  } else if (result.score !== undefined) {
-    score = result.score
+  } else if (result._relevance_score !== undefined) {
+    score = result._relevance_score
+  } else if (result._score !== undefined) {
+    score = result._score
   } else {
     score = 0
   }

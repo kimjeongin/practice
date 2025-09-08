@@ -115,7 +115,7 @@ async function testStreamableHTTPClient(): Promise<void> {
           arguments: {
             query: 'configuration settings',
             topK: 3,
-            enableReranking: true,
+            enableReranking: false,
             scoreThreshold: 0.3,
           },
         })
@@ -148,37 +148,166 @@ async function testStreamableHTTPClient(): Promise<void> {
         console.log('⚠️  Basic search test failed:', (error as Error).message)
       }
 
-      // Test reranking search
-      console.log('🔍 Running reranking search test...')
+      // Test different search types
+      console.log('🔍 Testing different search types...')
+
+      // Test semantic search (default)
+      console.log('🧠 Running semantic search test...')
       try {
         const startTime = performance.now()
         const searchResult = await client.callTool({
           name: 'search',
           arguments: {
-            query: 'error handling patterns',
+            query: 'machine learning algorithms',
+            topK: 3,
+            searchType: 'semantic',
+            scoreThreshold: 0.3,
+          },
+        })
+        const endTime = performance.now()
+        const toolCallDuration = endTime - startTime
+
+        console.log(`⏱️  Semantic search duration: ${toolCallDuration.toFixed(2)}ms`)
+
+        if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
+          const result = JSON.parse((searchResult.content[0] as any).text) as any
+          console.log('🎯 Semantic search results:', {
+            query: result.query,
+            searchType: 'semantic',
+            totalResults: result.results_count || 0,
+            toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
+          })
+
+          if (result.results && result.results.length > 0) {
+            console.log('📄 Top semantic result:', {
+              rank: result.results[0].rank,
+              searchType: result.results[0].search_type,
+              filename: result.results[0].source?.filename,
+              vectorScore: result.results[0].vector_score,
+              keywordScore: result.results[0].keyword_score,
+            })
+          }
+        }
+      } catch (error) {
+        console.log('⚠️  Semantic search test failed:', (error as Error).message)
+      }
+
+      // Test keyword search
+      console.log('🔤 Running keyword search test...')
+      try {
+        const startTime = performance.now()
+        const searchResult = await client.callTool({
+          name: 'search',
+          arguments: {
+            query: 'Python',
+            topK: 3,
+            searchType: 'keyword',
+            scoreThreshold: 0.1,
+          },
+        })
+        const endTime = performance.now()
+        const toolCallDuration = endTime - startTime
+
+        console.log(`⏱️  Keyword search duration: ${toolCallDuration.toFixed(2)}ms`)
+
+        if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
+          const result = JSON.parse((searchResult.content[0] as any).text) as any
+          console.log('🎯 Keyword search results:', {
+            query: result.query,
+            searchType: 'keyword',
+            totalResults: result.results_count || 0,
+            toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
+          })
+
+          if (result.results && result.results.length > 0) {
+            console.log('📄 Top keyword result:', {
+              rank: result.results[0].rank,
+              searchType: result.results[0].search_type,
+              filename: result.results[0].source?.filename,
+              vectorScore: result.results[0].vector_score,
+              keywordScore: result.results[0].keyword_score,
+            })
+          }
+        }
+      } catch (error) {
+        console.log('⚠️  Keyword search test failed:', (error as Error).message)
+      }
+
+      // Test hybrid search
+      console.log('🔀 Running hybrid search test...')
+      try {
+        const startTime = performance.now()
+        const searchResult = await client.callTool({
+          name: 'search',
+          arguments: {
+            query: 'what is langchain',
             topK: 5,
-            enableReranking: true,
+            searchType: 'hybrid',
             scoreThreshold: 0.2,
           },
         })
         const endTime = performance.now()
         const toolCallDuration = endTime - startTime
 
-        console.log(`⏱️  Reranking tool call duration: ${toolCallDuration.toFixed(2)}ms`)
+        console.log(`⏱️  Hybrid search duration: ${toolCallDuration.toFixed(2)}ms`)
 
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
-          console.log('🎯 Reranking search results:', {
+          console.log('🎯 Hybrid search results:', {
             query: result.query,
+            searchType: 'hybrid',
             totalResults: result.results_count || 0,
-            searchMethod: result.search_info?.search_method || 'unknown',
-            rerankingEnabled: true,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
 
           if (result.results && result.results.length > 0) {
-            console.log('📄 Top reranked result:', {
+            console.log('📄 Top hybrid result:', {
               rank: result.results[0].rank,
+              searchType: result.results[0].search_type,
+              filename: result.results[0].source?.filename,
+              vectorScore: result.results[0].vector_score,
+              keywordScore: result.results[0].keyword_score,
+            })
+          }
+        }
+      } catch (error) {
+        console.log('⚠️  Hybrid search test failed:', (error as Error).message)
+      }
+
+      // Test semantic with reranking
+      console.log('🧠➕ Running semantic search with reranking test...')
+      try {
+        const startTime = performance.now()
+        const searchResult = await client.callTool({
+          name: 'search',
+          arguments: {
+            query: 'data structures algorithms',
+            topK: 5,
+            searchType: 'semantic',
+            enableReranking: false,
+            scoreThreshold: 0.2,
+          },
+        })
+        const endTime = performance.now()
+        const toolCallDuration = endTime - startTime
+
+        console.log(`⏱️  Semantic+reranking duration: ${toolCallDuration.toFixed(2)}ms`)
+
+        if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
+          const result = JSON.parse((searchResult.content[0] as any).text) as any
+          console.log('🎯 Semantic+reranking results:', {
+            query: result.query,
+            searchType: result.search_info?.search_type || 'unknown',
+            searchMethod: result.search_info?.search_method || 'unknown',
+            rerankingEnabled: result.search_info?.reranking_enabled || false,
+            totalResults: result.results_count || 0,
+            toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
+          })
+
+          if (result.results && result.results.length > 0) {
+            console.log('📄 Top semantic+reranking result:', {
+              rank: result.results[0].rank,
+              searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
               vectorScore: result.results[0].vector_score,
               rerankingScore: result.results[0].reranking_score,
@@ -186,7 +315,7 @@ async function testStreamableHTTPClient(): Promise<void> {
           }
         }
       } catch (error) {
-        console.log('⚠️  Reranking search test failed:', (error as Error).message)
+        console.log('⚠️  Semantic+reranking test failed:', (error as Error).message)
       }
       console.log('')
     }

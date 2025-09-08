@@ -1,4 +1,4 @@
-import type { SearchOptions } from '@/domains/rag/core/types.js'
+import type { SearchOptions, SearchType } from '@/domains/rag/core/types.js'
 import { RAGService } from '@/domains/rag/index.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
@@ -10,13 +10,14 @@ export interface SearchArgs {
   topK?: number
   enableReranking?: boolean
   scoreThreshold?: number
+  searchType?: SearchType
 }
 
 export class SearchHandler {
   constructor(private ragService: RAGService, private config?: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
-    const { query, topK = 5, enableReranking = false, scoreThreshold } = args
+    const { query, topK = 5, enableReranking = false, scoreThreshold, searchType = 'semantic' } = args
 
     if (!query) {
       return {
@@ -48,12 +49,21 @@ export class SearchHandler {
             ? Math.max(0.0, Math.min(1.0, scoreThreshold)) // Clamp between 0.0-1.0
             : 0.5, // Default threshold
         enableReranking,
+        searchType: searchType,
       }
 
       const results = await this.ragService.search(query, searchOptions)
 
       // Detect if reranking was used by checking if any result has rerank scores
       const rerankingUsed = results.some((result) => result.rerankingScore !== undefined)
+      
+      // Determine the actual search method description for display
+      let actualSearchMethodDescription: string = searchType
+      if (searchType === 'hybrid') {
+        actualSearchMethodDescription = 'hybrid (semantic + keyword + reranking)'
+      } else if (rerankingUsed) {
+        actualSearchMethodDescription = `${searchType} + reranking`
+      }
 
       return {
         content: [
@@ -66,7 +76,9 @@ export class SearchHandler {
                 results: results.map((result, index) => ({
                   rank: index + 1,
                   content: result.content,
+                  search_type: result.searchType || searchType,
                   vector_score: result.vectorScore,
+                  keyword_score: result.keywordScore,
                   reranking_score: result.rerankingScore,
                   source: {
                     filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
@@ -78,7 +90,8 @@ export class SearchHandler {
                 })),
                 search_info: {
                   total_results: results.length,
-                  search_method: rerankingUsed ? '2-stage (vector + rerank)' : 'vector search',
+                  search_type: searchType,
+                  search_method: actualSearchMethodDescription,
                   max_requested: topK,
                   score_threshold: searchOptions.scoreThreshold,
                   reranking_enabled: enableReranking,
@@ -143,7 +156,7 @@ export class SearchHandler {
       {
         name: 'search',
         description:
-          'Semantic document search tool for finding relevant content from indexed documents. Use this when users ask questions about document content, need to find specific information, or want to explore available knowledge. The tool performs vector-based similarity search and can optionally use reranking for higher precision. Returns ranked results with content, metadata, and confidence scores.',
+          'Advanced document search tool supporting multiple search methods: semantic (vector-based), keyword (full-text), and hybrid (combines both with reranking). Use this when users ask questions about document content, need to find specific information, or want to explore available knowledge. Returns ranked results with content, metadata, and confidence scores.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -173,6 +186,13 @@ export class SearchHandler {
               default: 0.5,
               minimum: 0.0,
               maximum: 1.0,
+            },
+            searchType: {
+              type: 'string',
+              enum: ['semantic', 'keyword', 'hybrid'],
+              description:
+                'Search method to use. SEMANTIC: Vector-based similarity search for conceptual understanding (best for questions, concepts). KEYWORD: Full-text search for exact term matching (best for specific terms, names, codes). HYBRID: Combines semantic + keyword with built-in reranking for best accuracy (recommended for comprehensive searches). Default is semantic for backward compatibility.',
+              default: 'semantic',
             },
           },
           required: ['query'],

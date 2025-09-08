@@ -91,10 +91,19 @@ export interface VectorSearchResult {
   // Search scores
   score: number // similarity score (0-1, higher is more similar)
 
+  // Search method information
+  searchType?: SearchType // The search method that was used
+  keywordScore?: number // Keyword search score (when available)
+
   // Metadata
   metadata: DocumentMetadata
   chunkIndex: number // chunk index (compatibility)
 }
+
+/**
+ * Search type definitions
+ */
+export type SearchType = 'semantic' | 'keyword' | 'hybrid'
 
 /**
  * Vector search options - provider-independent common search options (simplified)
@@ -102,6 +111,7 @@ export interface VectorSearchResult {
 export interface VectorSearchOptions {
   topK?: number // maximum number of results
   scoreThreshold?: number // minimum score threshold
+  searchType?: SearchType // search method to use
 }
 
 /**
@@ -146,7 +156,8 @@ export interface RAGSearchResult {
   chunk_id: number
   metadata: DocumentMetadata
   _distance?: number // distance value provided by LanceDB
-  score?: number // calculated similarity score
+  _score?: number // calculated similarity score
+  _relevance_score?: number // calculated similarity score
 }
 
 /**
@@ -169,6 +180,7 @@ export interface SearchOptions {
   metadataFilters?: Record<string, string>
   scoreThreshold?: number
   enableReranking?: boolean
+  searchType?: SearchType // search method to use
 }
 
 export interface SearchResult {
@@ -177,9 +189,13 @@ export interface SearchResult {
   metadata: Record<string, any>
   chunkIndex: number
 
+  // Search method information
+  searchType?: SearchType // The search method that was used
+
   // Reranking information
   rerankingScore?: number // Only present if reranking was used
   vectorScore?: number // Vector search score (when reranking is used)
+  keywordScore?: number // Keyword search score (when available)
 }
 
 // ========================================

@@ -42,6 +42,8 @@ export class LanceDBProvider implements IVectorStoreProvider {
   private embeddingBridge: LanceDBEmbeddingBridge | null = null
   private isInitialized = false
   private initPromise: Promise<void> | null = null
+  private ftsIndexInitialized = false
+  private reranker: lancedb.rerankers.RRFReranker | null = null
 
   private connectionOptions: LanceDBConnectionOptions
   private tableName: string
@@ -90,6 +92,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
       // Connect to LanceDB
       this.db = await lancedb.connect(this.connectionOptions.uri)
+      this.reranker = await lancedb.rerankers.RRFReranker.create()
 
       // Initialize embedding service
       this.embeddingService = new EmbeddingService(this.config)
@@ -133,24 +136,42 @@ export class LanceDBProvider implements IVectorStoreProvider {
     try {
       // Check if table exists
       const tableNames = await this.db.tableNames()
+      const tableExists = tableNames.includes(this.tableName)
 
-      if (tableNames.includes(this.tableName)) {
+      if (tableExists) {
         // Open existing table
         this.table = await this.db.openTable(this.tableName)
         logger.info('📂 Opened existing LanceDB table', {
           tableName: this.tableName,
           component: 'LanceDBProvider',
         })
+
+        // Check if FTS index already exists
+        try {
+          // Try to perform a simple FTS search to see if index exists
+          await this.table.search('test', 'fts').limit(1).toArray()
+          this.ftsIndexInitialized = true
+          logger.info('📇 FTS index already exists', {
+            tableName: this.tableName,
+            component: 'LanceDBProvider',
+          })
+        } catch (error) {
+          // FTS index doesn't exist or failed, we'll create it later
+          logger.info('📇 FTS index not found, will create after adding documents', {
+            tableName: this.tableName,
+            component: 'LanceDBProvider',
+          })
+        }
       } else {
-        // Create new table with simplified schema
+        // Create new table with simplified schema and overwrite mode
         const schema = createLanceDBSchema(this.embeddingDimensions)
 
-        // Create table with empty data (will add documents later)
-        const emptyData: RAGDocumentRecord[] = []
+        // Create empty table with schema and overwrite mode
+        this.table = await this.db.createEmptyTable(this.tableName, schema, {
+          mode: 'overwrite',
+        })
 
-        this.table = await this.db.createTable(this.tableName, emptyData, { schema })
-
-        logger.info('🆕 Created new LanceDB table', {
+        logger.info('🆕 Created new LanceDB table with overwrite mode', {
           tableName: this.tableName,
           dimensions: this.embeddingDimensions,
           component: 'LanceDBProvider',
@@ -159,6 +180,70 @@ export class LanceDBProvider implements IVectorStoreProvider {
     } catch (error) {
       throw new Error(`Failed to initialize table ${this.tableName}: ${error}`)
     }
+  }
+
+  private async createFTSIndex(): Promise<void> {
+    if (!this.table) {
+      throw new Error('Table not initialized')
+    }
+
+    if (this.ftsIndexInitialized) {
+      return
+    }
+
+    try {
+      logger.info('📇 Creating FTS index on text field...', {
+        tableName: this.tableName,
+        component: 'LanceDBProvider',
+      })
+
+      // Create FTS index on the text field
+      await this.table.createIndex('text', {
+        config: lancedb.Index.fts(),
+      })
+
+      // Wait for index to be ready
+      await this.waitForIndex(this.table as any, 'text_idx')
+      this.ftsIndexInitialized = true
+
+      logger.info('✅ FTS index created successfully', {
+        tableName: this.tableName,
+        component: 'LanceDBProvider',
+      })
+    } catch (error) {
+      logger.error(
+        '❌ Failed to create FTS index',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          tableName: this.tableName,
+          component: 'LanceDBProvider',
+        }
+      )
+      throw error
+    }
+  }
+
+  private async waitForIndex(table: any, indexName: string): Promise<void> {
+    const maxWaitTime = 60000 // 60 seconds
+    const pollInterval = 1000 // 1 second
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        // Try to perform a simple FTS search to check if index is ready
+        await table.search('test', 'fts').limit(1).toArray()
+        logger.info(`📇 FTS index ${indexName} is ready`, {
+          waitTime: Date.now() - startTime,
+          component: 'LanceDBProvider',
+        })
+        return
+      } catch (error) {
+        // Index not ready yet, wait and retry
+        await new Promise((resolve) => setTimeout(resolve, pollInterval))
+      }
+    }
+
+    throw new Error(`FTS index ${indexName} creation timed out after ${maxWaitTime}ms`)
   }
 
   async addDocuments(documents: VectorDocument[]): Promise<void> {
@@ -210,10 +295,23 @@ export class LanceDBProvider implements IVectorStoreProvider {
       // Add directly to LanceDB (without duplicate checking)
       if (records.length > 0) {
         await this.table.add(records as any)
+
+        // Create FTS index if not already created and we have documents
+        if (!this.ftsIndexInitialized) {
+          try {
+            await this.createFTSIndex()
+          } catch (error) {
+            logger.warn(
+              '⚠️ FTS index creation failed, keyword and hybrid search will not be available',
+              error instanceof Error ? error : new Error(String(error))
+            )
+          }
+        }
       }
 
       logger.info('✅ Documents added successfully', {
         count: documents.length,
+        ftsIndexReady: this.ftsIndexInitialized,
         component: 'LanceDBProvider',
       })
     } catch (error) {
@@ -242,57 +340,57 @@ export class LanceDBProvider implements IVectorStoreProvider {
       throw new Error('LanceDB provider not properly initialized')
     }
 
+    const searchType = options.searchType || 'semantic'
     const endTiming = startTiming('lancedb_search', {
       query: query.substring(0, 50),
       topK: options.topK,
+      searchType,
       component: 'LanceDBProvider',
     })
 
     try {
-      logger.debug('🔍 Performing simplified LanceDB search', {
+      logger.debug('🔍 Performing LanceDB search', {
         query: query.substring(0, 100),
         topK: options.topK,
+        searchType,
         component: 'LanceDBProvider',
       })
 
-      // 1. Generate query embedding
-      const queryEmbedding = await TimeoutWrapper.withTimeout(
-        this.embeddingBridge.embedQuery(query),
-        { timeoutMs: 15000, operation: 'generate_query_embedding' }
-      )
+      let results: VectorSearchResult[]
 
-      // 2. Cosine similarity search using normalized vectors
-      let searchQuery = (this.table.search(queryEmbedding) as any)
-        .distanceType('cosine') // Calculate cosine distance (range [0,2] for normalized vectors)
-        .limit(options.topK || 10)
+      switch (searchType) {
+        case 'semantic':
+          results = await this.performSemanticSearch(query, options)
+          break
+        case 'keyword':
+          results = await this.performKeywordSearch(query, options)
+          break
+        case 'hybrid':
+          results = await this.performHybridSearch(query, options)
+          break
+        default:
+          throw new Error(`Unsupported search type: ${searchType}`)
+      }
 
-      // 3. Execute search
-      const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
-        searchQuery.toArray(),
-        { timeoutMs: 30000, operation: 'lancedb_search' }
-      )
-
-      logger.info('🔍 LanceDB raw search results', {
-        query: query.substring(0, 100),
-        rawResultsCount: rawResults.length,
-        component: 'LanceDBProvider',
-      })
-
-      // 4. Convert results (to new core types)
-      let results = rawResults.map(convertRAGResultToVectorSearchResult)
-
-      // 5. Score filtering (simplified)
-      if (options.scoreThreshold) {
+      // Score filtering
+      if (options.searchType == 'semantic' && options.scoreThreshold) {
         results = results.filter((result) => result.score >= options.scoreThreshold!)
         logger.info('📊 After score filtering', {
           scoreThreshold: options.scoreThreshold,
           filteredCount: results.length,
+          searchType,
           component: 'LanceDBProvider',
         })
       }
 
-      logger.info('✅ Simplified LanceDB search completed', {
+      // Set search type on results
+      results.forEach((result) => {
+        result.searchType = searchType
+      })
+
+      logger.info('✅ LanceDB search completed', {
         query: query.substring(0, 100),
+        searchType,
         resultsCount: results.length,
         topScore: results[0]?.score || 0,
         component: 'LanceDBProvider',
@@ -305,6 +403,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
         error instanceof Error ? error : new Error(String(error)),
         {
           query: query.substring(0, 100),
+          searchType,
           component: 'LanceDBProvider',
         }
       )
@@ -316,6 +415,139 @@ export class LanceDBProvider implements IVectorStoreProvider {
       throw error
     } finally {
       endTiming()
+    }
+  }
+
+  private async performSemanticSearch(
+    query: string,
+    options: VectorSearchOptions
+  ): Promise<VectorSearchResult[]> {
+    if (!this.table || !this.embeddingBridge) {
+      throw new Error('Table or embedding bridge not initialized')
+    }
+
+    // Generate query embedding
+    const queryEmbedding = await TimeoutWrapper.withTimeout(
+      this.embeddingBridge.embedQuery(query),
+      { timeoutMs: 15000, operation: 'generate_query_embedding' }
+    )
+
+    // Cosine similarity search using normalized vectors
+    let searchQuery = (this.table.search(queryEmbedding) as any)
+      .distanceType('cosine')
+      .limit(options.topK || 10)
+
+    // Execute search
+    const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(searchQuery.toArray(), {
+      timeoutMs: 30000,
+      operation: 'semantic_search',
+    })
+
+    // Convert results
+    return rawResults.map(convertRAGResultToVectorSearchResult)
+  }
+
+  private async performKeywordSearch(
+    query: string,
+    options: VectorSearchOptions
+  ): Promise<VectorSearchResult[]> {
+    if (!this.table) {
+      throw new Error('Table not initialized')
+    }
+
+    if (!this.ftsIndexInitialized) {
+      throw new Error(
+        'FTS index not available. Keyword search requires FTS index to be created first.'
+      )
+    }
+
+    // Perform FTS search
+    const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+      this.table
+        .search(query, 'fts')
+        .limit(options.topK || 10)
+        .toArray(),
+      { timeoutMs: 30000, operation: 'keyword_search' }
+    )
+
+    // Convert results and adjust scores for FTS
+    return rawResults.map((result) => {
+      const converted = convertRAGResultToVectorSearchResult(result)
+      // For FTS, use the FTS score if available, otherwise use a default score
+      if (result._score !== undefined) {
+        converted.keywordScore = result._score
+        converted.score = result._score
+      } else {
+        // FTS results might not have explicit scores, use a default
+        converted.keywordScore = 1.0
+        converted.score = 1.0
+      }
+      return converted
+    })
+  }
+
+  private async performHybridSearch(
+    query: string,
+    options: VectorSearchOptions
+  ): Promise<VectorSearchResult[]> {
+    if (!this.table || !this.embeddingBridge) {
+      throw new Error('Table or embedding bridge not initialized')
+    }
+
+    if (!this.ftsIndexInitialized) {
+      logger.warn('FTS index not available, falling back to semantic search', {
+        component: 'LanceDBProvider',
+      })
+      return this.performSemanticSearch(query, options)
+    }
+
+    try {
+      // Generate query embedding for hybrid search
+      const queryEmbedding = await TimeoutWrapper.withTimeout(
+        this.embeddingBridge.embedQuery(query),
+        { timeoutMs: 15000, operation: 'generate_query_embedding' }
+      )
+
+      // Perform hybrid search using LanceDB's native hybrid search capability
+      let rawResults: RAGSearchResult[] = []
+      if (this.reranker) {
+        rawResults = await TimeoutWrapper.withTimeout(
+          this.table
+            .query()
+            .fullTextSearch(query)
+            .nearestTo(queryEmbedding)
+            .rerank(this.reranker)
+            .limit(options.topK || 10)
+            .toArray(),
+          { timeoutMs: 30000, operation: 'hybrid_search' }
+        )
+      } else {
+        rawResults = await TimeoutWrapper.withTimeout(
+          this.table
+            .query()
+            .fullTextSearch(query)
+            .nearestTo(queryEmbedding)
+            .limit(options.topK || 10)
+            .toArray(),
+          { timeoutMs: 30000, operation: 'hybrid_search' }
+        )
+      }
+
+      // Convert results and preserve both vector and keyword scores
+      return rawResults.map((result) => {
+        const converted = convertRAGResultToVectorSearchResult(result)
+        // For hybrid search, the score from LanceDB is the combined score
+        if (result._relevance_score !== undefined) {
+          converted.score = result._relevance_score
+        }
+        return converted
+      })
+    } catch (error) {
+      logger.warn(
+        'Hybrid search failed, falling back to semantic search',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      return this.performSemanticSearch(query, options)
     }
   }
 

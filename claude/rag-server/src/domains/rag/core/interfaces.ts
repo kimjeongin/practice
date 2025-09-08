@@ -8,6 +8,8 @@ import type {
   SearchResult,
   VectorDocument,
   VectorSearchResult,
+  VectorSearchOptions,
+  SearchType,
   ModelInfo,
   RerankingInput,
   RerankingResult,
@@ -48,7 +50,7 @@ export interface IEmbeddingService {
 export interface IVectorStoreProvider {
   // Core operations
   addDocuments(documents: VectorDocument[]): Promise<void>
-  search(query: string, options?: any): Promise<VectorSearchResult[]>
+  search(query: string, options?: VectorSearchOptions): Promise<VectorSearchResult[]>
   removeDocumentsByFileId(fileId: string): Promise<void>
   removeAllDocuments(): Promise<void>
 

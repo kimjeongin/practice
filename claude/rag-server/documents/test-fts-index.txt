@@ -1,0 +1,5 @@
+This is a test document for FTS index creation.
+
+It contains keywords like: Python, machine learning, neural networks, databases, and search algorithms.
+
+This will trigger the creation of a full-text search index when the file is processed by the RAG server.
