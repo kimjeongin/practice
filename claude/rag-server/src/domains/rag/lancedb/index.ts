@@ -360,11 +360,11 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
     let results = rawResults.map(convertRAGResultToVectorSearchResult)
 
-    // Score filtering
-    if (options.scoreThreshold) {
-      results = results.filter((result) => result.score >= options.scoreThreshold!)
+    // Score filtering using config threshold
+    if (this.config.semanticScoreThreshold > 0) {
+      results = results.filter((result) => result.score >= this.config.semanticScoreThreshold)
       logger.info('📊 After score filtering', {
-        scoreThreshold: options.scoreThreshold,
+        scoreThreshold: this.config.semanticScoreThreshold,
         filteredCount: results.length,
         searchType: 'semantic',
         component: 'LanceDBProvider',

@@ -8,7 +8,6 @@ import type { ServerConfig } from '@/shared/config/config-factory.js'
 export interface SearchArgs {
   query: string
   topK?: number
-  scoreThreshold?: number
   searchType?: SearchType
 }
 
@@ -16,7 +15,7 @@ export class SearchHandler {
   constructor(private ragService: RAGService, private config?: ServerConfig) {}
 
   async handleSearch(args: SearchArgs) {
-    const { query, topK = 5, scoreThreshold, searchType = 'semantic' } = args
+    const { query, topK = 5, searchType = 'semantic' } = args
 
     if (!query) {
       return {
@@ -43,20 +42,10 @@ export class SearchHandler {
       // Use SearchService with user-configurable options
       const searchOptions: SearchOptions = {
         topK: topK ? Math.max(1, Math.min(topK, 50)) : 5, // Clamp between 1-50
-        scoreThreshold:
-          scoreThreshold !== undefined
-            ? Math.max(0.0, Math.min(1.0, scoreThreshold)) // Clamp between 0.0-1.0
-            : 0.5, // Default threshold
         searchType: searchType,
       }
 
       const results = await this.ragService.search(query, searchOptions)
-
-      // Determine the actual search method description for display
-      let actualSearchMethodDescription: string = searchType
-      if (searchType === 'hybrid') {
-        actualSearchMethodDescription = 'hybrid (semantic + keyword)'
-      }
 
       return {
         content: [
@@ -78,14 +67,11 @@ export class SearchHandler {
                     file_type: result.metadata?.fileType || 'unknown',
                     chunk_index: result.chunkIndex || 0,
                   },
-                  metadata: result.metadata,
                 })),
                 search_info: {
                   total_results: results.length,
                   search_type: searchType,
-                  search_method: actualSearchMethodDescription,
-                  max_requested: topK,
-                  score_threshold: searchOptions.scoreThreshold,
+                  topK: topK,
                 },
               },
               (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
@@ -96,7 +82,7 @@ export class SearchHandler {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      
+
       // Handle initialization errors specifically
       if (errorMessage.includes('not initialized')) {
         logger.warn('RAG service not initialized during search request', { error: errorMessage })
@@ -119,7 +105,7 @@ export class SearchHandler {
           isError: true,
         }
       }
-      
+
       logger.error('Search failed', error instanceof Error ? error : new Error(String(error)))
       return {
         content: [
@@ -163,14 +149,6 @@ export class SearchHandler {
               default: 5,
               minimum: 1,
               maximum: 50,
-            },
-            scoreThreshold: {
-              type: 'number',
-              description:
-                'Minimum similarity score threshold (0.0-1.0) for filtering results. Higher values = more relevant but fewer results. Lower values = more results but may include less relevant matches. Guidelines: 0.8+ = Very similar content only, 0.6-0.8 = Moderately similar content, 0.3-0.6 = Broadly related content, 0.1-0.3 = Loosely related content. Use higher thresholds (0.7+) for precise searches, lower thresholds (0.3-0.5) for exploratory searches.',
-              default: 0.5,
-              minimum: 0.0,
-              maximum: 1.0,
             },
             searchType: {
               type: 'string',

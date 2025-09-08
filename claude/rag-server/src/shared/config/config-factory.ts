@@ -49,6 +49,9 @@ export interface ServerConfig {
   // Embedding configuration
   embeddingConcurrency: number
 
+  // Search configuration
+  semanticScoreThreshold: number
+
   // Ollama configuration
   embeddingModel: string
   embeddingBatchSize: number
@@ -103,6 +106,9 @@ export class ConfigFactory {
 
       // Embedding configuration
       embeddingConcurrency: parseInt(process.env['EMBEDDING_CONCURRENCY'] || '3'),
+
+      // Search configuration
+      semanticScoreThreshold: parseFloat(process.env['SEMANTIC_SCORE_THRESHOLD'] || '0.7'),
 
       // Ollama configuration
       embeddingModel: process.env['EMBEDDING_MODEL'] || 'dengcao/Qwen3-Embedding-0.6B:Q8_0',

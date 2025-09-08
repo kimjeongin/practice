@@ -110,7 +110,6 @@ export type SearchType = 'semantic' | 'keyword' | 'hybrid'
  */
 export interface VectorSearchOptions {
   topK?: number // maximum number of results
-  scoreThreshold?: number // minimum score threshold
   searchType?: SearchType // search method to use
 }
 
@@ -175,7 +174,6 @@ export interface LanceDBTableOptions {
 
 export interface SearchOptions {
   topK?: number
-  scoreThreshold?: number
   searchType?: SearchType // search method to use
 }
 

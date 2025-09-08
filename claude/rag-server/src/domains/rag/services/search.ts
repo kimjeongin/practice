@@ -79,7 +79,6 @@ export class SearchService implements ISearchService {
     const startTime = Date.now()
     const vectorResults = await this.vectorStore.search(query, {
       topK: options.topK || 10,
-      scoreThreshold: options.scoreThreshold || 0.0,
       searchType: searchType,
     })
 
