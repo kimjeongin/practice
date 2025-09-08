@@ -12,16 +12,14 @@ import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
 import { TimeoutWrapper } from '@/shared/utils/resilience.js'
 
 export class SearchService implements ISearchService {
-  constructor(
-    private vectorStore: LanceDBProvider
-  ) {
+  constructor(private vectorStore: LanceDBProvider) {
     logger.info('✅ SearchService initialized', {
       component: 'SearchService',
     })
   }
 
-  async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
-    const searchType = options.searchType || 'semantic'
+  async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
+    const searchType = options.searchType
     const endTiming = startTiming('search_pipeline', {
       query: query.substring(0, 50),
       searchType,
@@ -31,18 +29,15 @@ export class SearchService implements ISearchService {
     try {
       logger.info('🔍 Starting search', {
         query: query.substring(0, 100),
-        topK: options.topK || 10,
+        topK: options.topK,
         searchType,
         component: 'SearchService',
       })
 
-      const searchResults = await TimeoutWrapper.withTimeout(
-        this.performSearch(query, options),
-        {
-          timeoutMs: parseInt(process.env.SEARCH_PIPELINE_TIMEOUT_MS || '60000'),
-          operation: 'search',
-        }
-      )
+      const searchResults = await TimeoutWrapper.withTimeout(this.performSearch(query, options), {
+        timeoutMs: parseInt(process.env.SEARCH_PIPELINE_TIMEOUT_MS || '60000'),
+        operation: 'search',
+      })
 
       logger.info('✅ Search completed', {
         query: query.substring(0, 100),
@@ -70,15 +65,12 @@ export class SearchService implements ISearchService {
     }
   }
 
-  private async performSearch(
-    query: string,
-    options: SearchOptions
-  ): Promise<SearchResult[]> {
-    const searchType = options.searchType || 'semantic'
-    
+  private async performSearch(query: string, options: SearchOptions): Promise<SearchResult[]> {
+    const searchType = options.searchType
+
     const startTime = Date.now()
     const vectorResults = await this.vectorStore.search(query, {
-      topK: options.topK || 10,
+      topK: options.topK,
       searchType: searchType,
     })
 
@@ -98,8 +90,6 @@ export class SearchService implements ISearchService {
       metadata: result.metadata,
       chunkIndex: result.chunkIndex,
       searchType: searchType,
-      vectorScore: result.score,
-      keywordScore: result.keywordScore,
     }))
   }
 }

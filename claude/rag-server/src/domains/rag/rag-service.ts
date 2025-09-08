@@ -13,10 +13,7 @@ import type {
   VectorStoreInfo,
   EmbeddingModelInfo,
 } from './core/types.js'
-import type {
-  IVectorStoreProvider,
-  IEmbeddingService,
-} from './core/interfaces.js'
+import type { IVectorStoreProvider, IEmbeddingService } from './core/interfaces.js'
 
 // Internal service imports (concrete classes - RAG domain internal)
 import { LanceDBProvider } from './lancedb/index.js'
@@ -96,9 +93,7 @@ export class RAGService {
 
       // Initialize SearchService with dependencies (passing concrete classes)
       logger.debug('Initializing search service...')
-      this.searchService = new SearchService(
-        this.vectorStoreProvider as LanceDBProvider
-      )
+      this.searchService = new SearchService(this.vectorStoreProvider as LanceDBProvider)
 
       // Initialize DocumentProcessor
       logger.debug('Initializing document processor...')
@@ -173,21 +168,27 @@ export class RAGService {
    * Search the RAG system
    * High-level interface for retrieval and search
    */
-  async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
+  async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
     this.ensureInitialized()
 
     if (!query || query.trim().length === 0) {
       throw new StructuredError('Search query cannot be empty', ErrorCode.VALIDATION_ERROR)
     }
 
+    // Create complete SearchOptions with defaults
+    const searchOptions: SearchOptions = {
+      topK: options.topK,
+      searchType: options.searchType,
+    }
+
     try {
       logger.info('🔍 Performing RAG search', {
         query: query.substring(0, 100),
-        options,
+        options: searchOptions,
         component: 'RAGService',
       })
 
-      const results = await this.searchService!.search(query, options)
+      const results = await this.searchService!.search(query, searchOptions)
 
       logger.info('✅ RAG search completed', {
         resultCount: results.length,
@@ -316,10 +317,7 @@ export class RAGService {
    * Check if RAGService is ready for operations
    */
   isReady(): boolean {
-    return (
-      this.isInitialized &&
-      !!this.vectorStoreProvider?.isHealthy()
-    )
+    return this.isInitialized && !!this.vectorStoreProvider?.isHealthy()
   }
 
   // Backward compatibility methods (for MCP handlers)

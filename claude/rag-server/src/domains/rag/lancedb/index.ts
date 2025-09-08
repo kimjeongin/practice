@@ -259,14 +259,14 @@ export class LanceDBProvider implements IVectorStoreProvider {
       endTiming()
     }
   }
-  async search(query: string, options: VectorSearchOptions = {}): Promise<VectorSearchResult[]> {
+  async search(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]> {
     await this.initialize()
 
     if (!this.table || !this.embeddingBridge) {
       throw new Error('LanceDB provider not properly initialized')
     }
 
-    const searchType = options.searchType || 'semantic'
+    const searchType = options.searchType
     const endTiming = startTiming('lancedb_search', {
       query: query.substring(0, 50),
       topK: options.topK,
@@ -297,11 +297,6 @@ export class LanceDBProvider implements IVectorStoreProvider {
         default:
           throw new Error(`Unsupported search type: ${searchType}`)
       }
-
-      // Set search type on results
-      results.forEach((result) => {
-        result.searchType = searchType
-      })
 
       logger.info('✅ LanceDB search completed', {
         query: query.substring(0, 100),
@@ -350,7 +345,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
     // Cosine similarity search using normalized vectors
     let searchQuery = (this.table.search(queryEmbedding) as any)
       .distanceType('cosine')
-      .limit(options.topK || 10)
+      .limit(options.topK)
 
     // Execute search
     const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(searchQuery.toArray(), {
@@ -387,25 +382,13 @@ export class LanceDBProvider implements IVectorStoreProvider {
     const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
       this.table
         .search(query, 'fts')
-        .limit(options.topK || 10)
+        .limit(options.topK)
         .toArray(),
       { timeoutMs: 30000, operation: 'keyword_search' }
     )
 
     // Convert results and adjust scores for FTS
-    return rawResults.map((result) => {
-      const converted = convertRAGResultToVectorSearchResult(result)
-      // For FTS, use the FTS score if available, otherwise use a default score
-      if (result._score !== undefined) {
-        converted.keywordScore = result._score
-        converted.score = result._score
-      } else {
-        // FTS results might not have explicit scores, use a default
-        converted.keywordScore = 1.0
-        converted.score = 1.0
-      }
-      return converted
-    })
+    return rawResults.map((result) => convertRAGResultToVectorSearchResult(result))
   }
 
   private async performHybridSearch(
@@ -434,26 +417,19 @@ export class LanceDBProvider implements IVectorStoreProvider {
           .fullTextSearch(query)
           .nearestTo(queryEmbedding)
           .rerank(this.reranker)
-          .limit(options.topK || 10)
+          .limit(options.topK)
           .toArray(),
         { timeoutMs: 30000, operation: 'hybrid_search' }
       )
 
       // Convert results and preserve both vector and keyword scores
-      return rawResults.map((result) => {
-        const converted = convertRAGResultToVectorSearchResult(result)
-        // For hybrid search, the score from LanceDB is the combined score
-        if (result._relevance_score !== undefined) {
-          converted.score = result._relevance_score
-        }
-        return converted
-      })
+      return rawResults.map((result) => convertRAGResultToVectorSearchResult(result))
     } catch (error) {
-      logger.warn(
+      logger.error(
         'Hybrid search failed, falling back to semantic search',
         error instanceof Error ? error : new Error(String(error))
       )
-      return this.performSemanticSearch(query, options)
+      throw error
     }
   }
 

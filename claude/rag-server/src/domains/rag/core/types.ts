@@ -91,10 +91,6 @@ export interface VectorSearchResult {
   // Search scores
   score: number // similarity score (0-1, higher is more similar)
 
-  // Search method information
-  searchType?: SearchType // The search method that was used
-  keywordScore?: number // Keyword search score (when available)
-
   // Metadata
   metadata: DocumentMetadata
   chunkIndex: number // chunk index (compatibility)
@@ -109,8 +105,8 @@ export type SearchType = 'semantic' | 'keyword' | 'hybrid'
  * Vector search options - provider-independent common search options (simplified)
  */
 export interface VectorSearchOptions {
-  topK?: number // maximum number of results
-  searchType?: SearchType // search method to use
+  topK: number // maximum number of results
+  searchType: SearchType // search method to use
 }
 
 /**
@@ -173,8 +169,8 @@ export interface LanceDBTableOptions {
 // ========================================
 
 export interface SearchOptions {
-  topK?: number
-  searchType?: SearchType // search method to use
+  topK: number
+  searchType: SearchType // search method to use
 }
 
 export interface SearchResult {
@@ -184,11 +180,7 @@ export interface SearchResult {
   chunkIndex: number
 
   // Search method information
-  searchType?: SearchType // The search method that was used
-
-  // Additional scoring information
-  vectorScore?: number // Vector search score
-  keywordScore?: number // Keyword search score (when available)
+  searchType: SearchType // The search method that was used
 }
 
 // ========================================

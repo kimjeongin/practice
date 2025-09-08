@@ -58,9 +58,8 @@ export class SearchHandler {
                 results: results.map((result, index) => ({
                   rank: index + 1,
                   content: result.content,
-                  search_type: result.searchType || searchType,
-                  vector_score: result.vectorScore,
-                  keyword_score: result.keywordScore,
+                  search_type: result.searchType,
+                  score: result.score,
                   source: {
                     filename: result.metadata?.fileName || result.metadata?.name || 'unknown',
                     filepath: result.metadata?.filePath || result.metadata?.path || 'unknown',

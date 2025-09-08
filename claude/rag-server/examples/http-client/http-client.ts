@@ -135,7 +135,7 @@ async function testStreamableHTTPClient(): Promise<void> {
             console.log('📄 Sample result:', {
               rank: result.results[0].rank,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].vector_score,
+              vectorScore: result.results[0].score,
               contentPreview: result.results[0].content?.substring(0, 100) + '...',
             })
           }
@@ -179,7 +179,7 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].vector_score,
+              vectorScore: result.results[0].score,
               keywordScore: result.results[0].keyword_score,
             })
           }
@@ -220,7 +220,7 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].vector_score,
+              vectorScore: result.results[0].score,
               keywordScore: result.results[0].keyword_score,
             })
           }
@@ -261,7 +261,7 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].vector_score,
+              vectorScore: result.results[0].score,
               keywordScore: result.results[0].keyword_score,
             })
           }
@@ -285,7 +285,6 @@ async function testStreamableHTTPClient(): Promise<void> {
         const endTime = performance.now()
         const toolCallDuration = endTime - startTime
 
-
         if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
           const result = JSON.parse((searchResult.content[0] as any).text) as any
           console.log('🎯 Search results:', {
@@ -301,7 +300,7 @@ async function testStreamableHTTPClient(): Promise<void> {
               rank: result.results[0].rank,
               searchType: result.results[0].search_type,
               filename: result.results[0].source?.filename,
-              vectorScore: result.results[0].vector_score,
+              vectorScore: result.results[0].score,
             })
           }
         }
@@ -391,7 +390,7 @@ async function startInteractiveSearch(client: Client): Promise<void> {
           console.log('\n📄 Results:')
           result.results.forEach((res: any, index: number) => {
             console.log(`\n${index + 1}. ${res.source?.filename || 'Unknown file'}`)
-            console.log(`   Score: ${res.vector_score?.toFixed(3) || 'N/A'}`)
+            console.log(`   Score: ${res.score?.toFixed(3) || 'N/A'}`)
             console.log(
               `   Content: ${res.content?.substring(0, 150)}${
                 res.content?.length > 150 ? '...' : ''
