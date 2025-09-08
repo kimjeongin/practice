@@ -29,6 +29,35 @@ export class InformationHandler {
         ],
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      
+      // Handle initialization errors specifically
+      if (errorMessage.includes('not initialized')) {
+        logger.warn('RAG service not initialized during info request', { error: errorMessage })
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  error: 'ServiceNotReady',
+                  message: 'RAG service is not fully initialized yet',
+                  suggestion:
+                    'The server is still starting up. This usually takes 5-10 seconds. Please wait a moment and try again.',
+                  status: {
+                    serverStarted: true,
+                    ragServiceReady: false,
+                  },
+                },
+                null,
+                2
+              ),
+            },
+          ],
+          isError: true,
+        }
+      }
+      
       logger.error(
         'Get vector db info failed',
         error instanceof Error ? error : new Error(String(error))
@@ -40,7 +69,7 @@ export class InformationHandler {
             text: JSON.stringify(
               {
                 error: 'VectorDBInfoFailed',
-                message: error instanceof Error ? error.message : 'Failed to get vector db info',
+                message: errorMessage,
                 suggestion:
                   'This usually indicates database initialization issues. Try: 1) Restart the MCP server, 2) Check if the database directory exists and has proper permissions, 3) Verify the LANCEDB_URI environment variable, 4) Run yarn db:setup if using the development setup',
               },

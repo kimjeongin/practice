@@ -91,6 +91,31 @@ export class SearchHandler {
         ],
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      
+      // Handle initialization errors specifically
+      if (errorMessage.includes('not initialized')) {
+        logger.warn('RAG service not initialized during search request', { error: errorMessage })
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  error: 'ServiceNotReady',
+                  message: 'RAG service is not fully initialized yet',
+                  suggestion:
+                    'The server is still starting up. Please wait a few seconds and try again, or use get_vectordb_info to check service status.',
+                },
+                (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
+                2
+              ),
+            },
+          ],
+          isError: true,
+        }
+      }
+      
       logger.error('Search failed', error instanceof Error ? error : new Error(String(error)))
       return {
         content: [
@@ -99,7 +124,7 @@ export class SearchHandler {
             text: JSON.stringify(
               {
                 error: 'SearchFailed',
-                message: error instanceof Error ? error.message : 'Search operation failed',
+                message: errorMessage,
                 suggestion:
                   'Try these steps: 1) Use get_vectordb_info to verify documents are indexed, 2) Simplify your query or try different keywords, 3) Check if the embedding service is running properly, 4) Ensure documents are placed in the correct directory',
               },

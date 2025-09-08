@@ -1,30 +1,30 @@
-# RAG Server Stdio Client Example
+# RAG Server HTTP Client Example
 
-This directory contains a TypeScript example for connecting to the RAG MCP server using stdio transport.
+This directory contains a TypeScript example for connecting to the RAG MCP server using streamable HTTP transport.
 
 ## Files
 
-- `stdio-client.ts` - Test client with basic tool testing and interactive search mode
+- `http-client.ts` - Test client with basic tool testing and interactive search mode
 - `package.json` - Dependencies and scripts
 - `tsconfig.json` - TypeScript configuration
 
 ## Prerequisites
 
-1. Make sure the RAG MCP server is built:
+1. Make sure the RAG MCP server is running with HTTP transport:
    ```bash
    # From the project root
-   yarn build
+   MCP_TRANSPORT=streamable-http MCP_PORT=3000 yarn start
    ```
 
 2. Install dependencies in this directory:
    ```bash
-   cd examples/stdio-client
+   cd examples/http-client
    yarn install
    ```
 
 ## Usage
 
-Run the stdio client:
+Run the HTTP client:
 
 ```bash
 # Using TypeScript directly (development)
@@ -37,7 +37,7 @@ yarn start
 The client will:
 
 1. **Initial Tests**: Connect to the server and run basic tests
-   - Spawn the server as a child process with stdio transport
+   - Connect to the server at `http://localhost:3000/mcp`
    - List available tools
    - Test `get_vectordb_info` tool
    - Test `search` tool with basic and reranking searches
@@ -56,9 +56,9 @@ The client will:
 ## Example Session
 
 ```
-🔗 Starting stdio MCP client test...
+🔗 Starting streamable-http MCP client test...
 
-📡 Creating stdio transport...
+📡 Connecting to server: http://localhost:3000/mcp
 🔌 Connecting to server...
 ✅ Connected successfully!
 
@@ -67,7 +67,7 @@ The client will:
 
 [Tool tests run...]
 
-✅ stdio transport test completed successfully!
+✅ streamable-http transport test completed successfully!
 
 🔍 Starting interactive search mode...
 💡 Commands:
@@ -97,16 +97,8 @@ The client will:
 👋 Goodbye!
 ```
 
-## Differences from HTTP Client
-
-- **Transport**: Uses stdio transport instead of HTTP
-- **Server Spawning**: Automatically spawns the server as a child process
-- **Process Management**: Server lifecycle is managed by the client
-- **No Network Setup**: No need for HTTP server configuration
-
 ## Troubleshooting
 
-- **Connection Failed**: Make sure the server is built with `yarn build`
+- **Connection Failed**: Make sure the server is running with `MCP_TRANSPORT=streamable-http MCP_PORT=3000 yarn start`
 - **No Results**: Try lowering the score threshold or using different keywords
 - **Tool Not Available**: Verify the server is properly initialized and tools are registered
-- **Child Process Issues**: Check that Node.js has permission to spawn child processes
