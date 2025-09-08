@@ -42,16 +42,14 @@ The client will:
    - Test `get_vectordb_info` tool
    - Test `search` tool with basic and reranking searches
 
-2. **Interactive Search Mode**: After tests complete, enter interactive mode
-   - **Continuous search**: Keep entering queries until you type "exit"
-   - **Real-time results**: See search results immediately
-   - **Help system**: Type "help" for usage information
+2. **Additional Search Tests**: Run predefined search queries
+   - Test 5 different search queries automatically
+   - Alternate between vector search and reranking search
+   - Display results summary for each query
 
-#### Interactive Commands
-
-- `[query text]` - Perform semantic search
-- `help` - Show help and current settings
-- `exit` - Quit the application
+3. **Test Completion**: After all tests complete, client automatically disconnects
+   - No user interaction required - all tests run automatically
+   - For interactive search, use the HTTP client instead
 
 ## Example Session
 
@@ -69,32 +67,27 @@ The client will:
 
 ✅ stdio transport test completed successfully!
 
-🔍 Starting interactive search mode...
-💡 Commands:
-   • Type a search query to search
-   • Type "help" for more information
-   • Type "exit" to quit
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 Running additional search tests with predefined queries...
 
-🔍 Enter search query (or "help", "exit"): python programming
+📝 Test 1/5: "machine learning algorithms"
+   ⏱️  Duration: 95.23ms
+   📊 Results: 0
+   🔍 Method: vector search
+   📄 No results found
 
-🔍 Searching for: "python programming"
-⏳ Processing...
+📝 Test 2/5: "database configuration"
+   ⏱️  Duration: 112.45ms
+   📊 Results: 0
+   🔍 Method: 2-stage (vector + rerank)
+   📄 No results found
 
-🎯 Search Results (245.67ms):
-   Query: "python programming"
-   Results: 3
-   Method: vector search
+[Additional tests...]
 
-📄 Results:
+✅ Additional search tests completed!
 
-1. programming_guide.md
-   Score: 0.875
-   Content: Python is a high-level programming language that...
-
-🔍 Enter search query (or "help", "exit"): exit
-
-👋 Goodbye!
+💡 For interactive search, use the HTTP client instead:
+   cd ../http-client && yarn dev
+🔌 Client disconnected
 ```
 
 ## Differences from HTTP Client
@@ -103,6 +96,8 @@ The client will:
 - **Server Spawning**: Automatically spawns the server as a child process
 - **Process Management**: Server lifecycle is managed by the client
 - **No Network Setup**: No need for HTTP server configuration
+- **Testing Mode**: Runs predefined tests automatically instead of interactive mode
+- **No User Input**: All tests run without requiring user interaction
 
 ## Troubleshooting
 

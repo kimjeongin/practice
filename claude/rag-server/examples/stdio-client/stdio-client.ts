@@ -2,16 +2,15 @@
 
 /**
  * Stdio Transport MCP Client Example (TypeScript)
- * 
+ *
  * This client connects to the MCP server using stdio transport.
- * The server will be spawned as a child process and includes interactive search.
+ * The server will be spawned as a child process for testing tools.
  */
 
 import { fileURLToPath } from 'url'
-import { dirname } from 'path'
+import { dirname, resolve } from 'path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import * as process from 'process'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -24,15 +23,41 @@ async function testStdioClient(): Promise<void> {
   try {
     // 1. Create stdio transport
     console.log('📡 Creating stdio transport...')
-    
+
+    // Resolve absolute path to the server entry point
+    const serverPath = resolve(__dirname, '../../../dist/app/index.js')
+    console.log('📁 Server path:', serverPath)
+
+    // Check if server file exists
+    try {
+      await import('fs/promises').then((fs) => fs.access(serverPath))
+    } catch (error) {
+      throw new Error(
+        `Server file not found: ${serverPath}\nPlease run 'yarn build' from the project root first.`
+      )
+    }
+
     const transport = new StdioClientTransport({
       command: 'node',
-      args: ['../../../dist/app/index.js'],
-      cwd: __dirname,
+      args: [serverPath],
       env: {
-        ...process.env,
-        MCP_TRANSPORT: 'stdio'
-      }
+        NODE_ENV: 'development',
+        DATA_DIR: '/Users/jeongin/workspace/practice/claude/rag-server/.data',
+        DOCUMENTS_DIR: '/Users/jeongin/workspace/practice/claude/rag-server/documents',
+        LOG_LEVEL: 'info',
+        CHUNK_SIZE: '400',
+        CHUNK_OVERLAP: '100',
+        CHUNKING_STRATEGY: 'normal',
+        CONTEXTUAL_CHUNKING_MODEL: 'qwen3:0.6b',
+        OLLAMA_BASE_URL: 'http://localhost:11434',
+        EMBEDDING_MODEL: 'yxchia/multilingual-e5-large-instruct:latest',
+        RERANKING_MODEL: 'xitao/bge-reranker-v2-m3:latest',
+        LANCEDB_URI: '/Users/jeongin/workspace/practice/claude/rag-server/.data/lancedb',
+        MCP_TRANSPORT: 'stdio',
+        MAX_CONCURRENT_PROCESSING: '3',
+        MIN_CHUNK_SIZE: '300',
+        MAX_ERROR_HISTORY: '1000',
+      },
     })
 
     // 2. Create and connect client
@@ -50,8 +75,20 @@ async function testStdioClient(): Promise<void> {
     )
 
     console.log('🔌 Connecting to server...')
-    await client.connect(transport)
-    console.log('✅ Connected successfully!\n')
+
+    // Set connection timeout
+    const connectTimeout = setTimeout(() => {
+      throw new Error('Connection timeout after 10 seconds. Server may not be starting properly.')
+    }, 100000)
+
+    try {
+      await client.connect(transport)
+      clearTimeout(connectTimeout)
+      console.log('✅ Connected successfully!\n')
+    } catch (error) {
+      clearTimeout(connectTimeout)
+      throw error
+    }
 
     // 3. Test list tools
     console.log('🔍 Testing tools/list...')
@@ -62,7 +99,10 @@ async function testStdioClient(): Promise<void> {
     // 4. Test get_vectordb_info tool
     if (toolsResult.tools.some((t) => t.name === 'get_vectordb_info')) {
       console.log('🗄️  Testing get_vectordb_info tool...')
-      console.log('📝 Tool description:', toolsResult.tools.find(t => t.name === 'get_vectordb_info')?.description)
+      console.log(
+        '📝 Tool description:',
+        toolsResult.tools.find((t) => t.name === 'get_vectordb_info')?.description
+      )
       try {
         const startTime = performance.now()
         const vectordbResult = await client.callTool({
@@ -87,12 +127,18 @@ async function testStdioClient(): Promise<void> {
             ragSystemInfo: result.rag_system_info ? 'available' : 'unavailable',
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
-          
+
           if (result.rag_system_info) {
             console.log('📊 RAG Components:', {
-              vectorStore: result.rag_system_info.vectorStore?.isHealthy ? '✅ healthy' : '❌ unhealthy',
-              embeddingService: result.rag_system_info.embeddingService?.isHealthy ? '✅ healthy' : '❌ unhealthy',
-              rerankingService: result.rag_system_info.rerankingService?.isHealthy ? '✅ healthy' : '❌ unhealthy',
+              vectorStore: result.rag_system_info.vectorStore?.isHealthy
+                ? '✅ healthy'
+                : '❌ unhealthy',
+              embeddingService: result.rag_system_info.embeddingService?.isHealthy
+                ? '✅ healthy'
+                : '❌ unhealthy',
+              rerankingService: result.rag_system_info.rerankingService?.isHealthy
+                ? '✅ healthy'
+                : '❌ unhealthy',
             })
           }
         }
@@ -105,8 +151,11 @@ async function testStdioClient(): Promise<void> {
     // 5. Test search tool if available
     if (toolsResult.tools.some((t) => t.name === 'search')) {
       console.log('🔎 Testing search tool...')
-      console.log('📝 Tool description:', toolsResult.tools.find(t => t.name === 'search')?.description)
-      
+      console.log(
+        '📝 Tool description:',
+        toolsResult.tools.find((t) => t.name === 'search')?.description
+      )
+
       // Test basic search first
       console.log('🔍 Running basic search test...')
       try {
@@ -114,7 +163,7 @@ async function testStdioClient(): Promise<void> {
         const searchResult = await client.callTool({
           name: 'search',
           arguments: {
-            query: 'configuration settings',
+            query: 'python programming',
             topK: 3,
             enableReranking: false,
             scoreThreshold: 0.3,
@@ -134,7 +183,7 @@ async function testStdioClient(): Promise<void> {
             scoreThreshold: result.search_info?.score_threshold || 0,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
-          
+
           if (result.results && result.results.length > 0) {
             console.log('📄 Sample result:', {
               rank: result.results[0].rank,
@@ -148,7 +197,7 @@ async function testStdioClient(): Promise<void> {
       } catch (error) {
         console.log('⚠️  Basic search test failed:', (error as Error).message)
       }
-      
+
       // Test reranking search
       console.log('🔍 Running reranking search test...')
       try {
@@ -176,7 +225,7 @@ async function testStdioClient(): Promise<void> {
             rerankingEnabled: result.search_info?.reranking_enabled || false,
             toolCallTime: `${toolCallDuration.toFixed(2)}ms`,
           })
-          
+
           if (result.results && result.results.length > 0) {
             console.log('📄 Top reranked result:', {
               rank: result.results[0].rank,
@@ -192,20 +241,70 @@ async function testStdioClient(): Promise<void> {
       console.log('')
     }
 
-
     console.log('✅ stdio transport test completed successfully!')
-    
-    // Start interactive search if search tool is available
+
+    // Additional search tests with predefined queries
     if (toolsResult.tools.some((t) => t.name === 'search')) {
-      console.log('\n🔍 Starting interactive search mode...')
-      console.log('💡 Commands:')
-      console.log('   • Type a search query to search')
-      console.log('   • Type "help" for more information') 
-      console.log('   • Type "exit" to quit')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      
-      await startInteractiveSearch(client)
+      console.log('\n🔍 Running additional search tests with predefined queries...')
+
+      const testQueries = [
+        'machine learning algorithms',
+        'database configuration',
+        'API documentation',
+        'error handling best practices',
+        'security guidelines',
+      ]
+
+      for (let i = 0; i < testQueries.length; i++) {
+        const query = testQueries[i]
+        console.log(`\n📝 Test ${i + 1}/${testQueries.length}: "${query}"`)
+
+        try {
+          const startTime = performance.now()
+          const searchResult = await client.callTool({
+            name: 'search',
+            arguments: {
+              query,
+              topK: 3,
+              enableReranking: i % 2 === 1, // Alternate between with/without reranking
+              scoreThreshold: 0.3,
+            },
+          })
+          const endTime = performance.now()
+          const duration = endTime - startTime
+
+          if (
+            searchResult.content &&
+            searchResult.content[0] &&
+            'text' in searchResult.content[0]
+          ) {
+            const result = JSON.parse((searchResult.content[0] as any).text) as any
+
+            console.log(`   ⏱️  Duration: ${duration.toFixed(2)}ms`)
+            console.log(`   📊 Results: ${result.results_count || 0}`)
+            console.log(`   🔍 Method: ${result.search_info?.search_method || 'unknown'}`)
+
+            if (result.results && result.results.length > 0) {
+              const topResult = result.results[0]
+              console.log(
+                `   🎯 Top match: ${topResult.source?.filename || 'Unknown'} (Score: ${
+                  topResult.vector_score?.toFixed(3) || 'N/A'
+                })`
+              )
+            } else {
+              console.log(`   📄 No results found`)
+            }
+          }
+        } catch (error) {
+          console.log(`   ❌ Search failed: ${(error as Error).message}`)
+        }
+      }
+
+      console.log('\n✅ Additional search tests completed!')
     }
+
+    console.log('\n💡 For interactive search, use the HTTP client instead:')
+    console.log('   cd ../http-client && yarn dev')
   } catch (error) {
     console.error('❌ Test failed:', (error as Error).message)
     console.error('💡 Make sure the server is built with:')
@@ -220,105 +319,6 @@ async function testStdioClient(): Promise<void> {
       } catch (e) {
         console.log('⚠️  Error closing client:', (e as Error).message)
       }
-    }
-  }
-}
-
-async function startInteractiveSearch(client: Client): Promise<void> {
-  const searchOptions = {
-    topK: 5,
-    enableReranking: false,
-    scoreThreshold: 0.3,
-  }
-
-  const askQuestion = (question: string): Promise<string> => {
-    return new Promise((resolve) => {
-      process.stdout.write(question)
-      
-      const onData = (data: string) => {
-        const input = data.toString().trim()
-        process.stdin.removeListener('data', onData)
-        resolve(input)
-      }
-      
-      process.stdin.on('data', onData)
-    })
-  }
-
-  const performSearch = async (query: string): Promise<void> => {
-    console.log(`🔍 Searching for: "${query}"`)
-    console.log('⏳ Processing...')
-
-    try {
-      const startTime = performance.now()
-      const searchResult = await client.callTool({
-        name: 'search',
-        arguments: {
-          query: query.trim(),
-          topK: searchOptions.topK,
-          enableReranking: searchOptions.enableReranking,
-          scoreThreshold: searchOptions.scoreThreshold,
-        },
-      })
-      const endTime = performance.now()
-      const duration = endTime - startTime
-
-      if (searchResult.content && searchResult.content[0] && 'text' in searchResult.content[0]) {
-        const result = JSON.parse((searchResult.content[0] as any).text) as any
-
-        console.log(`\n🎯 Search Results (${duration.toFixed(2)}ms):`)
-        console.log(`   Query: "${result.query}"`)
-        console.log(`   Results: ${result.results_count || 0}`)
-        console.log(`   Method: ${result.search_info?.search_method || 'unknown'}`)
-
-        if (result.results && result.results.length > 0) {
-          console.log('\n📄 Results:')
-          result.results.forEach((res: any, index: number) => {
-            console.log(`\n${index + 1}. ${res.source?.filename || 'Unknown file'}`)
-            console.log(`   Score: ${res.vector_score?.toFixed(3) || 'N/A'}`)
-            if (res.reranking_score !== undefined) {
-              console.log(`   Rerank: ${res.reranking_score.toFixed(3)}`)
-            }
-            console.log(`   Content: ${res.content?.substring(0, 150)}${res.content?.length > 150 ? '...' : ''}`)
-          })
-        } else {
-          console.log('\n📄 No results found')
-        }
-      }
-    } catch (error) {
-      console.log(`❌ Search failed: ${(error as Error).message}`)
-    }
-
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  }
-
-  const showHelp = (): void => {
-    console.log('\n🔍 Interactive Search Help:')
-    console.log('   • [query text] - Perform semantic search')
-    console.log('   • help         - Show this help message')  
-    console.log('   • exit         - Quit the application')
-    console.log('\n💡 Current settings:')
-    console.log(`   • topK: ${searchOptions.topK}`)
-    console.log(`   • reranking: ${searchOptions.enableReranking}`)
-    console.log(`   • threshold: ${searchOptions.scoreThreshold}`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  }
-
-  process.stdin.setEncoding('utf8')
-
-  while (true) {
-    const input = await askQuestion('\n🔍 Enter search query (or "help", "exit"): ')
-    const trimmedInput = input.trim().toLowerCase()
-
-    if (trimmedInput === 'exit') {
-      console.log('\n👋 Goodbye!')
-      break
-    } else if (trimmedInput === 'help') {
-      showHelp()
-    } else if (trimmedInput === '') {
-      console.log('⚠️  Please enter a search query or command')
-    } else {
-      await performSearch(input.trim())
     }
   }
 }

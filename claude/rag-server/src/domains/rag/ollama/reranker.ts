@@ -310,10 +310,10 @@ Is this document relevant to the query? Answer:`
       }
 
       const data = (await response.json()) as {
-        model_info: { 'qwen3.context_length': number }
+        model_info: { 'bert.context_length': number }
       }
       return {
-        maxTokens: data.model_info['qwen3.context_length'],
+        maxTokens: data.model_info['bert.context_length'],
       }
     } catch (error) {
       logger.warn(

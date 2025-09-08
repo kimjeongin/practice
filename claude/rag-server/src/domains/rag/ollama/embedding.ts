@@ -287,11 +287,11 @@ export class EmbeddingService extends Embeddings {
       }
 
       const data = (await response.json()) as {
-        model_info: { 'qwen3.context_length': number; 'qwen3.embedding_length': number }
+        model_info: { 'bert.context_length': number; 'bert.embedding_length': number }
       }
       return {
-        maxTokens: data.model_info['qwen3.context_length'],
-        dimensions: data.model_info['qwen3.embedding_length'],
+        maxTokens: data.model_info['bert.context_length'],
+        dimensions: data.model_info['bert.embedding_length'],
       }
     } catch (error) {
       logger.warn(
