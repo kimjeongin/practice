@@ -82,32 +82,36 @@ async function initializeServices(config: any) {
     })
   })
 
-  // Start file watching (includes initial sync)
-  logger.info('🧠 Starting FileWatcher with intelligent directory synchronization...', {
+  // Start file watching with background synchronization (non-blocking)
+  logger.info('🧠 Starting FileWatcher with background directory synchronization...', {
     documentsDir: config.documentsDir,
     smartSyncEnabled: true,
   })
 
   const startTime = Date.now()
-  try {
-    await fileWatcher.start()
-    const duration = Date.now() - startTime
-    logger.info('✅ FileWatcher started with smart directory sync completed', {
-      durationMs: duration,
-      documentsDir: config.documentsDir,
-    })
-  } catch (error) {
-    const duration = Date.now() - startTime
-    logger.error(
-      '⚠️ FileWatcher startup failed, but continuing',
-      error instanceof Error ? error : new Error(String(error)),
-      {
+  // Start FileWatcher in the background without blocking MCP server startup
+  fileWatcher.start()
+    .then(() => {
+      const duration = Date.now() - startTime
+      logger.info('✅ FileWatcher background sync completed', {
         durationMs: duration,
         documentsDir: config.documentsDir,
-      }
-    )
-    // Continue startup even if file watcher fails
-  }
+      })
+    })
+    .catch((error) => {
+      const duration = Date.now() - startTime
+      logger.error(
+        '⚠️ FileWatcher background sync failed, but server continues',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          durationMs: duration,
+          documentsDir: config.documentsDir,
+        }
+      )
+      // Continue operations even if file watcher sync fails
+    })
+
+  logger.info('🚀 FileWatcher started, directory sync running in background')
 
   // Initialize MCP handlers using RAGService directly
   const searchHandler = new SearchHandler(ragService, config)

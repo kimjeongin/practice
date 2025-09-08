@@ -44,9 +44,21 @@ export class FileWatcher extends EventEmitter {
       throw new Error('FileWatcher is already started')
     }
 
-    // First, perform initial sync before starting file watching
+    // Start file watching immediately, then perform sync in background
+    logger.info('🎬 Starting file watcher without waiting for initial sync')
+    
+    // Perform initial sync in background (non-blocking)
     if (this.documentProcessor) {
-      await this.syncDirectoryWithVectorStore()
+      this.syncDirectoryWithVectorStore()
+        .then(() => {
+          logger.info('✅ Background directory synchronization completed')
+        })
+        .catch((error) => {
+          logger.error(
+            '⚠️ Background directory synchronization failed',
+            error instanceof Error ? error : new Error(String(error))
+          )
+        })
     }
 
     this.watcher = chokidar.watch(this.documentsDir, {
@@ -246,6 +258,14 @@ export class FileWatcher extends EventEmitter {
         component: 'FileWatcher',
       })
 
+      // Notify RAG service that sync is starting (if it's a RAGService instance)
+      if ('startDocumentSync' in this.documentProcessor) {
+        // Get current files count first for progress tracking
+        const pattern = `${this.documentsDir}/**/*.{txt,md,pdf,doc,docx,csv,json,html,xml}`
+        const currentFilePaths = await glob(pattern)
+        ;(this.documentProcessor as any).startDocumentSync(currentFilePaths.length)
+      }
+
       // Get vector store provider from document processor
       const vectorStoreProvider = (this.documentProcessor as any).vectorStoreProvider
 
@@ -405,6 +425,11 @@ export class FileWatcher extends EventEmitter {
 
       const resultsFils = await vectorStoreProvider.getAllFileMetadata()
 
+      // Notify RAG service that sync is complete (if it's a RAGService instance)
+      if ('completeSyncDocuments' in this.documentProcessor) {
+        ;(this.documentProcessor as any).completeSyncDocuments()
+      }
+
       logger.info('✅ Smart directory synchronization completed', {
         totalFiles: resultsFils.length,
         newFiles,
@@ -560,15 +585,4 @@ export class FileWatcher extends EventEmitter {
     }
   }
 
-  private async removeFile(filePath: string): Promise<void> {
-    if (!this.documentProcessor) return
-
-    if ('removeDocument' in this.documentProcessor) {
-      // RAGService
-      await this.documentProcessor.removeDocument(filePath)
-    } else {
-      // IFileProcessingService
-      await this.documentProcessor.removeFile(filePath)
-    }
-  }
 }
