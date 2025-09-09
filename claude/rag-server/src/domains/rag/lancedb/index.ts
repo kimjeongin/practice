@@ -380,7 +380,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
     // Perform FTS search
     const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
-      this.table.search(query, 'fts').limit(options.topK).toArray(),
+      this.table.search(query.toLowerCase(), 'fts').limit(options.topK).toArray(),
       { timeoutMs: 30000, operation: 'keyword_search' }
     )
 
@@ -411,7 +411,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
       const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
         this.table
           .query()
-          .fullTextSearch(query)
+          .fullTextSearch(query.toLowerCase())
           .nearestTo(queryEmbedding)
           .rerank(this.reranker)
           .limit(options.topK)
