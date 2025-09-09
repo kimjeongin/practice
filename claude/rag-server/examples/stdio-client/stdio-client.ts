@@ -132,9 +132,6 @@ async function testStdioClient(): Promise<void> {
               vectorStore: result.rag_system_info.vectorStore?.isHealthy
                 ? '✅ healthy'
                 : '❌ unhealthy',
-              embeddingService: result.rag_system_info.embeddingService?.isHealthy
-                ? '✅ healthy'
-                : '❌ unhealthy',
             })
           }
         }
