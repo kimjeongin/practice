@@ -11,19 +11,36 @@ import type { IEmbeddingService } from '@/domains/rag/core/interfaces.js'
  * Normalize vectors for cosine similarity
  */
 function normalizeVector(vector: number[]): number[] {
+  // Validate input vector
+  if (!vector || !Array.isArray(vector) || vector.length === 0) {
+    logger.error('Invalid vector received for normalization')
+    throw new Error('Cannot normalize invalid or empty vector')
+  }
+
   const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0))
   if (magnitude === 0) {
-    logger.warn('Zero vector detected during normalization')
+    logger.warn('Zero vector detected during normalization, returning original vector')
     return vector
   }
   return vector.map((val) => val / magnitude)
 }
 
 /**
- * Batch vector normalization
+ * Batch vector normalization with validation
  */
 function normalizeBatchVectors(vectors: number[][]): number[][] {
-  return vectors.map(normalizeVector)
+  if (!vectors || !Array.isArray(vectors)) {
+    logger.error('Invalid vectors array received for batch normalization')
+    throw new Error('Invalid vectors array for normalization')
+  }
+  
+  return vectors.map((vector, index) => {
+    if (!vector) {
+      logger.error(`Null/undefined vector at index ${index}`)
+      throw new Error(`Invalid vector at index ${index}`)
+    }
+    return normalizeVector(vector)
+  })
 }
 
 /**
@@ -93,6 +110,20 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
       if (uncachedTexts.length > 0) {
         // Generate embeddings for uncached texts (raw vectors from EmbeddingService)
         const rawEmbeddings = await this.embeddingService.embedDocuments(uncachedTexts)
+        
+        // Validate embeddings before normalization
+        if (!rawEmbeddings || rawEmbeddings.length === 0) {
+          logger.error('EmbeddingService returned empty or null embeddings')
+          throw new Error('Failed to generate embeddings: service returned empty result')
+        }
+        
+        // Validate all embeddings without filtering
+        for (let idx = 0; idx < rawEmbeddings.length; idx++) {
+          if (!rawEmbeddings[idx]) {
+            logger.error(`Undefined embedding at index ${idx} for text: "${uncachedTexts[idx]?.substring(0, 50)}..."`)
+            throw new Error(`Failed to generate embedding for text at index ${idx}`)
+          }
+        }
 
         // Normalize vectors for cosine similarity (single normalization point)
         newEmbeddings = normalizeBatchVectors(rawEmbeddings)
@@ -163,6 +194,12 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
     const startTime = Date.now()
     const rawEmbedding = await this.embeddingService.embedQuery(query)
     const embeddingTime = Date.now() - startTime
+
+    // Validate embedding before normalization
+    if (!rawEmbedding || rawEmbedding.length === 0) {
+      logger.error('EmbeddingService returned empty or null embedding for query')
+      throw new Error('Failed to generate query embedding: service returned empty result')
+    }
 
     logger.debug(`⚡ Query embedding generated in ${embeddingTime}ms`, {
       queryLength: query.length,

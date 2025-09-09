@@ -296,7 +296,7 @@ export class ChunkingService {
   }
 
   /**
-   * Chunk text with contextual information (requires EmbeddingService)
+   * Optimized chunk text with contextual information using batched LLM calls
    */
   async chunkTextWithContext(text: string, filePath?: string): Promise<ContextualChunk[]> {
     if (!this.embeddingService || !this.tokenBudget) {
@@ -310,71 +310,85 @@ export class ChunkingService {
       return []
     }
 
-    logger.info('🔄 Generating contextual chunks with LLM', {
+    logger.info('🔄 Generating contextual chunks with batched LLM calls', {
       totalChunks: chunks.length,
       textLength: text.length,
       filePath,
       component: 'ChunkingService',
     })
 
-    const contextualChunks: ContextualChunk[] = []
-    let contextOverflows = 0
+    const startTime = Date.now()
+    
+    // Generate contexts in batches for better performance
+    const contextualChunks = await this.generateContextsInBatches(chunks, text, filePath)
+    
+    const processingTime = Date.now() - startTime
+    const avgContextSize = contextualChunks.reduce(
+      (acc, cc) => acc + this.estimateTokens(cc.contextualText) - this.estimateTokens(cc.chunk.content),
+      0
+    ) / contextualChunks.length
 
-    // Process chunks with LLM-generated context
-    for (const chunk of chunks) {
-      try {
-        // Generate context using LLM for each chunk
-        const context = await this.generateAdaptiveContext(chunk.content, text, filePath)
-        const contextualText = `${context}\n\n${chunk.content}`
-
-        // Check for token overflow
-        const finalTokenCount = this.estimateTokens(contextualText)
-        if (finalTokenCount > this.tokenBudget.embeddingModelMaxTokens) {
-          contextOverflows++
-        }
-
-        contextualChunks.push({
-          chunk,
-          contextualText,
-        })
-      } catch (error) {
-        logger.error(
-          'Failed to generate context for chunk',
-          error instanceof Error ? error : new Error(String(error)),
-          {
-            chunkIndex: chunk.index,
-            chunkLength: chunk.content.length,
-            component: 'ChunkingService',
-          }
-        )
-
-        // Fallback to simple context
-        const simpleContext = this.generateSimpleFileContext(text, filePath)
-        const fallbackContextualText = `${simpleContext}\n\n${chunk.content}`
-
-        contextualChunks.push({
-          chunk,
-          contextualText: fallbackContextualText,
-        })
-      }
-    }
-
-    // Log metrics
-    const avgContextSize =
-      contextualChunks.reduce(
-        (acc, cc) =>
-          acc + this.estimateTokens(cc.contextualText) - this.estimateTokens(cc.chunk.content),
-        0
-      ) / contextualChunks.length
-
-    logger.info('✅ Contextual chunking completed', {
+    logger.info('✅ Optimized contextual chunking completed', {
       totalChunks: contextualChunks.length,
-      contextOverflows,
-      overflowRate: `${((contextOverflows / contextualChunks.length) * 100).toFixed(1)}%`,
+      processingTime: `${processingTime}ms`,
+      avgTimePerChunk: `${Math.round(processingTime / chunks.length)}ms`,
       avgContextSize: Math.round(avgContextSize),
       component: 'ChunkingService',
     })
 
+    return contextualChunks
+  }
+
+  /**
+   * Generate contexts for chunks in batches to improve performance
+   */
+  private async generateContextsInBatches(chunks: TextChunk[], fullDocument: string, filePath?: string): Promise<ContextualChunk[]> {
+    const contextualChunks: ContextualChunk[] = []
+    const batchSize = Math.min(5, chunks.length) // Process up to 5 chunks at once
+    
+    // Pre-compute common context information
+    const fileType = this.getFileTypeFromPath(filePath || '')
+    const simpleContext = this.generateSimpleFileContext(fullDocument, filePath)
+    
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const chunkBatch = chunks.slice(i, i + batchSize)
+      
+      // Process batch in parallel with controlled concurrency
+      const batchPromises = chunkBatch.map(async (chunk) => {
+        try {
+          const context = await this.generateAdaptiveContextOptimized(chunk.content, fullDocument, filePath, fileType)
+          const contextualText = `${context}\n\n${chunk.content}`
+          
+          return {
+            chunk,
+            contextualText,
+          }
+        } catch (error) {
+          logger.warn('Context generation failed, using simple context', {
+            chunkIndex: chunk.index,
+            error: error instanceof Error ? error.message : String(error),
+            component: 'ChunkingService',
+          })
+          
+          // Fallback to pre-computed simple context
+          return {
+            chunk,
+            contextualText: `${simpleContext}\n\n${chunk.content}`,
+          }
+        }
+      })
+      
+      const batchResults = await Promise.all(batchPromises)
+      contextualChunks.push(...batchResults)
+      
+      // Log progress for large documents
+      if (chunks.length > 10 && i % (batchSize * 2) === 0) {
+        logger.debug(`Context generation progress: ${Math.min(i + batchSize, chunks.length)}/${chunks.length}`, {
+          component: 'ChunkingService',
+        })
+      }
+    }
+    
     return contextualChunks
   }
 
@@ -423,36 +437,46 @@ export class ChunkingService {
   }
 
   /**
-   * Generate text using Ollama API directly
+   * Optimized text generation with connection reuse and timeout
    */
-  private async generateWithOllama(request: {
+  private async generateWithOllamaOptimized(request: {
     model: string
     prompt: string
-    options?: {
-      temperature?: number
-      top_p?: number
-      num_predict?: number
-    }
+    maxTokens: number
   }): Promise<string> {
-    const response = await fetch(`${this.ollamaBaseUrl}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: request.model,
-        prompt: request.prompt,
-        stream: false, // Get complete response at once
-        options: request.options || {},
-      }),
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+    
+    try {
+      const response = await fetch(`${this.ollamaBaseUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Connection': 'keep-alive', // Reuse connections
+        },
+        body: JSON.stringify({
+          model: request.model,
+          prompt: request.prompt,
+          stream: false,
+          options: {
+            temperature: 0.1,
+            top_p: 0.8,
+            num_predict: request.maxTokens,
+            stop: ['\n\n', 'Doc:', 'Chunk:'], // Early stopping
+          },
+        }),
+        signal: controller.signal,
+      })
 
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = (await response.json()) as { response: string }
+      return data.response
+    } finally {
+      clearTimeout(timeoutId)
     }
-
-    const data = (await response.json()) as { response: string }
-    return data.response
   }
 
   /**
@@ -467,12 +491,13 @@ export class ChunkingService {
   }
 
   /**
-   * Generate adaptive context for a chunk with token limit consideration
+   * Generate adaptive context for a chunk with optimizations
    */
-  private async generateAdaptiveContext(
+  private async generateAdaptiveContextOptimized(
     chunk: string,
     fullDocument: string,
-    filePath?: string
+    filePath?: string,
+    fileType?: string
   ): Promise<string> {
     if (!this.tokenBudget) {
       throw new Error('Token budget not initialized')
@@ -487,45 +512,33 @@ export class ChunkingService {
 
     if (targetContextTokens < 20) {
       // Not enough space for meaningful context
-      const fileType = this.getFileTypeFromPath(filePath || '')
-      return `[Content from ${fileType} file]`
+      const type = fileType || this.getFileTypeFromPath(filePath || '')
+      return `[Content from ${type} file]`
     }
 
-    // Simplified prompt to avoid model thinking noise
-    const prompt = `Describe in one sentence what part of the document this chunk represents. Only provide the **description** without any other content.
-Document: "${fullDocument}"
-
-Chunk: "${chunk.substring(0, 200)}..."
-
+    // Optimized prompt with reduced token usage
+    const documentSample = fullDocument.substring(0, 500) // Limit document context
+    const chunkSample = chunk.substring(0, 150) // Limit chunk preview
+    
+    const prompt = `Describe this chunk in one sentence:
+Doc: "${documentSample}..."
+Chunk: "${chunkSample}..."
 Description:`
 
     try {
-      const response = await this.generateWithOllama({
+      const response = await this.generateWithOllamaOptimized({
         model: this.contextualModel,
         prompt,
-        options: {
-          temperature: 0.1, // Deterministic output
-          top_p: 0.8,
-          num_predict: Math.floor(targetContextTokens * 1.2), // Short responses only
-        },
+        maxTokens: Math.floor(targetContextTokens * 1.2),
       })
 
-      // Clean and extract actual context
+      // Clean and truncate response
       const cleanedContext = this.cleanModelResponse(response.trim())
-
-      // Truncate to token limit while preserving sentence boundaries
       return this.truncateToTokenLimit(cleanedContext, targetContextTokens)
     } catch (error) {
-      logger.warn('Context generation failed, using fallback', {
-        error: error instanceof Error ? error.message : String(error),
-        chunkLength: chunk.length,
-        targetTokens: targetContextTokens,
-        component: 'ChunkingService',
-      })
-
-      // Fallback to basic context
-      const fileType = this.getFileTypeFromPath(filePath || '')
-      return `[Text extracted from ${fileType} file]`
+      // Fast fallback without additional processing
+      const type = fileType || this.getFileTypeFromPath(filePath || '')
+      return `[Text from ${type} file]`
     }
   }
 

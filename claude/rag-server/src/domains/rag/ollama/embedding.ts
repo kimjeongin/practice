@@ -5,67 +5,143 @@ import { EmbeddingModelInfo } from '@/domains/rag/core/types.js'
 import { logger } from '@/shared/logger/index.js'
 
 /**
- * Ollama-based embedding service
- * Communicates with local Ollama server to generate embeddings
+ * Optimized Ollama-based embedding service with adaptive batching and caching
+ * Provides high-performance embedding generation with intelligent resource management
  */
 export class EmbeddingService extends Embeddings {
   private baseUrl: string
   private model: string
   private config: ServerConfig
   private cachedModelInfo: EmbeddingModelInfo | null = null
-  private batchSize: number
+  private adaptiveBatchSize: number
+  private maxConcurrentRequests: number
+  private requestQueue: Array<{ texts: string[]; resolve: Function; reject: Function }> = []
+  private activeRequests = 0
+  private embeddingCache = new Map<string, number[]>()
+  private maxCacheSize = 1000
 
   constructor(config: ServerConfig) {
     super({})
     this.config = config
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
     this.model = config.embeddingModel
-    this.batchSize = config.embeddingBatchSize
+    this.adaptiveBatchSize = config.embeddingBatchSize
+    this.maxConcurrentRequests = Math.max(2, Math.min(config.embeddingConcurrency, 6)) // Optimized range
   }
 
   /**
-   * Generate embedding for a single query
+   * Generate embedding for a single query with caching and queue management
    */
   async embedQuery(query: string): Promise<number[]> {
+    // Check cache first
+    const cacheKey = this.getCacheKey(query)
+    if (this.embeddingCache.has(cacheKey)) {
+      return this.embeddingCache.get(cacheKey)!
+    }
+
+    // Use batch processing for better efficiency
+    const results = await this.embedDocuments([query])
+    const result = results[0]
+    
+    if (!result || result.length === 0) {
+      throw new Error('Failed to generate embedding: empty result from batch processing')
+    }
+    
+    return result
+  }
+
+  /**
+   * Optimized batch embedding with adaptive sizing and queue management
+   */
+  private async embedBatch(documents: string[]): Promise<number[][]> {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({ texts: documents, resolve, reject })
+      this.processQueue()
+    })
+  }
+
+  /**
+   * Process the embedding queue with concurrency control
+   */
+  private async processQueue(): Promise<void> {
+    if (this.activeRequests >= this.maxConcurrentRequests || this.requestQueue.length === 0) {
+      return
+    }
+
+    const batch = this.requestQueue.shift()
+    if (!batch) return
+
+    this.activeRequests++
+
     try {
-      const response = await fetch(`${this.baseUrl}/api/embed`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          input: query,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
+      const embeddings = await this.performBatchEmbeddingWithChunking(batch.texts)
+      
+      // Cache results
+      for (let i = 0; i < batch.texts.length; i++) {
+        const cacheKey = this.getCacheKey(batch.texts[i]!)
+        this.cacheEmbedding(cacheKey, embeddings[i]!)
       }
 
-      const data = (await response.json()) as { embeddings: number[][] }
-
-      if (!data.embeddings || !Array.isArray(data.embeddings[0])) {
-        throw new Error('Invalid embedding data received from Ollama')
-      }
-
-      // Return raw vector - normalization will be handled by LanceDBEmbeddingBridge
-      return data.embeddings[0]
+      batch.resolve(embeddings)
     } catch (error) {
-      logger.error(
-        'Error generating Ollama embedding for query:',
-        error instanceof Error ? error : new Error(String(error))
-      )
-      throw error
+      batch.reject(error)
+    } finally {
+      this.activeRequests--
+      // Process next batch if available
+      setImmediate(() => this.processQueue())
     }
   }
 
   /**
-   * Generate embeddings for multiple documents using batch API
+   * Handle large batches by chunking them into smaller API calls
    */
-  private async embedBatch(documents: string[], batchSize?: number): Promise<number[][]> {
-    const actualBatchSize = batchSize || this.getBatchSizeFromConfig()
+  private async performBatchEmbeddingWithChunking(documents: string[]): Promise<number[][]> {
+    const allEmbeddings: number[][] = []
+    const optimalBatchSize = this.getOptimalBatchSize(documents)
+    
+    logger.debug('🔄 Processing large batch with chunking', {
+      totalDocuments: documents.length,
+      optimalBatchSize,
+      batchesNeeded: Math.ceil(documents.length / optimalBatchSize),
+      component: 'EmbeddingService'
+    })
+    
+    // Process documents in chunks
+    for (let i = 0; i < documents.length; i += optimalBatchSize) {
+      const chunk = documents.slice(i, i + optimalBatchSize)
+      
+      logger.debug(`🔧 Processing batch chunk ${Math.floor(i / optimalBatchSize) + 1}/${Math.ceil(documents.length / optimalBatchSize)}`, {
+        chunkSize: chunk.length,
+        chunkIndex: i,
+        component: 'EmbeddingService'
+      })
+      
+      const chunkEmbeddings = await this.performBatchEmbedding(chunk)
+      allEmbeddings.push(...chunkEmbeddings)
+    }
+    
+    logger.debug('✅ Large batch processing completed', {
+      totalInput: documents.length,
+      totalOutput: allEmbeddings.length,
+      component: 'EmbeddingService'
+    })
+    
+    return allEmbeddings
+  }
 
+  /**
+   * Perform actual API call for batch embedding
+   */
+  private async performBatchEmbedding(documents: string[]): Promise<number[][]> {
+    // This method now handles single batch - chunking is done at higher level
+    const inputTexts = documents
+    
+    logger.debug('🔄 Sending batch to Ollama API', {
+      inputTexts: inputTexts.length,
+      textLengths: inputTexts.map(t => t.length),
+      component: 'EmbeddingService'
+    })
+    
     try {
       const response = await fetch(`${this.baseUrl}/api/embed`, {
         method: 'POST',
@@ -74,21 +150,51 @@ export class EmbeddingService extends Embeddings {
         },
         body: JSON.stringify({
           model: this.model,
-          input: documents.slice(0, actualBatchSize),
+          input: inputTexts,
         }),
       })
 
       if (!response.ok) {
+        const errorText = await response.text()
+        logger.error('Ollama API error response', new Error(`${response.status} ${response.statusText}: ${errorText}`))
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
       }
 
       const data = (await response.json()) as { embeddings: number[][] }
 
+      logger.debug('📥 Received batch response from Ollama', {
+        inputCount: inputTexts.length,
+        outputCount: data.embeddings?.length || 0,
+        hasEmbeddings: !!data.embeddings,
+        component: 'EmbeddingService'
+      })
+
       if (!data.embeddings || !Array.isArray(data.embeddings)) {
+        logger.error('Invalid response structure', new Error(`Response data: ${JSON.stringify(data)}`))
         throw new Error('Invalid batch embedding data received from Ollama')
       }
 
-      // Return raw vectors - normalization will be handled by LanceDBEmbeddingBridge
+      // Check if input/output count matches
+      if (data.embeddings.length !== inputTexts.length) {
+        logger.error('Input/output count mismatch', new Error(`Input: ${inputTexts.length}, Output: ${data.embeddings.length}, Texts: ${inputTexts.map(t => `"${t.substring(0, 50)}..."`).join(', ')}`))
+        throw new Error(`Ollama returned ${data.embeddings.length} embeddings for ${inputTexts.length} inputs`)
+      }
+
+      // Validate embeddings but don't filter - preserve array length
+      for (let i = 0; i < data.embeddings.length; i++) {
+        const emb = data.embeddings[i]
+        if (!emb || !Array.isArray(emb) || emb.length === 0) {
+          logger.error(`Invalid embedding at index ${i} in batch response`)
+          throw new Error(`Invalid embedding received at index ${i}`)
+        }
+      }
+
+      logger.debug('✅ Batch embedding validation successful', {
+        count: data.embeddings.length,
+        dimensions: data.embeddings[0]?.length,
+        component: 'EmbeddingService'
+      })
+
       return data.embeddings
     } catch (error) {
       logger.error(
@@ -100,140 +206,114 @@ export class EmbeddingService extends Embeddings {
   }
 
   /**
-   * Get batch size from config or use dynamic calculation
+   * Calculate optimal batch size based on text length and model capacity
    */
-  private getBatchSizeFromConfig(): number {
-    // Use configured batch size
-    const configBatchSize = this.batchSize
-
-    // Dynamic batch size based on available model info
-    if (this.cachedModelInfo && this.cachedModelInfo.maxTokens > 0) {
-      // Conservative estimate: assume average text is 100 tokens
-      const estimatedBatchSize = Math.floor(this.cachedModelInfo.maxTokens / 200)
-      return Math.min(Math.max(estimatedBatchSize, 1), configBatchSize)
+  private getOptimalBatchSize(documents: string[]): number {
+    if (!this.cachedModelInfo) {
+      return Math.min(this.adaptiveBatchSize, documents.length)
     }
 
-    return configBatchSize
+    // Calculate average text length in characters
+    const avgLength = documents.reduce((sum, doc) => sum + doc.length, 0) / documents.length
+    
+    // Estimate tokens (conservative: 3 chars per token for multilingual)
+    const avgTokens = Math.ceil(avgLength / 3)
+    
+    // Calculate how many documents can fit in model context
+    const maxDocsInBatch = Math.floor(this.cachedModelInfo.maxTokens / avgTokens)
+    
+    // Use conservative limit but ensure minimum batch size
+    return Math.max(1, Math.min(maxDocsInBatch, this.adaptiveBatchSize, documents.length))
   }
 
   /**
-   * Generate embeddings for multiple documents
+   * Generate embeddings for multiple documents with intelligent caching and batching
    */
   async embedDocuments(documents: string[]): Promise<number[][]> {
     if (documents.length === 0) {
       return []
     }
 
-    try {
-      logger.info(`Generating embeddings for ${documents.length} documents...`, {
-        model: this.model,
-        component: 'EmbeddingService',
-      })
-
-      const embeddings: number[][] = []
-      const batchSize = this.getBatchSizeFromConfig()
-      const startTime = Date.now()
-
-      // First, try batch processing
-      try {
-        for (let i = 0; i < documents.length; i += batchSize) {
-          const batch = documents.slice(i, i + batchSize)
-
-          logger.debug(
-            `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
-              documents.length / batchSize
-            )}`,
-            {
-              batchSize: batch.length,
-              remaining: documents.length - i,
-              component: 'EmbeddingService',
-            }
-          )
-
-          const batchEmbeddings = await this.embedBatch(batch)
-          embeddings.push(...batchEmbeddings)
-
-          // Progress logging for large batches
-          if (documents.length > 20 && i % (batchSize * 5) === 0) {
-            const progress = Math.min(i + batchSize, documents.length)
-            logger.debug(`Progress: ${progress}/${documents.length} embeddings generated`, {
-              component: 'EmbeddingService',
-            })
-          }
-        }
-
-        const totalTime = Date.now() - startTime
-        logger.info(`Successfully generated ${embeddings.length} embeddings using batch API`, {
-          model: this.model,
-          batchSize,
-          totalTime: `${totalTime}ms`,
-          avgPerDoc: `${Math.round(totalTime / documents.length)}ms`,
-          component: 'EmbeddingService',
-        })
-
-        return embeddings
-      } catch (batchError) {
-        logger.warn('Batch processing failed, falling back to individual processing', {
-          error: batchError instanceof Error ? batchError.message : String(batchError),
-          component: 'EmbeddingService',
-        })
-
-        // Fallback to individual processing
-        return this.embedDocumentsIndividually(documents)
-      }
-    } catch (error) {
-      logger.error(
-        'Error generating Ollama embeddings for documents:',
-        error instanceof Error ? error : new Error(String(error))
-      )
-      throw error
-    }
-  }
-
-  /**
-   * Fallback method: Generate embeddings individually with concurrency control
-   */
-  private async embedDocumentsIndividually(documents: string[]): Promise<number[][]> {
-    const embeddings: number[][] = []
     const startTime = Date.now()
+    const embeddings: number[][] = []
+    const documentsToEmbed: string[] = []
+    const cacheIndices: number[] = []
 
-    // Process with limited concurrency for optimal performance
-    const concurrency = this.config.embeddingConcurrency
-    for (let i = 0; i < documents.length; i += concurrency) {
-      const batch = documents.slice(i, i + concurrency)
-      const batchPromises = batch.map((doc) => this.embedQuery(doc))
+    // Check cache for existing embeddings
+    for (let i = 0; i < documents.length; i++) {
+      const cacheKey = this.getCacheKey(documents[i]!)
+      if (this.embeddingCache.has(cacheKey)) {
+        embeddings[i] = this.embeddingCache.get(cacheKey)!
+      } else {
+        documentsToEmbed.push(documents[i]!)
+        cacheIndices.push(i)
+      }
+    }
 
-      try {
-        const batchEmbeddings = await Promise.all(batchPromises)
-        embeddings.push(...batchEmbeddings)
+    logger.debug(`Cache hit rate: ${((documents.length - documentsToEmbed.length) / documents.length * 100).toFixed(1)}%`, {
+      totalDocs: documents.length,
+      cached: documents.length - documentsToEmbed.length,
+      toEmbed: documentsToEmbed.length,
+      component: 'EmbeddingService',
+    })
 
-        // Progress logging
-        if (i % (concurrency * 5) === 0) {
-          logger.debug(
-            `Fallback progress: ${Math.min(i + concurrency, documents.length)}/${
-              documents.length
-            } embeddings generated`,
-            { component: 'EmbeddingService' }
-          )
+    // Process uncached documents in batches
+    if (documentsToEmbed.length > 0) {
+      const newEmbeddings = await this.embedBatch(documentsToEmbed)
+      
+      // Validate batch results
+      if (!newEmbeddings || newEmbeddings.length !== documentsToEmbed.length) {
+        throw new Error(`Embedding batch size mismatch: expected ${documentsToEmbed.length}, got ${newEmbeddings?.length || 0}`)
+      }
+      
+      // Place new embeddings in correct positions
+      for (let i = 0; i < cacheIndices.length; i++) {
+        const embedding = newEmbeddings[i]
+        if (!embedding || embedding.length === 0) {
+          throw new Error(`Empty embedding received for document at index ${i}`)
         }
-      } catch (error) {
-        logger.error(
-          `Error in fallback batch ${i}-${i + concurrency}:`,
-          error instanceof Error ? error : new Error(String(error))
-        )
-        throw error
+        embeddings[cacheIndices[i]!] = embedding
       }
     }
 
     const totalTime = Date.now() - startTime
-    logger.info(`Successfully generated ${embeddings.length} embeddings using fallback method`, {
-      model: this.model,
-      totalTime: `${totalTime}ms`,
-      avgPerDoc: `${Math.round(totalTime / documents.length)}ms`,
+    logger.debug(`Embeddings generated in ${totalTime}ms`, {
+      totalDocs: documents.length,
+      cached: documents.length - documentsToEmbed.length,
+      generated: documentsToEmbed.length,
+      avgPerDoc: documentsToEmbed.length ? `${Math.round(totalTime / documentsToEmbed.length)}ms` : '0ms',
       component: 'EmbeddingService',
     })
 
     return embeddings
+  }
+
+  /**
+   * Generate cache key for embedding text
+   */
+  private getCacheKey(text: string): string {
+    // Simple hash for cache key (could be replaced with crypto.createHash for production)
+    let hash = 0
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash // Convert to 32bit integer
+    }
+    return `${this.model}:${hash}`
+  }
+
+  /**
+   * Cache embedding with size limit management
+   */
+  private cacheEmbedding(key: string, embedding: number[]): void {
+    // Remove oldest entries if cache is full
+    if (this.embeddingCache.size >= this.maxCacheSize) {
+      const firstKey = this.embeddingCache.keys().next().value
+      if (firstKey) {
+        this.embeddingCache.delete(firstKey)
+      }
+    }
+    this.embeddingCache.set(key, embedding)
   }
 
   /**
@@ -325,12 +405,16 @@ export class EmbeddingService extends Embeddings {
   }
 
   /**
-   * Initialize service with model information caching
+   * Initialize service with model information caching and performance optimization
    */
   async initialize(): Promise<void> {
     try {
-      logger.info(`🔄 Initializing Ollama embedding service with model: ${this.model}`, {
+      logger.info(`🔄 Initializing optimized Ollama embedding service`, {
+        model: this.model,
         baseUrl: this.baseUrl,
+        maxConcurrentRequests: this.maxConcurrentRequests,
+        adaptiveBatchSize: this.adaptiveBatchSize,
+        cacheSize: this.maxCacheSize,
         component: 'EmbeddingService',
       })
 
@@ -355,7 +439,17 @@ export class EmbeddingService extends Embeddings {
         maxTokens: modelDetails.maxTokens,
       }
 
-      logger.info(`✅ Ollama embedding service initialized successfully`, this.cachedModelInfo)
+      // Adjust batch size based on model capacity
+      this.adaptiveBatchSize = Math.min(
+        this.adaptiveBatchSize, 
+        Math.max(1, Math.floor(modelDetails.maxTokens / 100)) // Conservative estimate
+      )
+
+      logger.info(`✅ Optimized Ollama embedding service initialized`, {
+        ...this.cachedModelInfo,
+        finalBatchSize: this.adaptiveBatchSize,
+        maxConcurrentRequests: this.maxConcurrentRequests,
+      })
     } catch (error) {
       logger.error(
         '❌ Failed to initialize EmbeddingService:',

@@ -380,10 +380,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
     // Perform FTS search
     const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
-      this.table
-        .search(query, 'fts')
-        .limit(options.topK)
-        .toArray(),
+      this.table.search(query, 'fts').limit(options.topK).toArray(),
       { timeoutMs: 30000, operation: 'keyword_search' }
     )
 

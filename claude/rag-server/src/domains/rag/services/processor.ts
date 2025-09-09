@@ -35,7 +35,7 @@ export class DocumentProcessor implements IFileProcessingService {
   }
 
   /**
-   * Process file (simplified version)
+   * Optimized file processing with reduced redundancy and batch operations
    */
   async processFile(filePath: string): Promise<void> {
     const endTiming = startTiming('document_processing', {
@@ -52,13 +52,19 @@ export class DocumentProcessor implements IFileProcessingService {
 
       this.processingQueue.add(filePath)
 
-      logger.info('📝 Processing file', {
-        filePath,
-        component: 'DocumentProcessor',
-      })
+      logger.debug('📝 Processing file', { filePath, component: 'DocumentProcessor' })
 
-      // Extract file metadata
-      const fileMetadata = await extractFileMetadata(filePath)
+      // Extract file metadata and read content in parallel
+      const [fileMetadata, document] = await Promise.all([
+        extractFileMetadata(filePath),
+        this.fileReader.readFileContent(filePath),
+      ])
+
+      // Early validation
+      if (!document?.pageContent?.trim()) {
+        logger.warn('No content extracted from file', { filePath })
+        return
+      }
 
       // Check if file already exists and is up to date
       const hasExistingDocs = await this.vectorStoreProvider.hasDocumentsForFileId(fileMetadata.id)
@@ -67,127 +73,24 @@ export class DocumentProcessor implements IFileProcessingService {
         return
       }
 
-      // Read file content
-      const document = await this.fileReader.readFileContent(filePath)
-      if (!document || !document.pageContent.trim()) {
-        logger.warn('No content extracted from file', { filePath })
-        return
-      }
+      // Ensure embedding service is ready
+      await this.ensureEmbeddingServiceReady()
 
-      // Create document metadata
-      const documentMetadata: DocumentMetadata = {
-        fileName: fileMetadata.name,
-        filePath: fileMetadata.path,
-        fileType: fileMetadata.fileType,
-        fileSize: fileMetadata.size,
-        fileHash: fileMetadata.hash,
-        createdAt: fileMetadata.createdAt,
-        modifiedAt: fileMetadata.modifiedAt,
-        processedAt: new Date().toISOString(),
-      }
+      // Process chunks and embeddings
+      const ragDocuments = await this.processDocumentChunks(
+        document.pageContent,
+        filePath,
+        fileMetadata
+      )
 
-      // Initialize embedding service if not ready
-      if (!this.embeddingService.isReady()) {
-        await this.embeddingService.initialize()
-      }
-
-      // Use chunking strategy based on configuration
-      const ragDocuments: RAGDocumentRecord[] = []
-      const currentModelName = this.embeddingService.getModelInfo().name || 'unknown'
-
-      if (this.config.chunkingStrategy === 'contextual') {
-        // Use contextual chunking for better performance
-        const contextualChunks = await this.chunker.chunkTextWithContext(
-          document.pageContent, 
-          filePath
-        )
-
-        for (const { chunk, contextualText } of contextualChunks) {
-          try {
-            // Generate embedding from contextual text (safe method handles overflow)
-            // Note: EmbeddingService returns raw vectors, will be normalized later
-            const embedding = await this.chunker.createSafeEmbedding(contextualText)
-
-            ragDocuments.push({
-              vector: embedding,
-              text: chunk.content, // Original chunk for LLM
-              contextual_text: contextualText, // Contextual text used for embedding
-              doc_id: fileMetadata.id,
-              chunk_id: chunk.index,
-              metadata: JSON.stringify(documentMetadata),
-              model_name: currentModelName,
-            })
-          } catch (error) {
-            logger.error(
-              'Failed to process contextual chunk',
-              error instanceof Error ? error : new Error(String(error)),
-              {
-                chunkIndex: chunk.index,
-                component: 'DocumentProcessor',
-              }
-            )
-            
-            // Fallback: use original chunk without context
-            // Note: EmbeddingService returns raw vectors, will be normalized later
-            const fallbackEmbedding = await this.embeddingService.embedQuery(chunk.content)
-            ragDocuments.push({
-              vector: fallbackEmbedding,
-              text: chunk.content,
-              contextual_text: chunk.content, // Use chunk content as fallback contextual text
-              doc_id: fileMetadata.id,
-              chunk_id: chunk.index,
-              metadata: JSON.stringify(documentMetadata),
-              model_name: currentModelName,
-            })
-          }
-        }
-
-        logger.info('✅ File processed successfully with contextual chunking', {
-          filePath,
-          chunksCount: contextualChunks.length,
-          ragDocumentsCount: ragDocuments.length,
-          component: 'DocumentProcessor',
-        })
-      } else {
-        // Use normal chunking
-        const normalChunks = await this.chunker.chunkText(document.pageContent, filePath)
-
-        for (const chunk of normalChunks) {
-          try {
-            // Note: EmbeddingService returns raw vectors, will be normalized later
-            const embedding = await this.embeddingService.embedQuery(chunk.content)
-
-            ragDocuments.push({
-              vector: embedding,
-              text: chunk.content,
-              contextual_text: chunk.content, // Same as text for normal chunking
-              doc_id: fileMetadata.id,
-              chunk_id: chunk.index,
-              metadata: JSON.stringify(documentMetadata),
-              model_name: currentModelName,
-            })
-          } catch (error) {
-            logger.error(
-              'Failed to process normal chunk',
-              error instanceof Error ? error : new Error(String(error)),
-              {
-                chunkIndex: chunk.index,
-                component: 'DocumentProcessor',
-              }
-            )
-          }
-        }
-
-        logger.info('✅ File processed successfully with normal chunking', {
-          filePath,
-          chunksCount: normalChunks.length,
-          ragDocumentsCount: ragDocuments.length,
-          component: 'DocumentProcessor',
-        })
-      }
-
-      // Normalize vectors and add to LanceDB table
+      // Batch add to vector store
       await this.addRAGDocuments(ragDocuments)
+
+      logger.debug('✅ File processed successfully', {
+        filePath,
+        chunksCount: ragDocuments.length,
+        component: 'DocumentProcessor',
+      })
     } catch (error) {
       const structuredError = new StructuredError(
         `Failed to process file: ${filePath}`,
@@ -203,6 +106,112 @@ export class DocumentProcessor implements IFileProcessingService {
       this.processingQueue.delete(filePath)
       endTiming()
     }
+  }
+
+  /**
+   * Ensure embedding service is initialized (cached check)
+   */
+  private async ensureEmbeddingServiceReady(): Promise<void> {
+    if (!this.embeddingService.isReady()) {
+      await this.embeddingService.initialize()
+    }
+  }
+
+  /**
+   * Process document chunks with optimized embedding generation
+   */
+  private async processDocumentChunks(
+    content: string,
+    filePath: string,
+    fileMetadata: any
+  ): Promise<RAGDocumentRecord[]> {
+    const documentMetadata: DocumentMetadata = {
+      fileName: fileMetadata.name,
+      filePath: fileMetadata.path,
+      fileType: fileMetadata.fileType,
+      fileSize: fileMetadata.size,
+      fileHash: fileMetadata.hash,
+      createdAt: fileMetadata.createdAt,
+      modifiedAt: fileMetadata.modifiedAt,
+      processedAt: new Date().toISOString(),
+    }
+
+    const currentModelName = this.embeddingService.getModelInfo().name || 'unknown'
+    const serializedMetadata = JSON.stringify(documentMetadata)
+
+    if (this.config.chunkingStrategy === 'contextual') {
+      return this.processContextualChunks(
+        content,
+        filePath,
+        fileMetadata.id,
+        serializedMetadata,
+        currentModelName
+      )
+    } else {
+      return this.processNormalChunks(
+        content,
+        filePath,
+        fileMetadata.id,
+        serializedMetadata,
+        currentModelName
+      )
+    }
+  }
+
+  /**
+   * Process contextual chunks with batch embedding
+   */
+  private async processContextualChunks(
+    content: string,
+    filePath: string,
+    docId: string,
+    serializedMetadata: string,
+    modelName: string
+  ): Promise<RAGDocumentRecord[]> {
+    const contextualChunks = await this.chunker.chunkTextWithContext(content, filePath)
+
+    // Extract all contextual texts for batch embedding
+    const contextsToEmbed = contextualChunks.map((cc) => cc.contextualText)
+    const embeddings = await this.embeddingService.embedDocuments(contextsToEmbed)
+
+    // Create RAG documents
+    return contextualChunks.map((cc, index) => ({
+      vector: embeddings[index] || [],
+      text: cc.chunk.content,
+      contextual_text: cc.contextualText,
+      doc_id: docId,
+      chunk_id: cc.chunk.index,
+      metadata: serializedMetadata,
+      model_name: modelName,
+    }))
+  }
+
+  /**
+   * Process normal chunks with batch embedding
+   */
+  private async processNormalChunks(
+    content: string,
+    filePath: string,
+    docId: string,
+    serializedMetadata: string,
+    modelName: string
+  ): Promise<RAGDocumentRecord[]> {
+    const chunks = await this.chunker.chunkText(content, filePath)
+
+    // Extract all chunk contents for batch embedding
+    const textsToEmbed = chunks.map((chunk) => chunk.content)
+    const embeddings = await this.embeddingService.embedDocuments(textsToEmbed)
+
+    // Create RAG documents
+    return chunks.map((chunk, index) => ({
+      vector: embeddings[index] || [],
+      text: chunk.content,
+      contextual_text: chunk.content,
+      doc_id: docId,
+      chunk_id: chunk.index,
+      metadata: serializedMetadata,
+      model_name: modelName,
+    }))
   }
 
   /**
