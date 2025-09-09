@@ -3,24 +3,18 @@
  * Common types used across multiple domains
  */
 
-// Common Result Types
-export interface CommonResult<T = any> {
+// Unified Result Types - single interface for all common results
+export interface ApiResponse<T = any> {
   success: boolean
   data?: T
   error?: string
   timestamp?: string
-}
-
-export interface ApiResponse<T = any> extends CommonResult<T> {
   statusCode?: number
 }
 
-// Base Metadata Types
-export interface BaseMetadata {
-  createdAt: string
-  modifiedAt: string
-  [key: string]: any
-}
+// Alias for backward compatibility
+export type CommonResult<T = any> = Omit<ApiResponse<T>, 'statusCode'>
+
 
 // Error Types
 export interface ErrorResponse {

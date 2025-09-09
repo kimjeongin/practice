@@ -9,18 +9,14 @@ import type {
   VectorDocument,
   VectorSearchResult,
   VectorSearchOptions,
-  SearchType,
-  ModelInfo,
   EmbeddingModelInfo,
 } from './types.js'
-
-// Re-export types that are used in interfaces (removed unused ModelInfo)
 
 /**
  * Search Service Interface
  */
 export interface ISearchService {
-  search(query: string, options?: SearchOptions): Promise<SearchResult[]>
+  search(query: string, options: SearchOptions): Promise<SearchResult[]>
 }
 
 /**

@@ -75,7 +75,6 @@ export class LanceDBEmbeddingBridge implements LanceDBEmbeddingFunction {
    * Get embedding dimensions
    */
   ndims(): number {
-    logger.info('!!!!!!!!!!!!!!!!!!!!!!!!!!', { dimension: this._embeddingDimension })
     if (!this._embeddingDimension) {
       const modelInfo = this.embeddingService.getModelInfo()
       this._embeddingDimension = modelInfo.dimensions

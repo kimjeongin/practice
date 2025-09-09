@@ -99,32 +99,30 @@ export class EmbeddingService extends Embeddings {
     const allEmbeddings: number[][] = []
     const optimalBatchSize = this.getOptimalBatchSize(documents)
     
-    logger.debug('🔄 Processing large batch with chunking', {
-      totalDocuments: documents.length,
-      optimalBatchSize,
-      batchesNeeded: Math.ceil(documents.length / optimalBatchSize),
-      component: 'EmbeddingService'
-    })
+    if (documents.length > 50) {
+      logger.debug('🔄 Processing large batch with chunking', {
+        totalDocuments: documents.length,
+        batchesNeeded: Math.ceil(documents.length / optimalBatchSize),
+        component: 'EmbeddingService'
+      })
+    }
     
     // Process documents in chunks
     for (let i = 0; i < documents.length; i += optimalBatchSize) {
       const chunk = documents.slice(i, i + optimalBatchSize)
       
-      logger.debug(`🔧 Processing batch chunk ${Math.floor(i / optimalBatchSize) + 1}/${Math.ceil(documents.length / optimalBatchSize)}`, {
-        chunkSize: chunk.length,
-        chunkIndex: i,
-        component: 'EmbeddingService'
-      })
       
       const chunkEmbeddings = await this.performBatchEmbedding(chunk)
       allEmbeddings.push(...chunkEmbeddings)
     }
     
-    logger.debug('✅ Large batch processing completed', {
-      totalInput: documents.length,
-      totalOutput: allEmbeddings.length,
-      component: 'EmbeddingService'
-    })
+    if (documents.length > 50) {
+      logger.debug('✅ Large batch processing completed', {
+        totalInput: documents.length,
+        totalOutput: allEmbeddings.length,
+        component: 'EmbeddingService'
+      })
+    }
     
     return allEmbeddings
   }
@@ -136,11 +134,6 @@ export class EmbeddingService extends Embeddings {
     // This method now handles single batch - chunking is done at higher level
     const inputTexts = documents
     
-    logger.debug('🔄 Sending batch to Ollama API', {
-      inputTexts: inputTexts.length,
-      textLengths: inputTexts.map(t => t.length),
-      component: 'EmbeddingService'
-    })
     
     try {
       const response = await fetch(`${this.baseUrl}/api/embed`, {
@@ -162,12 +155,6 @@ export class EmbeddingService extends Embeddings {
 
       const data = (await response.json()) as { embeddings: number[][] }
 
-      logger.debug('📥 Received batch response from Ollama', {
-        inputCount: inputTexts.length,
-        outputCount: data.embeddings?.length || 0,
-        hasEmbeddings: !!data.embeddings,
-        component: 'EmbeddingService'
-      })
 
       if (!data.embeddings || !Array.isArray(data.embeddings)) {
         logger.error('Invalid response structure', new Error(`Response data: ${JSON.stringify(data)}`))
@@ -189,11 +176,6 @@ export class EmbeddingService extends Embeddings {
         }
       }
 
-      logger.debug('✅ Batch embedding validation successful', {
-        count: data.embeddings.length,
-        dimensions: data.embeddings[0]?.length,
-        component: 'EmbeddingService'
-      })
 
       return data.embeddings
     } catch (error) {
@@ -250,12 +232,6 @@ export class EmbeddingService extends Embeddings {
       }
     }
 
-    logger.debug(`Cache hit rate: ${((documents.length - documentsToEmbed.length) / documents.length * 100).toFixed(1)}%`, {
-      totalDocs: documents.length,
-      cached: documents.length - documentsToEmbed.length,
-      toEmbed: documentsToEmbed.length,
-      component: 'EmbeddingService',
-    })
 
     // Process uncached documents in batches
     if (documentsToEmbed.length > 0) {
@@ -277,13 +253,14 @@ export class EmbeddingService extends Embeddings {
     }
 
     const totalTime = Date.now() - startTime
-    logger.debug(`Embeddings generated in ${totalTime}ms`, {
-      totalDocs: documents.length,
-      cached: documents.length - documentsToEmbed.length,
-      generated: documentsToEmbed.length,
-      avgPerDoc: documentsToEmbed.length ? `${Math.round(totalTime / documentsToEmbed.length)}ms` : '0ms',
-      component: 'EmbeddingService',
-    })
+    if (documentsToEmbed.length > 10) {
+      logger.debug(`Embeddings generated in ${totalTime}ms`, {
+        totalDocs: documents.length,
+        cached: documents.length - documentsToEmbed.length,
+        generated: documentsToEmbed.length,
+        component: 'EmbeddingService',
+      })
+    }
 
     return embeddings
   }

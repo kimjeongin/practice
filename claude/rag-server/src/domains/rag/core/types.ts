@@ -46,17 +46,6 @@ export interface DocumentMetadata {
   [key: string]: any
 }
 
-/**
- * Document chunk interface (simplified)
- */
-export interface DocumentChunk {
-  id: string
-  fileId: string
-  chunkIndex: number
-  content: string
-  embeddingId?: string
-  metadata?: DocumentMetadata
-}
 
 // ========================================
 // Vector Store Types
@@ -80,21 +69,6 @@ export interface VectorDocument {
   modelName?: string // embedding model name (optional)
 }
 
-/**
- * Vector search result - common search result format returned by all providers
- */
-export interface VectorSearchResult {
-  // Document info
-  id: string // chunk-level unique ID
-  content: string // text content
-
-  // Search scores
-  score: number // similarity score (0-1, higher is more similar)
-
-  // Metadata
-  metadata: DocumentMetadata
-  chunkIndex: number // chunk index (compatibility)
-}
 
 /**
  * Search type definitions
@@ -102,12 +76,15 @@ export interface VectorSearchResult {
 export type SearchType = 'semantic' | 'keyword' | 'hybrid'
 
 /**
- * Vector search options - provider-independent common search options (simplified)
+ * Search options - unified search options for all search types
  */
 export interface VectorSearchOptions {
   topK: number // maximum number of results
   searchType: SearchType // search method to use
 }
+
+// Alias for compatibility
+export type SearchOptions = VectorSearchOptions
 
 /**
  * Index statistics
@@ -168,20 +145,27 @@ export interface LanceDBTableOptions {
 // Search Types (consolidated from multiple files)
 // ========================================
 
-export interface SearchOptions {
-  topK: number
-  searchType: SearchType // search method to use
-}
-
+/**
+ * Unified search result - compatible with both vector and traditional search
+ */
 export interface SearchResult {
-  content: string
-  score: number
-  metadata: Record<string, any>
-  chunkIndex: number
-
+  // Document info
+  id: string // chunk-level unique ID
+  content: string // text content
+  
+  // Search scores
+  score: number // similarity score (0-1, higher is more similar)
+  
+  // Metadata
+  metadata: DocumentMetadata
+  chunkIndex: number // chunk index for compatibility
+  
   // Search method information
   searchType: SearchType // The search method that was used
 }
+
+// Alias for compatibility - VectorSearchResult is same as SearchResult
+export type VectorSearchResult = SearchResult
 
 // ========================================
 // Reranking Types

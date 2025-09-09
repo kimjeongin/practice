@@ -148,13 +148,6 @@ export class ChunkingService {
       const fileType = filePath ? this.getFileTypeFromPath(filePath) : 'default'
       const splitter = this.getSplitterForFileType(fileType)
 
-      logger.debug('🔄 Chunking text', {
-        originalLength: text.length,
-        preprocessedLength: preprocessedText.length,
-        fileType,
-        filePath,
-        component: 'ChunkingService',
-      })
 
       // Create document with preprocessed text
       const document = new Document({
@@ -188,14 +181,13 @@ export class ChunkingService {
         })
       }
 
-      logger.debug('✅ Text chunking completed', {
-        originalLength: text.length,
-        preprocessedLength: preprocessedText.length,
-        chunksCount: chunks.length,
-        averageChunkSize: Math.round(preprocessedText.length / chunks.length),
-        fileType,
-        component: 'ChunkingService',
-      })
+      if (chunks.length > 10) {
+        logger.debug('✅ Text chunking completed', {
+          chunksCount: chunks.length,
+          averageChunkSize: Math.round(preprocessedText.length / chunks.length),
+          component: 'ChunkingService',
+        })
+      }
 
       return chunks
     } catch (error) {
@@ -381,12 +373,6 @@ export class ChunkingService {
       const batchResults = await Promise.all(batchPromises)
       contextualChunks.push(...batchResults)
       
-      // Log progress for large documents
-      if (chunks.length > 10 && i % (batchSize * 2) === 0) {
-        logger.debug(`Context generation progress: ${Math.min(i + batchSize, chunks.length)}/${chunks.length}`, {
-          component: 'ChunkingService',
-        })
-      }
     }
     
     return contextualChunks

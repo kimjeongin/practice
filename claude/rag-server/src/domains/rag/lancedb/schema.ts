@@ -136,5 +136,6 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
       language: parsedMetadata.language,
     },
     chunkIndex: result.chunk_id,
+    searchType: 'semantic' as const, // Default to semantic search
   }
 }

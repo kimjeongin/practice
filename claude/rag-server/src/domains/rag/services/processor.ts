@@ -226,7 +226,7 @@ export class DocumentProcessor implements IFileProcessingService {
       return {
         id: `${ragDoc.doc_id}_chunk_${ragDoc.chunk_id}`, // Generate unique chunk ID
         content: ragDoc.text,
-        vector: ragDoc.vector, // Raw vector - will be normalized by LanceDBProvider
+        vector: ragDoc.vector, // Normalized vector from EmbeddingService
         doc_id: ragDoc.doc_id,
         chunk_id: ragDoc.chunk_id,
         metadata: metadata,
@@ -234,10 +234,10 @@ export class DocumentProcessor implements IFileProcessingService {
       }
     })
 
-    // Use LanceDBProvider's addDocuments method for consistent normalization
+    // Use LanceDBProvider's addDocuments method (vectors already normalized)
     await this.vectorStoreProvider.addDocuments(vectorDocuments)
 
-    logger.debug('✅ RAG documents added via LanceDBProvider with consistent normalization', {
+    logger.debug('✅ RAG documents added via LanceDBProvider', {
       count: ragDocuments.length,
       component: 'DocumentProcessor',
     })
