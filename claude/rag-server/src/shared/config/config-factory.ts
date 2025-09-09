@@ -91,9 +91,8 @@ export class ConfigFactory {
       // Document processing (optimized for 2024 research)
       chunkSize: parseInt(process.env['CHUNK_SIZE'] || '400'),
       chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'),
-      chunkingStrategy:
-        (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'contextual',
-      contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:0.6b',
+      chunkingStrategy: (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'normal',
+      contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:4b',
       minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '300'),
 
       // File watcher configuration
@@ -112,7 +111,8 @@ export class ConfigFactory {
       semanticScoreThreshold: parseFloat(process.env['SEMANTIC_SCORE_THRESHOLD'] || '0.7'),
 
       // Ollama configuration
-      embeddingModel: process.env['EMBEDDING_MODEL'] || 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
+      embeddingModel:
+        process.env['EMBEDDING_MODEL'] || 'qllama/multilingual-e5-large-instruct:latest',
       embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '8'),
       ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434',
 

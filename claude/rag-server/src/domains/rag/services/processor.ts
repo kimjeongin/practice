@@ -8,8 +8,7 @@ import { StructuredError, ErrorCode } from '@/shared/errors/index.js'
 import type { IFileProcessingService } from '@/domains/rag/core/interfaces.js'
 import type { DocumentMetadata } from '@/domains/rag/core/types.js'
 import { FileReader } from './reader.js'
-import { ContextualChunkingService } from './contextual-chunking.js'
-import { ChunkingService } from './chunking.js'
+import { ChunkingService, type ContextualChunk } from './chunking.js'
 import { EmbeddingService } from '../ollama/embedding.js'
 import { extractFileId, extractFileMetadata } from '@/shared/utils/file-metadata.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
@@ -24,8 +23,7 @@ import type { RAGDocumentRecord } from '@/domains/rag/core/types.js'
 export class DocumentProcessor implements IFileProcessingService {
   private processingQueue = new Set<string>()
   private fileReader: FileReader
-  private contextualChunker: ContextualChunkingService
-  private normalChunker: ChunkingService
+  private chunker: ChunkingService
   private embeddingService: EmbeddingService
   private config: ServerConfig
 
@@ -33,8 +31,7 @@ export class DocumentProcessor implements IFileProcessingService {
     this.config = config
     this.fileReader = new FileReader()
     this.embeddingService = new EmbeddingService(config)
-    this.contextualChunker = new ContextualChunkingService(config, this.embeddingService)
-    this.normalChunker = new ChunkingService(config)
+    this.chunker = new ChunkingService(config, this.embeddingService)
   }
 
   /**
@@ -100,7 +97,7 @@ export class DocumentProcessor implements IFileProcessingService {
 
       if (this.config.chunkingStrategy === 'contextual') {
         // Use contextual chunking for better performance
-        const contextualChunks = await this.contextualChunker.chunkTextWithContext(
+        const contextualChunks = await this.chunker.chunkTextWithContext(
           document.pageContent, 
           filePath
         )
@@ -109,7 +106,7 @@ export class DocumentProcessor implements IFileProcessingService {
           try {
             // Generate embedding from contextual text (safe method handles overflow)
             // Note: EmbeddingService returns raw vectors, will be normalized later
-            const embedding = await this.contextualChunker.createSafeEmbedding(contextualText)
+            const embedding = await this.chunker.createSafeEmbedding(contextualText)
 
             ragDocuments.push({
               vector: embedding,
@@ -153,7 +150,7 @@ export class DocumentProcessor implements IFileProcessingService {
         })
       } else {
         // Use normal chunking
-        const normalChunks = await this.normalChunker.chunkText(document.pageContent, filePath)
+        const normalChunks = await this.chunker.chunkText(document.pageContent, filePath)
 
         for (const chunk of normalChunks) {
           try {
