@@ -148,7 +148,6 @@ export class ChunkingService {
       const fileType = filePath ? this.getFileTypeFromPath(filePath) : 'default'
       const splitter = this.getSplitterForFileType(fileType)
 
-
       // Create document with preprocessed text
       const document = new Document({
         pageContent: preprocessedText,
@@ -310,15 +309,17 @@ export class ChunkingService {
     })
 
     const startTime = Date.now()
-    
+
     // Generate contexts in batches for better performance
     const contextualChunks = await this.generateContextsInBatches(chunks, text, filePath)
-    
+
     const processingTime = Date.now() - startTime
-    const avgContextSize = contextualChunks.reduce(
-      (acc, cc) => acc + this.estimateTokens(cc.contextualText) - this.estimateTokens(cc.chunk.content),
-      0
-    ) / contextualChunks.length
+    const avgContextSize =
+      contextualChunks.reduce(
+        (acc, cc) =>
+          acc + this.estimateTokens(cc.contextualText) - this.estimateTokens(cc.chunk.content),
+        0
+      ) / contextualChunks.length
 
     logger.info('✅ Optimized contextual chunking completed', {
       totalChunks: contextualChunks.length,
@@ -334,23 +335,32 @@ export class ChunkingService {
   /**
    * Generate contexts for chunks in batches to improve performance
    */
-  private async generateContextsInBatches(chunks: TextChunk[], fullDocument: string, filePath?: string): Promise<ContextualChunk[]> {
+  private async generateContextsInBatches(
+    chunks: TextChunk[],
+    fullDocument: string,
+    filePath?: string
+  ): Promise<ContextualChunk[]> {
     const contextualChunks: ContextualChunk[] = []
     const batchSize = Math.min(5, chunks.length) // Process up to 5 chunks at once
-    
+
     // Pre-compute common context information
     const fileType = this.getFileTypeFromPath(filePath || '')
     const simpleContext = this.generateSimpleFileContext(fullDocument, filePath)
-    
+
     for (let i = 0; i < chunks.length; i += batchSize) {
       const chunkBatch = chunks.slice(i, i + batchSize)
-      
+
       // Process batch in parallel with controlled concurrency
       const batchPromises = chunkBatch.map(async (chunk) => {
         try {
-          const context = await this.generateAdaptiveContextOptimized(chunk.content, fullDocument, filePath, fileType)
+          const context = await this.generateAdaptiveContextOptimized(
+            chunk.content,
+            fullDocument,
+            filePath,
+            fileType
+          )
           const contextualText = `${context}\n\n${chunk.content}`
-          
+
           return {
             chunk,
             contextualText,
@@ -361,7 +371,7 @@ export class ChunkingService {
             error: error instanceof Error ? error.message : String(error),
             component: 'ChunkingService',
           })
-          
+
           // Fallback to pre-computed simple context
           return {
             chunk,
@@ -369,12 +379,11 @@ export class ChunkingService {
           }
         }
       })
-      
+
       const batchResults = await Promise.all(batchPromises)
       contextualChunks.push(...batchResults)
-      
     }
-    
+
     return contextualChunks
   }
 
@@ -432,13 +441,13 @@ export class ChunkingService {
   }): Promise<string> {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
-    
+
     try {
       const response = await fetch(`${this.ollamaBaseUrl}/api/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Connection': 'keep-alive', // Reuse connections
+          Connection: 'keep-alive', // Reuse connections
         },
         body: JSON.stringify({
           model: request.model,
@@ -449,6 +458,7 @@ export class ChunkingService {
             top_p: 0.8,
             num_predict: request.maxTokens,
             stop: ['\n\n', 'Doc:', 'Chunk:'], // Early stopping
+            think: false,
           },
         }),
         signal: controller.signal,
@@ -505,7 +515,7 @@ export class ChunkingService {
     // Optimized prompt with reduced token usage
     const documentSample = fullDocument.substring(0, 500) // Limit document context
     const chunkSample = chunk.substring(0, 150) // Limit chunk preview
-    
+
     const prompt = `Describe this chunk in one sentence:
 Doc: "${documentSample}..."
 Chunk: "${chunkSample}..."

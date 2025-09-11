@@ -34,6 +34,8 @@ import {
 } from './embedding-bridge.js'
 
 import { LANCEDB_CONSTANTS, type LanceDBConnectionOptions } from './config.js'
+import { LanguageDetector } from '@/shared/utils/language-detector.js'
+import { KoreanTokenizer } from '@/domains/rag/services/korean-tokenizer.js'
 
 export class LanceDBProvider implements IVectorStoreProvider {
   private db: lancedb.Connection | null = null
@@ -47,6 +49,8 @@ export class LanceDBProvider implements IVectorStoreProvider {
   private tableName: string
   private embeddingDimensions: number
   private reranker: lancedb.rerankers.RRFReranker | null = null
+  private languageDetector: LanguageDetector
+  private koreanTokenizer: KoreanTokenizer
 
   constructor(
     private config: ServerConfig,
@@ -60,6 +64,10 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
     this.tableName = tableName
     this.embeddingDimensions = LANCEDB_CONSTANTS.DEFAULT_VECTOR_DIMENSIONS
+
+    // Initialize language processing services
+    this.languageDetector = new LanguageDetector()
+    this.koreanTokenizer = new KoreanTokenizer()
 
     logger.info('🚀 LanceDB Provider initialized (simplified)', {
       uri: this.connectionOptions.uri,
@@ -135,6 +143,45 @@ export class LanceDBProvider implements IVectorStoreProvider {
       // Check if table exists
       const tableNames = await this.db.tableNames()
       const tableExists = tableNames.includes(this.tableName)
+      // Create optimized FTS indexes on new table
+      const ftsConfigs = [
+        {
+          column: 'text',
+          config: lancedb.Index.fts({
+            baseTokenizer: 'simple',
+            withPosition: true,
+            lowercase: true,
+            stem: true,
+            language: 'english',
+            removeStopWords: true,
+          }),
+          description: 'English content',
+        },
+        {
+          column: 'tokenized_text',
+          config: lancedb.Index.fts({
+            baseTokenizer: 'whitespace',
+            withPosition: true,
+            lowercase: false,
+            stem: false,
+            removeStopWords: false,
+          }),
+          description: 'Korean tokenized content',
+        },
+        {
+          column: 'initial_consonants',
+          config: lancedb.Index.fts({
+            baseTokenizer: 'ngram',
+            ngramMinLength: 1,
+            ngramMaxLength: 3,
+            withPosition: false,
+            lowercase: false,
+            stem: false,
+            removeStopWords: false,
+          }),
+          description: 'Korean initial consonants',
+        },
+      ]
 
       if (tableExists) {
         // Open existing table
@@ -144,21 +191,24 @@ export class LanceDBProvider implements IVectorStoreProvider {
           component: 'LanceDBProvider',
         })
 
-        // Create FTS index on existing table if it doesn't exist
-        try {
-          await this.table.createIndex('text', {
-            config: lancedb.Index.fts(),
-          })
-          logger.info('📇 FTS index created on existing table', {
-            tableName: this.tableName,
-            component: 'LanceDBProvider',
-          })
-        } catch (error) {
-          // Index might already exist, which is fine
-          logger.debug('📇 FTS index creation skipped (likely already exists)', {
-            tableName: this.tableName,
-            component: 'LanceDBProvider',
-          })
+        for (const { column, config, description } of ftsConfigs) {
+          try {
+            await this.table.createIndex(column, { config })
+            logger.info('📇 Optimized FTS index created on existing table', {
+              tableName: this.tableName,
+              column,
+              description,
+              component: 'LanceDBProvider',
+            })
+          } catch (error) {
+            // Index might already exist, which is fine
+            logger.debug('📇 FTS index creation skipped (likely already exists)', {
+              tableName: this.tableName,
+              column,
+              description,
+              component: 'LanceDBProvider',
+            })
+          }
         }
       } else {
         // Create new table with simplified schema and overwrite mode
@@ -169,14 +219,14 @@ export class LanceDBProvider implements IVectorStoreProvider {
           mode: 'overwrite',
         })
 
-        // Create FTS index on new table
-        await this.table.createIndex('text', {
-          config: lancedb.Index.fts(),
-        })
+        for (const { column, config, description } of ftsConfigs) {
+          await this.table.createIndex(column, { config })
+        }
 
-        logger.info('🆕 Created new LanceDB table with FTS index', {
+        logger.info('🆕 Created new LanceDB table with optimized multilingual FTS indexes', {
           tableName: this.tableName,
           dimensions: this.embeddingDimensions,
+          ftsIndexes: ftsConfigs.map((c) => ({ column: c.column, description: c.description })),
           component: 'LanceDBProvider',
         })
       }
@@ -216,17 +266,44 @@ export class LanceDBProvider implements IVectorStoreProvider {
         const contents = batch.map((doc) => doc.content)
         const embeddings = await this.embeddingBridge.embed(contents)
 
-        // Use new conversion function
+        // Use new conversion function with language processing
         for (let j = 0; j < batch.length; j++) {
           const doc = batch[j]!
           const embedding = embeddings[j]!
 
-          // Convert VectorDocument to RAGDocumentRecord
-          const ragRecord = convertVectorDocumentToRAGRecord({
+          // Detect document language
+          const languageResult = this.languageDetector.detectLanguage(doc.content)
+          const detectedLanguage = languageResult.language
+
+          // Prepare enhanced document with multilingual fields
+          let enhancedDoc = {
             ...doc,
             vector: embedding,
             modelName: doc.modelName || currentModelName,
-          })
+            language: detectedLanguage,
+            tokenized_text: '',
+            initial_consonants: '',
+          }
+
+          // Apply Korean-specific processing if detected as Korean
+          if (detectedLanguage === 'ko') {
+            const tokens = this.koreanTokenizer.tokenizeKorean(doc.content)
+            const initials = this.koreanTokenizer.extractInitials(doc.content)
+
+            enhancedDoc.tokenized_text = tokens.join(' ')
+            enhancedDoc.initial_consonants = initials
+
+            logger.debug('🇰🇷 Korean document processed', {
+              docId: doc.doc_id,
+              chunkId: doc.chunk_id,
+              tokenCount: tokens.length,
+              hasInitials: initials.length > 0,
+              component: 'LanceDBProvider',
+            })
+          }
+
+          // Convert enhanced VectorDocument to RAGDocumentRecord
+          const ragRecord = convertVectorDocumentToRAGRecord(enhancedDoc)
           records.push(ragRecord)
         }
       }
@@ -378,11 +455,81 @@ export class LanceDBProvider implements IVectorStoreProvider {
       throw new Error('Table not initialized')
     }
 
-    // Perform FTS search
-    const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
-      this.table.search(query.toLowerCase(), 'fts').limit(options.topK).toArray(),
-      { timeoutMs: 30000, operation: 'keyword_search' }
-    )
+    // Detect query language to determine search strategy
+    const languageResult = this.languageDetector.detectLanguage(query)
+    const queryLanguage = languageResult.language
+
+    logger.debug('🔍 Keyword search language detection', {
+      query: query.substring(0, 50),
+      detectedLanguage: queryLanguage,
+      confidence: languageResult.confidence,
+      component: 'LanceDBProvider',
+    })
+
+    let rawResults: RAGSearchResult[] = []
+
+    if (queryLanguage === 'ko') {
+      // Korean keyword search: search tokenized_text and initial_consonants
+      const tokenizedQuery = this.koreanTokenizer.tokenizeKorean(query).join(' ')
+      const initialQuery = this.koreanTokenizer.extractInitials(query)
+
+      // Primary search on tokenized Korean text
+      const tokenizedResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+        this.table
+          .query()
+          .fullTextSearch(tokenizedQuery.toLowerCase(), { columns: ['tokenized_text'] })
+          .limit(options.topK)
+          .toArray(),
+        { timeoutMs: 30000, operation: 'korean_tokenized_search' }
+      )
+
+      // Secondary search on initial consonants if available
+      if (initialQuery && initialQuery.length > 0) {
+        const initialResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+          this.table
+            .query()
+            .fullTextSearch(initialQuery.toLowerCase(), { columns: ['initial_consonants'] })
+            .limit(Math.ceil(options.topK / 2))
+            .toArray(),
+          { timeoutMs: 30000, operation: 'korean_initial_search' }
+        )
+
+        // Combine and deduplicate results
+        const combinedResults = [...tokenizedResults, ...initialResults]
+        const uniqueResults = combinedResults.filter(
+          (result, index, arr) =>
+            index ===
+            arr.findIndex((r) => r.doc_id === result.doc_id && r.chunk_id === result.chunk_id)
+        )
+
+        rawResults = uniqueResults.slice(0, options.topK)
+      } else {
+        rawResults = tokenizedResults
+      }
+
+      logger.debug('🇰🇷 Korean keyword search completed', {
+        tokenizedQuery,
+        initialQuery,
+        resultsCount: rawResults.length,
+        component: 'LanceDBProvider',
+      })
+    } else {
+      // English keyword search: search text column only
+      rawResults = await TimeoutWrapper.withTimeout(
+        this.table
+          .query()
+          .fullTextSearch(query.toLowerCase(), { columns: ['text'] })
+          .limit(options.topK)
+          .toArray(),
+        { timeoutMs: 30000, operation: 'english_keyword_search' }
+      )
+
+      logger.debug('🇺🇸 English keyword search completed', {
+        query: query.substring(0, 50),
+        resultsCount: rawResults.length,
+        component: 'LanceDBProvider',
+      })
+    }
 
     // Convert results and adjust scores for FTS
     return rawResults.map((result) => convertRAGResultToVectorSearchResult(result))
@@ -397,6 +544,17 @@ export class LanceDBProvider implements IVectorStoreProvider {
     }
 
     try {
+      // Detect query language for language-aware FTS
+      const languageResult = this.languageDetector.detectLanguage(query)
+      const queryLanguage = languageResult.language
+
+      logger.debug('🔍 Hybrid search language detection', {
+        query: query.substring(0, 50),
+        detectedLanguage: queryLanguage,
+        confidence: languageResult.confidence,
+        component: 'LanceDBProvider',
+      })
+
       // Generate query embedding for hybrid search
       const queryEmbedding = await TimeoutWrapper.withTimeout(
         this.embeddingBridge.embedQuery(query),
@@ -407,17 +565,70 @@ export class LanceDBProvider implements IVectorStoreProvider {
         this.reranker = await lancedb.rerankers.RRFReranker.create()
       }
 
-      // Perform hybrid search using LanceDB's native hybrid search capability
-      const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
-        this.table
-          .query()
-          .fullTextSearch(query.toLowerCase())
-          .nearestTo(queryEmbedding)
-          .rerank(this.reranker)
-          .limit(options.topK)
-          .toArray(),
-        { timeoutMs: 30000, operation: 'hybrid_search' }
-      )
+      let rawResults: RAGSearchResult[] = []
+
+      if (queryLanguage === 'ko') {
+        // Korean hybrid search: manual combination of semantic + FTS with column specification
+        const tokenizedQuery = this.koreanTokenizer.tokenizeKorean(query).join(' ')
+
+        // Get semantic search results
+        const semanticResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+          (this.table.search(queryEmbedding) as any)
+            .distanceType('cosine')
+            .limit(options.topK * 2) // Get more candidates for reranking
+            .toArray(),
+          { timeoutMs: 30000, operation: 'korean_hybrid_semantic' }
+        )
+
+        // Get FTS results from tokenized text
+        const ftsResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+          this.table
+            .query()
+            .fullTextSearch(tokenizedQuery.toLowerCase(), { columns: ['tokenized_text'] })
+            .limit(options.topK * 2)
+            .toArray(),
+          { timeoutMs: 30000, operation: 'korean_hybrid_fts' }
+        )
+
+        // Manual RRF-like reranking: combine and deduplicate
+        const combinedResults = [...semanticResults, ...ftsResults]
+        const uniqueResults = new Map<string, RAGSearchResult>()
+
+        combinedResults.forEach((result) => {
+          const key = `${result.doc_id}_${result.chunk_id}`
+          if (!uniqueResults.has(key)) {
+            uniqueResults.set(key, result)
+          }
+        })
+
+        rawResults = Array.from(uniqueResults.values()).slice(0, options.topK)
+
+        logger.debug('🇰🇷 Korean hybrid search completed', {
+          tokenizedQuery,
+          semanticCount: semanticResults.length,
+          ftsCount: ftsResults.length,
+          finalCount: rawResults.length,
+          component: 'LanceDBProvider',
+        })
+      } else {
+        // English hybrid search: use native LanceDB hybrid with explicit column specification
+        rawResults = await TimeoutWrapper.withTimeout(
+          this.table
+            .query()
+            .fullTextSearch(query.toLowerCase(), { columns: ['text'] })
+            .nearestTo(queryEmbedding)
+            .rerank(this.reranker)
+            .limit(options.topK)
+            .toArray(),
+          { timeoutMs: 30000, operation: 'english_hybrid_search' }
+        )
+
+        logger.debug('🇺🇸 English hybrid search completed', {
+          query: query.substring(0, 50),
+          resultsCount: rawResults.length,
+          component: 'LanceDBProvider',
+        })
+      }
 
       // Convert results and preserve both vector and keyword scores
       return rawResults.map((result) => convertRAGResultToVectorSearchResult(result))
@@ -426,7 +637,8 @@ export class LanceDBProvider implements IVectorStoreProvider {
         'Hybrid search failed, falling back to semantic search',
         error instanceof Error ? error : new Error(String(error))
       )
-      throw error
+      // Fallback to semantic search
+      return await this.performSemanticSearch(query, options)
     }
   }
 

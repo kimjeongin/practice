@@ -47,6 +47,7 @@
     "chokidar": "^4.0.3",
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.1",
+    "es-hangul": "^2.3.5",
     "fastify": "^5.5.0",
     "langchain": "^0.3.31",
     "mammoth": "^1.10.0",

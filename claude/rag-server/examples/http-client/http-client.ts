@@ -328,7 +328,7 @@ async function testStreamableHTTPClient(): Promise<void> {
 async function startInteractiveSearch(client: Client): Promise<void> {
   const searchOptions = {
     topK: 5,
-    searchType: 'semantic' as const,
+    searchType: 'keyword' as const,
   }
 
   const askQuestion = (question: string): Promise<string> => {

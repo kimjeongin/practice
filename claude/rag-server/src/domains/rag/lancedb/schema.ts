@@ -24,20 +24,31 @@ export function createLanceDBSchema(embeddingDimensions: number = 768) {
       'vector',
       new arrow.FixedSizeList(embeddingDimensions, new arrow.Field('item', new arrow.Float32()))
     ),
-    new arrow.Field('text', new arrow.Utf8()), // Original chunk text for LLM
+    new arrow.Field('text', new arrow.Utf8()), // Original chunk text for LLM (English FTS)
     new arrow.Field('contextual_text', new arrow.Utf8()), // Contextual text used for embedding
     new arrow.Field('doc_id', new arrow.Utf8()),
     new arrow.Field('chunk_id', new arrow.Int32()),
     new arrow.Field('metadata', new arrow.Utf8()), // Stored as JSON string
     new arrow.Field('model_name', new arrow.Utf8()), // Embedding model name
+    
+    // Multilingual fields for simplified ko/en support
+    new arrow.Field('language', new arrow.Utf8()), // 'ko' | 'en'
+    new arrow.Field('tokenized_text', new arrow.Utf8()), // Korean tokenized text (Korean FTS)
+    new arrow.Field('initial_consonants', new arrow.Utf8()), // Korean initial consonants (ㄱㄴㄷ search)
   ])
 }
 
 /**
  * Convert Core VectorDocument to LanceDB RAGDocumentRecord
- * GPT approach: store metadata as JSON string
+ * Enhanced to support multilingual fields (ko/en)
  */
-export function convertVectorDocumentToRAGRecord(document: VectorDocument): RAGDocumentRecord {
+export function convertVectorDocumentToRAGRecord(
+  document: VectorDocument & { 
+    language?: 'ko' | 'en';
+    tokenized_text?: string; 
+    initial_consonants?: string; 
+  }
+): RAGDocumentRecord {
   // Normalize metadata
   const documentMetadata: DocumentMetadata = {
     fileName: document.metadata.fileName || 'unknown',
@@ -55,7 +66,7 @@ export function convertVectorDocumentToRAGRecord(document: VectorDocument): RAGD
     language: document.metadata.language,
   }
 
-  // Convert to LanceDB RAGDocumentRecord format
+  // Convert to LanceDB RAGDocumentRecord format with multilingual support
   return {
     vector: document.vector || [],
     text: document.content,
@@ -64,6 +75,11 @@ export function convertVectorDocumentToRAGRecord(document: VectorDocument): RAGD
     chunk_id: document.chunk_id,
     metadata: JSON.stringify(documentMetadata), // Store as JSON string
     model_name: document.modelName || 'unknown', // Store embedding model name
+    
+    // Multilingual fields
+    language: document.language || 'en', // Default to English
+    tokenized_text: document.tokenized_text || '', // Empty for English documents
+    initial_consonants: document.initial_consonants || '', // Empty for English documents
   }
 }
 
