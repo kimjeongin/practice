@@ -9,8 +9,8 @@ import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
 import { logger } from '@/shared/logger/index.js'
 import { extname } from 'path'
-import fetch from 'node-fetch'
 import type { EmbeddingService } from '../ollama/embedding.js'
+import { ChunkingService as OllamaChunkingService } from '../ollama/chunking.js'
 
 export interface TextChunk {
   content: string
@@ -34,14 +34,12 @@ export class ChunkingService {
   private splitters: Map<string, RecursiveCharacterTextSplitter>
   private embeddingService?: EmbeddingService
   private tokenBudget?: TokenBudget
-  private ollamaBaseUrl: string
-  private contextualModel: string
+  private ollamaChunkingService: OllamaChunkingService
 
   constructor(private config: ServerConfig, embeddingService?: EmbeddingService) {
     this.splitters = new Map()
     this.embeddingService = embeddingService
-    this.ollamaBaseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
-    this.contextualModel = config.contextualChunkingModel || 'qwen3:4b'
+    this.ollamaChunkingService = new OllamaChunkingService(config)
 
     if (this.embeddingService) {
       this.tokenBudget = this.calculateTokenBudget()
@@ -345,7 +343,6 @@ export class ChunkingService {
 
     // Pre-compute common context information
     const fileType = this.getFileTypeFromPath(filePath || '')
-    const simpleContext = this.generateSimpleFileContext(fullDocument, filePath)
 
     for (let i = 0; i < chunks.length; i += batchSize) {
       const chunkBatch = chunks.slice(i, i + batchSize)
@@ -372,6 +369,7 @@ export class ChunkingService {
             component: 'ChunkingService',
           })
 
+          const simpleContext = this.generateSimpleFileContext(fullDocument, filePath)
           // Fallback to pre-computed simple context
           return {
             chunk,
@@ -432,50 +430,6 @@ export class ChunkingService {
   }
 
   /**
-   * Optimized text generation with connection reuse and timeout
-   */
-  private async generateWithOllamaOptimized(request: {
-    model: string
-    prompt: string
-    maxTokens: number
-  }): Promise<string> {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
-
-    try {
-      const response = await fetch(`${this.ollamaBaseUrl}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Connection: 'keep-alive', // Reuse connections
-        },
-        body: JSON.stringify({
-          model: request.model,
-          prompt: request.prompt,
-          stream: false,
-          options: {
-            temperature: 0.1,
-            top_p: 0.8,
-            num_predict: request.maxTokens,
-            stop: ['\n\n', 'Doc:', 'Chunk:'], // Early stopping
-            think: false,
-          },
-        }),
-        signal: controller.signal,
-      })
-
-      if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
-      }
-
-      const data = (await response.json()) as { response: string }
-      return data.response
-    } finally {
-      clearTimeout(timeoutId)
-    }
-  }
-
-  /**
    * Estimate token count for text (approximation for Qwen models)
    */
   private estimateTokens(text: string): number {
@@ -512,21 +466,14 @@ export class ChunkingService {
       return `[Content from ${type} file]`
     }
 
-    // Optimized prompt with reduced token usage
-    const documentSample = fullDocument.substring(0, 500) // Limit document context
-    const chunkSample = chunk.substring(0, 150) // Limit chunk preview
-
-    const prompt = `Describe this chunk in one sentence:
-Doc: "${documentSample}..."
-Chunk: "${chunkSample}..."
-Description:`
-
     try {
-      const response = await this.generateWithOllamaOptimized({
-        model: this.contextualModel,
-        prompt,
-        maxTokens: Math.floor(targetContextTokens * 1.2),
-      })
+      // Use the new OllamaChunkingService
+      const response = await this.ollamaChunkingService.generateContext(
+        chunk,
+        fullDocument,
+        filePath,
+        Math.floor(targetContextTokens * 1.2)
+      )
 
       // Clean and truncate response
       const cleanedContext = this.cleanModelResponse(response.trim())

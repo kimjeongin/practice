@@ -152,7 +152,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
             withPosition: true,
             lowercase: true,
             stem: true,
-            language: 'english',
+            language: 'English',
             removeStopWords: true,
           }),
           description: 'English content',
