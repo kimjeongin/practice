@@ -311,6 +311,22 @@ export class LanceDBProvider implements IVectorStoreProvider {
       // Add directly to LanceDB (without duplicate checking)
       if (records.length > 0) {
         await this.table.add(records as any)
+        
+        // Optimize table to update FTS indexes for real-time search
+        try {
+          await this.table.optimize()
+          logger.info('📇 FTS indexes optimized for real-time search', {
+            count: documents.length,
+            component: 'LanceDBProvider',
+          })
+        } catch (optimizeError) {
+          logger.warn('⚠️ FTS index optimization failed, search may not reflect new data', {
+            count: documents.length,
+            error: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
+            component: 'LanceDBProvider',
+          })
+          // Don't throw error - document addition was successful, only optimization failed
+        }
       }
 
       logger.info('✅ Documents added successfully', {
