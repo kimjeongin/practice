@@ -69,19 +69,17 @@ export function convertVectorDocumentToRAGRecord(document: VectorDocument): RAGD
 
 /**
  * Convert LanceDB RAGSearchResult to Core VectorSearchResult
- * Improved conversion with proper normalized vector score calculation
+ * Converts cosine distance to cosine similarity score
  */
 export function convertRAGResultToVectorSearchResult(result: any): VectorSearchResult {
-  // Calculate score for cosine similarity with normalized vectors
-  // For normalized vectors: cosine_distance = 2 * (1 - cosine_similarity)
-  // Therefore: cosine_similarity = 1 - (cosine_distance / 2)
-  // But we need to ensure cosine_distance is in [0, 2] range
+  // Convert cosine distance to cosine similarity
+  // LanceDB returns cosine distance in range [0, 2] where distance = 1 - similarity
+  // Therefore: cosine_similarity = 1 - cosine_distance
   let score: number
   if (result._distance !== undefined) {
-    // Proper conversion for normalized vectors: cosine similarity = 1 - (distance / 2)
-    // Clamp distance to [0, 2] range for safety
-    const clampedDistance = Math.max(0, Math.min(2, result._distance))
-    score = Math.max(0, 1 - clampedDistance / 2)
+    // Convert cosine distance to cosine similarity
+    // Ensure result is in valid similarity range [0, 1]
+    score = Math.max(0, Math.min(1, 1 - result._distance))
   } else if (result._relevance_score !== undefined) {
     score = result._relevance_score
   } else if (result._score !== undefined) {
@@ -90,10 +88,8 @@ export function convertRAGResultToVectorSearchResult(result: any): VectorSearchR
     score = 0
   }
 
-  logger.debug('🔍 LanceDB search result conversion (improved):', {
+  logger.debug('🔍 LanceDB search result conversion:', {
     rawDistance: result._distance,
-    clampedDistance:
-      result._distance !== undefined ? Math.max(0, Math.min(2, result._distance)) : undefined,
     calculatedScore: score,
     docId: result.doc_id,
     chunkId: result.chunk_id,
