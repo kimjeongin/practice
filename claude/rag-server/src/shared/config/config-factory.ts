@@ -78,6 +78,14 @@ export interface ServerConfig {
   // Search configuration
   semanticScoreThreshold: number
 
+  // LLM Reranking configuration
+  enableLLMReranking: boolean
+  llmRerankingModel: string
+  llmRerankingTimeout: number
+  hybridSemanticRatio: number
+  hybridKeywordRatio: number
+  hybridTotalResultsForReranking: number
+
   // Ollama configuration
   embeddingModel: string
   embeddingBatchSize: number
@@ -135,6 +143,14 @@ export class ConfigFactory {
 
       // Search configuration
       semanticScoreThreshold: parseFloat(process.env['SEMANTIC_SCORE_THRESHOLD'] || '0.7'),
+
+      // LLM Reranking configuration
+      enableLLMReranking: process.env['ENABLE_LLM_RERANKING'] !== 'false',                    // Enable by default
+      llmRerankingModel: process.env['LLM_RERANKING_MODEL'] || 'qwen3:4b',                   // Default to qwen3:4b
+      llmRerankingTimeout: parseInt(process.env['LLM_RERANKING_TIMEOUT_MS'] || '120000'),     // 120 second timeout
+      hybridSemanticRatio: parseFloat(process.env['HYBRID_SEMANTIC_RATIO'] || '0.7'),       // 70% semantic
+      hybridKeywordRatio: parseFloat(process.env['HYBRID_KEYWORD_RATIO'] || '0.3'),         // 30% keyword
+      hybridTotalResultsForReranking: parseInt(process.env['HYBRID_TOTAL_RESULTS_FOR_RERANKING'] || '20'), // 20 results for reranking
 
       // Ollama configuration (performance optimized)
       embeddingModel:
@@ -230,6 +246,31 @@ export class ConfigFactory {
 
     if (!config.contextualChunkingModel) {
       errors.push('Contextual chunking model is required')
+    }
+
+    // LLM Reranking validation
+    if (!config.llmRerankingModel) {
+      errors.push('LLM reranking model is required')
+    }
+
+    if (config.llmRerankingTimeout < 1000) {
+      errors.push('LLM reranking timeout must be at least 1000ms')
+    }
+
+    if (config.hybridSemanticRatio < 0 || config.hybridSemanticRatio > 1) {
+      errors.push('Hybrid semantic ratio must be between 0 and 1')
+    }
+
+    if (config.hybridKeywordRatio < 0 || config.hybridKeywordRatio > 1) {
+      errors.push('Hybrid keyword ratio must be between 0 and 1')
+    }
+
+    if (Math.abs((config.hybridSemanticRatio + config.hybridKeywordRatio) - 1.0) > 0.01) {
+      errors.push('Hybrid semantic and keyword ratios must sum to 1.0')
+    }
+
+    if (config.hybridTotalResultsForReranking < 1) {
+      errors.push('Hybrid total results for reranking must be at least 1')
     }
 
     // Ollama validation

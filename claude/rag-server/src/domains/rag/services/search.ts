@@ -85,7 +85,7 @@ export class SearchService implements ISearchService {
 
     // Convert vector search results to search results
     return vectorResults.map((result) => ({
-      id: result.id, // Include required id field
+      id: result.id,
       content: result.content,
       score: result.score,
       metadata: result.metadata,

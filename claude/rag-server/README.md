@@ -91,11 +91,24 @@ yarn db:reset               # Reset and reindex documents
 ## MCP Tools
 
 ### search
-Semantic document search using natural language queries.
+Advanced document search with multiple search modes and LLM-based reranking.
 
 **Parameters:**
 - `query` (string): Search query text
 - `topK` (number, optional): Maximum results (1-50, default: 5)
+- `searchType` (string, optional): Search mode - 'semantic', 'keyword', or 'hybrid' (default: 'semantic')
+
+**Search Modes:**
+- **Semantic**: Uses embedding similarity for conceptual matches
+- **Keyword**: Traditional full-text search with language-aware tokenization
+- **Hybrid**: Combines semantic (70%) + keyword (30%) results with LLM reranking
+
+**LLM Reranking:**
+When `searchType` is 'hybrid' and LLM reranking is enabled, the system:
+1. Retrieves semantic results (14 out of 20) and keyword results (6 out of 20)
+2. Combines and deduplicates results 
+3. Uses qwen3:4b model to evaluate relevance and rerank by ID
+4. Returns top-K most relevant results
 
 ### get_vectordb_info
 Retrieve vector database statistics and configuration.
@@ -125,8 +138,27 @@ MAX_CONCURRENT_PROCESSING=3       # Processing concurrency
 ```bash
 OLLAMA_BASE_URL=http://localhost:11434
 EMBEDDING_MODEL=qllama/multilingual-e5-large-instruct:latest
-EMBEDDING_BATCH_SIZE=8
-EMBEDDING_CONCURRENCY=3
+EMBEDDING_BATCH_SIZE=12
+EMBEDDING_CONCURRENCY=4
+```
+
+#### LLM Reranking (NEW)
+```bash
+# Enable LLM-based reranking for hybrid search
+ENABLE_LLM_RERANKING=true
+
+# Model for reranking (ensure it's available: ollama pull qwen3:4b)
+LLM_RERANKING_MODEL=qwen3:4b
+
+# Timeout for reranking operations
+LLM_RERANKING_TIMEOUT_MS=60000
+
+# Hybrid search ratios (must sum to 1.0)
+HYBRID_SEMANTIC_RATIO=0.7
+HYBRID_KEYWORD_RATIO=0.3
+
+# Results to fetch before reranking
+HYBRID_TOTAL_RESULTS_FOR_RERANKING=20
 ```
 
 #### MCP Transport

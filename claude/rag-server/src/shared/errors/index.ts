@@ -31,6 +31,9 @@ export enum ErrorCode {
   CONFIG_ERROR = 'CONFIG_ERROR',
   VALIDATION_ERROR = 'VALIDATION_ERROR',
 
+  // LLM Errors
+  LLM_ERROR = 'LLM_ERROR',
+
   // Initialization Errors
   INITIALIZATION_ERROR = 'INITIALIZATION_ERROR',
 

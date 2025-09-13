@@ -171,6 +171,42 @@ export type VectorSearchResult = SearchResult
 // Reranking Types
 // ========================================
 
+/**
+ * Hybrid search configuration for semantic/keyword ratio
+ */
+export interface HybridSearchConfig {
+  semanticRatio: number // 0.7 for 70% semantic
+  keywordRatio: number // 0.3 for 30% keyword
+  totalResultsForReranking: number // Total results to fetch before reranking
+}
+
+/**
+ * Reranking options for LLM-based reranking
+ */
+export interface RerankingOptions {
+  query: string
+  documents: SearchResult[]
+  topK: number
+  model?: string // LLM model to use for reranking
+  maxTokens?: number
+  temperature?: number
+}
+
+/**
+ * Reranking result with relevance scores
+ */
+export interface RerankingResult {
+  id: string
+  content: string
+  score: number // Original search score
+  relevanceScore: number // LLM-generated relevance score
+  finalScore: number // Combined final score
+  metadata: DocumentMetadata
+  chunkIndex: number
+  searchType: SearchType
+  reasoning?: string // Optional reasoning from LLM
+}
+
 // ========================================
 // Model Information Types
 // ========================================
