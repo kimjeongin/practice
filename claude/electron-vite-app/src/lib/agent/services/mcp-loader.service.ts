@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events'
-import { StructuredTool } from '@langchain/core/tools'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { Tool } from '@langchain/core/tools'
 
 /**
  * MCP Server Configuration
@@ -34,7 +36,9 @@ export interface ServerConnection {
   status: ServerStatus
   error?: string
   connectedAt?: Date
-  tools?: StructuredTool[]
+  tools?: Tool[]
+  client?: Client
+  transport?: StdioClientTransport
 }
 
 /**
@@ -44,9 +48,10 @@ export interface ServerConnection {
 export class MCPLoaderService extends EventEmitter {
   private servers: Map<string, MCPServerConfig> = new Map()
   private connections: Map<string, ServerConnection> = new Map()
-  private tools: StructuredTool[] = []
+  private tools: Tool[] = []
   private toolsStats: Record<string, number> = {}
   private initialized = false
+  private initializing = false
 
   constructor() {
     super()
@@ -57,7 +62,29 @@ export class MCPLoaderService extends EventEmitter {
    * Initialize the MCP loader service
    */
   async initialize(): Promise<void> {
-    if (this.initialized) return
+    if (this.initialized) {
+      console.log('✅ MCP Loader Service already initialized')
+      return
+    }
+
+    if (this.initializing) {
+      console.log('⏳ MCP Loader Service already initializing, waiting...')
+      // Wait for current initialization to complete
+      return new Promise((resolve, reject) => {
+        const checkInit = () => {
+          if (this.initialized) {
+            resolve()
+          } else if (!this.initializing) {
+            reject(new Error('Initialization failed'))
+          } else {
+            setTimeout(checkInit, 100)
+          }
+        }
+        checkInit()
+      })
+    }
+
+    this.initializing = true
 
     try {
       console.log('🚀 Initializing MCP Loader Service...')
@@ -65,7 +92,20 @@ export class MCPLoaderService extends EventEmitter {
       // Load default configuration
       await this.loadConfiguration()
 
+      // Auto-connect enabled servers
+      const enabledServers = Array.from(this.servers.values()).filter((server) => server.enabled)
+      console.log(`🔌 Auto-connecting ${enabledServers.length} enabled servers...`)
+
+      for (const server of enabledServers) {
+        try {
+          await this.connectServer(server.id)
+        } catch (error) {
+          console.warn(`⚠️ Failed to auto-connect server ${server.name}:`, error)
+        }
+      }
+
       this.initialized = true
+      this.initializing = false
       console.log('✅ MCP Loader Service initialized')
 
       this.emit('initialized', {
@@ -73,6 +113,7 @@ export class MCPLoaderService extends EventEmitter {
         toolCount: this.tools.length,
       })
     } catch (error) {
+      this.initializing = false
       console.error('❌ Failed to initialize MCP Loader:', error)
       throw error
     }
@@ -85,25 +126,18 @@ export class MCPLoaderService extends EventEmitter {
     // Load default MCP server configurations
     const defaultServers: MCPServerConfig[] = [
       {
-        id: 'filesystem-server',
-        name: 'Filesystem Server',
-        description: 'Local filesystem operations',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-filesystem', '/Users/jeongin'],
-        transport: 'stdio',
-        enabled: false,
-      },
-      {
-        id: 'web-search-server',
-        name: 'Web Search Server',
-        description: 'Web search capabilities',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-brave-search'],
+        id: 'rag-server',
+        name: 'RAG Server',
+        description: 'RAG-based document search and Q&A',
+        command: 'node',
+        args: ['/Users/jeongin/workspace/practice/claude/rag-server/dist/app/index.js'],
         env: {
-          BRAVE_API_KEY: process.env.BRAVE_API_KEY || '',
+          NODE_ENV: 'production',
+          DOCUMENTS_DIR: 'Users/jeongin/workspace/practice/claude/rag-server/documents',
+          DATA_DIR: 'Users/jeongin/workspace/practice/claude/rag-server/.data',
         },
         transport: 'stdio',
-        enabled: false,
+        enabled: true, // Disable RAG server - path doesn't exist
       },
     ]
 
@@ -146,7 +180,7 @@ export class MCPLoaderService extends EventEmitter {
   /**
    * Get all available tools
    */
-  getTools(): StructuredTool[] {
+  getTools(): Tool[] {
     return [...this.tools]
   }
 
@@ -197,23 +231,125 @@ export class MCPLoaderService extends EventEmitter {
       connection.status = ServerStatus.CONNECTING
       this.connections.set(serverId, connection)
 
-      // TODO: Implement actual MCP server connection logic here
-      // For now, simulate connection
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create MCP client and transport
+      const client = new Client(
+        {
+          name: 'electron-vite-app',
+          version: '1.0.0',
+        },
+        {
+          capabilities: {},
+        }
+      )
+
+      let transport: StdioClientTransport
+
+      if (connection.config.transport === 'stdio' && connection.config.command) {
+        // Create environment with proper type handling
+        const baseEnv: Record<string, string> = {}
+        for (const [key, value] of Object.entries(process.env)) {
+          if (typeof value === 'string') {
+            baseEnv[key] = value
+          }
+        }
+
+        transport = new StdioClientTransport({
+          command: connection.config.command,
+          args: connection.config.args || [],
+          env: { ...baseEnv, ...connection.config.env },
+        })
+      } else {
+        throw new Error('Only stdio transport is currently supported')
+      }
+
+      // Connect to the server
+      await client.connect(transport)
+
+      // Get available tools
+      const toolsResult = await client.listTools()
+      console.log(`📋 Found ${toolsResult.tools?.length || 0} tools from ${connection.config.name}`)
+
+      // Create a simple tool wrapper for MCP tools
+      class MCPTool extends Tool {
+        name: string
+        description: string
+        private client: Client
+        private toolName: string
+
+        constructor(client: Client, mcpTool: any) {
+          super()
+          this.client = client
+          this.toolName = mcpTool.name
+          this.name = mcpTool.name
+          this.description = mcpTool.description || 'No description available'
+        }
+
+        async _call(args: string): Promise<string> {
+          try {
+            // Try to parse args as JSON, fall back to using as-is
+            let parsedArgs
+            try {
+              parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
+            } catch {
+              parsedArgs = { input: args }
+            }
+
+            const result = await this.client.callTool({
+              name: this.toolName,
+              arguments: parsedArgs,
+            })
+
+            return JSON.stringify(result, null, 2)
+          } catch (error) {
+            throw new Error(
+              `MCP tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+            )
+          }
+        }
+      }
+
+      // Convert MCP tools to our tool format
+      const tools = (toolsResult.tools || []).map((mcpTool) => new MCPTool(client, mcpTool))
 
       connection.status = ServerStatus.CONNECTED
       connection.connectedAt = new Date()
       connection.error = undefined
+      connection.client = client
+      connection.transport = transport
+      connection.tools = tools
+
+      // Update global tools list
+      this.tools = this.tools.filter(
+        (tool) => !(tool as any).serverId || (tool as any).serverId !== serverId
+      )
+      tools.forEach((tool) => {
+        ;(tool as any).serverId = serverId
+        this.tools.push(tool)
+      })
+
+      this.toolsStats[serverId] = tools.length
 
       this.connections.set(serverId, connection)
       this.emit('server-connected', { serverId, server: connection.config })
 
-      console.log(`✅ Connected to MCP server: ${connection.config.name}`)
+      console.log(`✅ Connected to MCP server: ${connection.config.name} (${tools.length} tools)`)
     } catch (error) {
       connection.status = ServerStatus.ERROR
       connection.error = error instanceof Error ? error.message : 'Connection failed'
-      this.connections.set(serverId, connection)
 
+      // Cleanup on failure
+      if (connection.client) {
+        try {
+          await connection.client.close()
+        } catch (closeError) {
+          console.warn('Failed to close client during cleanup:', closeError)
+        }
+      }
+      connection.client = undefined
+      connection.transport = undefined
+      connection.tools = undefined
+
+      this.connections.set(serverId, connection)
       this.emit('server-error', { serverId, error: connection.error })
       console.error(`❌ Failed to connect to ${connection.config.name}:`, error)
       throw error
@@ -237,12 +373,21 @@ export class MCPLoaderService extends EventEmitter {
     try {
       console.log(`🔌 Disconnecting from MCP server: ${connection.config.name}`)
 
-      // TODO: Implement actual MCP server disconnection logic
+      // Close MCP client connection
+      if (connection.client) {
+        await connection.client.close()
+      }
+
+      // Remove tools from global list
+      this.tools = this.tools.filter((tool) => (tool as any).serverId !== serverId)
+      this.toolsStats[serverId] = 0
 
       connection.status = ServerStatus.DISCONNECTED
       connection.connectedAt = undefined
       connection.error = undefined
       connection.tools = undefined
+      connection.client = undefined
+      connection.transport = undefined
 
       this.connections.set(serverId, connection)
       this.emit('server-disconnected', { serverId, server: connection.config })
@@ -364,9 +509,13 @@ export class MCPLoaderService extends EventEmitter {
       throw new Error(`Server for tool ${toolName} is not connected`)
     }
 
+    if (!connection.client) {
+      throw new Error(`No client available for tool ${toolName}`)
+    }
+
     try {
       // Execute the tool through MCP client
-      const result = await (connection as any).client.callTool({
+      const result = await connection.client.callTool({
         name: toolName,
         arguments: parameters,
       })
@@ -415,11 +564,23 @@ export class MCPLoaderService extends EventEmitter {
       }
     }
 
+    // Force cleanup any remaining client connections
+    for (const [serverId, connection] of this.connections.entries()) {
+      if (connection.client) {
+        try {
+          await connection.client.close()
+        } catch (error) {
+          console.warn(`Warning: Failed to close client for ${serverId}:`, error)
+        }
+      }
+    }
+
     this.servers.clear()
     this.connections.clear()
     this.tools = []
     this.toolsStats = {}
     this.initialized = false
+    this.initializing = false
 
     this.removeAllListeners()
     console.log('✅ MCP Loader cleanup completed')

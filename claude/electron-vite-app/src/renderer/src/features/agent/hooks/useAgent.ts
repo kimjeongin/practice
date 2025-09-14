@@ -177,6 +177,8 @@ export function useAgent(): {
           if ((result as { metadata?: { shouldReinitialize?: boolean } }).metadata?.shouldReinitialize) {
             console.warn('🔄 Server suggests reinitialization, marking as uninitialized')
             setIsInitialized(false)
+          } else {
+            console.log('📊 Query processing failed but keeping initialized state for conversation continuity')
           }
 
           setError(errorMsg)

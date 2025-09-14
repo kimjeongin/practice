@@ -87,6 +87,16 @@ interface AgentAPI {
   // Health check
   healthCheck: () => Promise<IPCResponse<AgentHealthStatus>>
 
+  // Initialization status
+  getInitStatus: () => Promise<IPCResponse<{
+    stage: string
+    progress: number
+    message: string
+    error?: string
+    timestamp: Date
+  }>>
+  isSystemReady: () => Promise<IPCResponse<{ isReady: boolean }>>
+
   // Get MCP server connections status
   getMCPServers: () => Promise<IPCResponse<MCPServersData>>
 

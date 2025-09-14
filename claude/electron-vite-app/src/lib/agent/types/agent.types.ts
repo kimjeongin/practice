@@ -3,7 +3,13 @@
  */
 
 // Ollama model types
-export type OllamaModel = 'llama3.1:8b' | 'deepseek-r1:8b' | 'mistral:7b' | 'qwen2.5:7b'
+export type OllamaModel =
+  | 'llama3.1:8b'
+  | 'deepseek-r1:8b'
+  | 'mistral:7b'
+  | 'qwen2.5:7b'
+  | 'qwen3:4b'
+  | 'qwen3:0.6b'
 
 // Agent types based on capabilities
 export type AgentType = 'main' | 'reasoning' | 'fast'
@@ -26,12 +32,12 @@ export interface AgentMessage {
   conversationId: string
   toolCall?: {
     toolName: string
-    parameters: Record<string, any>
+    parameters: Record<string, unknown>
     serverId: string
   }
   toolResult?: {
     success: boolean
-    result?: any
+    result?: unknown
     error?: string
     executionTime?: number
   }
@@ -45,8 +51,8 @@ export interface AgentExecutionResult {
   toolsUsed: Array<{
     toolName: string
     serverId: string
-    parameters: Record<string, any>
-    result: any
+    parameters: Record<string, unknown>
+    result: unknown
     executionTime: number
   }>
   totalExecutionTime: number
@@ -59,7 +65,7 @@ export interface ToolSelectionDecision {
   reasoning: string
   action: 'use_tool' | 'respond' | 'clarify'
   toolName?: string
-  parameters?: Record<string, any>
+  parameters?: Record<string, unknown>
   confidence?: number
 }
 
@@ -123,7 +129,7 @@ export interface MCPServerConnection {
   status: ServerStatus
   error?: string
   connectedAt?: Date
-  tools?: any[]
+  tools?: unknown[]
 }
 
 // IPC Response wrapper

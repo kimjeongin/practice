@@ -43,6 +43,16 @@ const agentAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.HEALTH_CHECK)
   },
 
+  // Get initialization status
+  getInitStatus: async (): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_INIT_STATUS)
+  },
+
+  // Check if system is ready
+  isSystemReady: async (): Promise<any> => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.IS_SYSTEM_READY)
+  },
+
   // Get MCP server connections status
   getMCPServers: async (): Promise<any> => {
     return ipcRenderer.invoke('agent:get-mcp-servers')

@@ -46,12 +46,21 @@ interface ThinkingStatus {
 export function AgentChat(): React.JSX.Element {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
-  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(() => {
+    // Load conversation ID from sessionStorage on initialization
+    try {
+      return sessionStorage.getItem('agent-conversation-id') || null
+    } catch {
+      return null
+    }
+  })
   const [currentThinking, setCurrentThinking] = useState<ThinkingStatus | null>(null)
   const [isAgentWorking, setIsAgentWorking] = useState(false)
   const [showMCPStatus, setShowMCPStatus] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const initializationAttempted = useRef(false)
+  const hasShownWelcome = useRef(false)
   const { servers: mcpServers } = useMCPServers()
   const {
     isInitialized,
@@ -69,65 +78,26 @@ export function AgentChat(): React.JSX.Element {
   }
 
   const initializeSystem = useCallback(async (): Promise<void> => {
+    // Prevent multiple initialization attempts
+    if (initializationAttempted.current || isInitialized) {
+      console.log('⚠️ Initialization already attempted or completed, skipping...')
+      return
+    }
+
+    initializationAttempted.current = true
+
     try {
       console.log('🚀 Initializing Agent System...')
 
       await initialize({
         type: 'main',
-        model: 'llama3.1:8b',
-        temperature: 0.7,
-        maxTokens: 1024,
+        model: 'qwen3:0.6b',
+        temperature: 0.3,
+        maxTokens: 512,
       })
 
-      if (!error && isInitialized) {
-        // Add welcome message with current status
-        const toolCount = healthStatus?.availableTools || 0
-        const welcomeMessage: Message = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `Hello! I'm your AI agent powered by Llama 3.1 8B. I'm ready to help you with various tasks.
-
-**Current Status:**
-- 🧠 Model: Llama 3.1 8B (${healthStatus?.ollamaHealthy ? 'Ready' : 'Checking...'})
-- 🔧 Available Tools: ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}
-- 🔗 MCP Servers: ${mcpServers?.servers ? mcpServers.servers.filter((s: any) => s.status === 'connected').length : 0} connected
-
-**Available Capabilities:**
-- Natural language understanding and generation
-- Tool selection and execution (when MCP servers are connected)
-- Multi-step reasoning with tool usage
-- Conversation memory and context
-
-Type your message below to get started! I can help with research, analysis, and tasks using available tools.`,
-          timestamp: new Date(),
-        }
-
-        setMessages([welcomeMessage])
-        console.log('✅ Agent System initialized successfully')
-      } else {
-        // Show initialization failure message
-        const failureMessage: Message = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `❌ **Initialization Failed**
-
-I encountered an issue while starting up. This might be due to:
-- Ollama server not running
-- Models not available
-- Configuration issues
-
-**Troubleshooting Steps:**
-1. Make sure Ollama is running: \`ollama serve\`
-2. Check available models: \`ollama list\`
-3. Pull required models if missing: \`ollama pull llama3.1:8b\`
-
-Please resolve these issues and refresh the application.`,
-          timestamp: new Date(),
-        }
-
-        setMessages([failureMessage])
-        console.error('❌ Agent System initialization failed')
-      }
+      // Don't rely on state variables that might cause loops
+      console.log('✅ Agent System initialization completed')
     } catch (error) {
       console.error('❌ Failed to initialize Agent System:', error)
 
@@ -143,12 +113,74 @@ Please check the console for more details and ensure all required services are r
       }
 
       setMessages([errorMessage])
+      // Reset the flag so user can try again
+      initializationAttempted.current = false
     }
-  }, [initialize, error, isInitialized, healthStatus, mcpServers])
+  }, [initialize]) // Simplified dependencies
 
   useEffect(() => {
     initializeSystem()
   }, [initializeSystem])
+
+  // Display welcome message when initialization is successful (only once)
+  useEffect(() => {
+    if (isInitialized && !error && !hasShownWelcome.current) {
+      const toolCount = healthStatus?.availableTools || 0
+      const welcomeMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Hello! I'm your AI agent powered by Qwen 3 0.6B. I'm ready to help you with various tasks.
+
+**Current Status:**
+- 🧠 Model: Qwen 3 0.6B (${healthStatus?.ollamaHealthy ? 'Ready' : 'Checking...'})
+- 🔧 Available Tools: ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}
+- 🔗 MCP Servers: ${mcpServers?.servers ? mcpServers.servers.filter((s: any) => s.status === 'connected').length : 0} connected
+
+**Available Capabilities:**
+- Natural language understanding and generation
+- Tool selection and execution (when MCP servers are connected)
+- Multi-step reasoning with tool usage
+- Conversation memory and context
+
+Type your message below to get started! I can help with research, analysis, and tasks using available tools.`,
+        timestamp: new Date(),
+      }
+
+      // Only add welcome message if no messages exist, preserve existing history
+      setMessages(prev => prev.length === 0 ? [welcomeMessage] : prev)
+      hasShownWelcome.current = true
+      console.log('✅ Welcome message displayed')
+    }
+  }, [isInitialized, error, healthStatus, mcpServers])
+
+  // Display initialization failure message (preserve existing messages)
+  useEffect(() => {
+    if (!isInitialized && error && !hasShownWelcome.current) {
+      const failureMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `❌ **Initialization Failed**
+
+I encountered an issue while starting up. This might be due to:
+- Ollama server not running
+- Models not available
+- Configuration issues
+
+**Troubleshooting Steps:**
+1. Make sure Ollama is running: \`ollama serve\`
+2. Check available models: \`ollama list\`
+3. Pull required models if missing: \`ollama pull qwen3:0.6b\`
+
+Please resolve these issues and refresh the application.`,
+        timestamp: new Date(),
+      }
+
+      // Only show failure message if no other messages exist
+      setMessages(prev => prev.length === 0 ? [failureMessage] : prev)
+      hasShownWelcome.current = true // Prevent welcome message after error
+      console.error('❌ Agent System initialization failure message displayed')
+    }
+  }, [isInitialized, error])
 
   useEffect(() => {
     scrollToBottom()
@@ -230,8 +262,20 @@ Please check the console for more details and ensure all required services are r
       timestamp: new Date(),
     }
 
-    console.log('📝 Adding user message and clearing input')
-    setMessages((prev) => [...prev, userMessage])
+    console.log('📝 Adding user message and clearing input', {
+      messageId: userMessage.id,
+      currentMessageCount: messages.length,
+      conversationId: conversationId || 'none',
+    })
+    setMessages((prev) => {
+      const newMessages = [...prev, userMessage]
+      console.log('📋 Message state updated:', {
+        previousCount: prev.length,
+        newCount: newMessages.length,
+        lastMessage: userMessage.content.substring(0, 50),
+      })
+      return newMessages
+    })
     setInputValue('')
     setIsAgentWorking(true)
 
@@ -246,7 +290,7 @@ Please check the console for more details and ensure all required services are r
       await processActualQuery(userMessage.content)
     } catch (error) {
       console.error('❌ Failed to process message:', error)
-      // Comprehensive state reset on error
+      // Reset only UI states, preserve conversation history and ID
       setCurrentThinking(null)
       setIsAgentWorking(false)
       clearError() // Also resets loading state
@@ -257,7 +301,9 @@ Please check the console for more details and ensure all required services are r
         content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         timestamp: new Date(),
       }
+      // ADD error message to existing conversation
       setMessages((prev) => [...prev, errorMessage])
+      console.log('📝 sendMessage error added to conversation history')
     }
   }
 
@@ -281,6 +327,12 @@ Please check the console for more details and ensure all required services are r
         if (!conversationId && queryResult.conversationId) {
           console.log('🆔 Setting conversation ID:', queryResult.conversationId)
           setConversationId(queryResult.conversationId)
+          // Persist conversation ID to sessionStorage
+          try {
+            sessionStorage.setItem('agent-conversation-id', queryResult.conversationId)
+          } catch (error) {
+            console.warn('Failed to save conversation ID to sessionStorage:', error)
+          }
         }
 
         // Update thinking state for response generation
@@ -301,14 +353,24 @@ Please check the console for more details and ensure all required services are r
           isStreaming: true,
         }
 
-        setMessages((prev) => [...prev, assistantMessage])
+        setMessages((prev) => {
+          const newMessages = [...prev, assistantMessage]
+          console.log('💬 Assistant message added:', {
+            messageId: assistantMessageId,
+            previousCount: prev.length,
+            newCount: newMessages.length,
+            hasToolsUsed: !!(queryResult?.toolsUsed?.length),
+            toolCount: queryResult?.toolsUsed?.length || 0,
+          })
+          return newMessages
+        })
         console.log('💬 Starting response streaming')
 
         // Start streaming the response
         streamResponse(queryResult.response, assistantMessageId)
       } else {
         console.error('❌ Query processing failed:', queryResult?.error)
-        // Comprehensive state reset
+        // Reset only thinking states, preserve conversation history
         setCurrentThinking(null)
         setIsAgentWorking(false)
         clearError()
@@ -321,11 +383,13 @@ Please check the console for more details and ensure all required services are r
             'I apologize, but I encountered an error processing your request. Please try again.',
           timestamp: new Date(),
         }
+        // ADD error message to existing history, don't replace
         setMessages((prev) => [...prev, errorMessage])
+        console.log('📝 Error message added to conversation history')
       }
     } catch (error) {
       console.error('❌ Exception in processActualQuery:', error)
-      // Comprehensive state reset on exception
+      // Reset only thinking states, preserve conversation and conversation ID
       setCurrentThinking(null)
       setIsAgentWorking(false)
       clearError()
@@ -336,7 +400,9 @@ Please check the console for more details and ensure all required services are r
         content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         timestamp: new Date(),
       }
+      // ADD error message to existing history, maintain conversation flow
       setMessages((prev) => [...prev, errorMessage])
+      console.log('📝 Exception error message added to conversation history')
     }
   }
 
@@ -353,7 +419,16 @@ Please check the console for more details and ensure all required services are r
     setConversationId(null)
     setCurrentThinking(null)
     setIsAgentWorking(false)
+    hasShownWelcome.current = false // Allow welcome message to show again
     clearError() // This also resets loading state
+
+    // Clear persisted conversation ID
+    try {
+      sessionStorage.removeItem('agent-conversation-id')
+      console.log('🗑️ Cleared conversation ID from sessionStorage')
+    } catch (error) {
+      console.warn('Failed to clear conversation ID from sessionStorage:', error)
+    }
   }
 
   const formatTimestamp = (date: Date): string => {

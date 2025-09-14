@@ -18,6 +18,16 @@ body {
   100% { transform: rotate(360deg); }
 }
 
+/* Animation for fade out */
+@keyframes fadeOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.8s ease-in-out forwards;
+}
+
 /* Line clamp utility classes */
 .line-clamp-2 {
   overflow: hidden;

@@ -3,6 +3,7 @@ import { getLangGraphAgent, initializeAgentSystem, cleanupAgentSystem } from '..
 import { AgentConfig } from '../types/agent.types'
 import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 import { getMCPLoaderService, MCPServerConfig } from '../services/mcp-loader.service'
+import { getInitializationManager } from '../services/initialization-manager.service'
 
 /**
  * IPC Handlers for Agent System
@@ -259,6 +260,44 @@ ipcMain.handle(AGENT_IPC_CHANNELS.CLEANUP, async () => {
   }
 })
 
+// Get initialization status
+ipcMain.handle(AGENT_IPC_CHANNELS.GET_INIT_STATUS, async () => {
+  try {
+    const initManager = getInitializationManager()
+    const status = initManager.getStatus()
+
+    return {
+      success: true,
+      data: status,
+    }
+  } catch (error) {
+    console.error('Failed to get initialization status:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
+// Check if system is ready
+ipcMain.handle(AGENT_IPC_CHANNELS.IS_SYSTEM_READY, async () => {
+  try {
+    const initManager = getInitializationManager()
+    const isReady = initManager.isSystemReady()
+
+    return {
+      success: true,
+      data: { isReady },
+    }
+  } catch (error) {
+    console.error('Failed to check system readiness:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+})
+
 // Get MCP servers status
 ipcMain.handle('agent:get-mcp-servers', async () => {
   try {
@@ -268,11 +307,24 @@ ipcMain.handle('agent:get-mcp-servers', async () => {
     const availableTools = mcpLoader.getTools()
     const status = mcpLoader.getStatus()
 
+    // Clean connections data to avoid serialization issues
+    const cleanConnections = connections.map(conn => ({
+      id: conn.config.id,
+      name: conn.config.name,
+      description: conn.config.description,
+      status: conn.status,
+      toolCount: conn.tools?.length || 0,
+      connectedAt: conn.connectedAt,
+      lastError: conn.error,
+      // Remove non-serializable fields like client, transport, tools
+    }))
+
     return {
       success: true,
       data: {
-        servers: connections,
-        ...status,
+        servers: cleanConnections,
+        totalServers: cleanConnections.length,
+        connectedServers: cleanConnections.filter(s => s.status === 'connected').length,
         totalTools: availableTools.length,
       },
     }
@@ -395,12 +447,12 @@ ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_, query: string) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama3.1:8b',
+        model: 'qwen3:0.6b',
         prompt: query,
         stream: false,
         options: {
-          temperature: 0.7,
-          num_predict: 512,
+          temperature: 0.3,
+          num_predict: 256,
         },
       }),
     })

@@ -14,14 +14,15 @@ export class LangGraphAgentService extends EventEmitter {
   private conversationManager?: ConversationManager
   private mcpLoader?: MCPLoaderService
   private isInitialized = false
+  private isInitializing = false
 
   constructor(config: AgentConfig = {}) {
     super()
     this.config = {
       type: 'main',
-      model: 'llama3.1:8b',
-      temperature: 0.7,
-      maxTokens: 1024,
+      model: 'qwen3:0.6b',
+      temperature: 0.3, // Lower temperature for more focused responses
+      maxTokens: 512, // Reduce tokens for smaller model
       ...config,
     }
 
@@ -36,7 +37,29 @@ export class LangGraphAgentService extends EventEmitter {
    * Initialize the agent with required services
    */
   async initialize(): Promise<void> {
-    if (this.isInitialized) return
+    if (this.isInitialized) {
+      console.log('✅ LangGraph Agent already initialized')
+      return
+    }
+
+    if (this.isInitializing) {
+      console.log('⏳ LangGraph Agent already initializing, waiting...')
+      // Wait for current initialization to complete
+      return new Promise((resolve, reject) => {
+        const checkInit = (): void => {
+          if (this.isInitialized) {
+            resolve()
+          } else if (!this.isInitializing) {
+            reject(new Error('Initialization failed'))
+          } else {
+            setTimeout(checkInit, 100)
+          }
+        }
+        checkInit()
+      })
+    }
+
+    this.isInitializing = true
 
     try {
       console.log('🚀 Initializing LangGraph Agent...')
@@ -49,6 +72,7 @@ export class LangGraphAgentService extends EventEmitter {
       await this.model.invoke([{ role: 'user', content: 'test' }])
 
       this.isInitialized = true
+      this.isInitializing = false
       console.log('✅ LangGraph Agent initialized successfully')
 
       this.emit('initialized', {
@@ -56,6 +80,7 @@ export class LangGraphAgentService extends EventEmitter {
         availableTools: this.getAvailableTools().length,
       })
     } catch (error) {
+      this.isInitializing = false
       console.error('❌ Failed to initialize LangGraph Agent:', error)
       throw error
     }
@@ -74,8 +99,8 @@ export class LangGraphAgentService extends EventEmitter {
     const toolsUsed: Array<{
       toolName: string
       serverId: string
-      parameters: Record<string, any>
-      result: any
+      parameters: Record<string, unknown>
+      result: unknown
       executionTime: number
     }> = []
 
@@ -288,33 +313,25 @@ export class LangGraphAgentService extends EventEmitter {
   private async analyzeAndDecide(
     query: string,
     availableTools: Array<{ name: string; description: string }>,
-    toolsUsed: any[]
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _toolsUsed: unknown[]
   ): Promise<{
     action: 'use_tool' | 'respond' | 'clarify'
     toolName?: string
-    parameters?: Record<string, any>
+    parameters?: Record<string, unknown>
     reasoning: string
   }> {
-    const systemPrompt = `You are an AI agent that can analyze user queries and decide whether to use tools or respond directly.
+    const systemPrompt = `You are a helpful AI assistant. Analyze the user query and decide what to do.
 
-Available Tools:
-${availableTools.map((tool) => `- ${tool.name}: ${tool.description}`).join('\n')}
+Available tools: ${availableTools.map((tool) => tool.name).join(', ') || 'None'}
 
-Tools already used in this conversation: ${toolsUsed.map((t) => t.toolName).join(', ') || 'None'}
+Respond ONLY with valid JSON in this exact format:
+{"action": "respond", "reasoning": "I can answer this directly"}
 
-Analyze the user query and respond with a JSON object containing:
-{
-  "action": "use_tool" | "respond" | "clarify",
-  "toolName": "tool_name_if_using_tool",
-  "parameters": {"key": "value"} (if using tool),
-  "reasoning": "explanation of decision"
-}
+OR if you need to use a tool:
+{"action": "use_tool", "toolName": "tool_name", "parameters": {}, "reasoning": "why use this tool"}
 
-Guidelines:
-- Use "use_tool" if the query requires tool execution and you haven't already used that specific tool for this exact purpose
-- Use "respond" if you can answer directly or have sufficient tool results
-- Use "clarify" if the query is ambiguous
-- Consider what tools have already been used to avoid redundancy`
+Use "respond" for most queries unless you specifically need file operations or other tools.`
 
     try {
       const messages = [
@@ -323,25 +340,21 @@ Guidelines:
       ]
 
       const response = await this.model.invoke(messages)
-      const responseText =
+      let responseText =
         typeof response.content === 'string' ? response.content : String(response.content)
+
+      // Clean the response first
+      responseText = this.cleanResponse(responseText)
 
       // Try to parse JSON response
       try {
         return JSON.parse(responseText)
       } catch {
-        // Fallback if JSON parsing fails
-        if (responseText.toLowerCase().includes('tool') && availableTools.length > 0) {
-          return {
-            action: 'use_tool',
-            toolName: availableTools[0].name,
-            parameters: {},
-            reasoning: 'Fallback tool selection due to parsing error',
-          }
-        }
+        // Fallback - default to respond for small model
+        console.log('📝 Could not parse decision JSON, defaulting to respond')
         return {
           action: 'respond',
-          reasoning: 'Could not parse decision, defaulting to direct response',
+          reasoning: 'Using direct response for better reliability',
         }
       }
     } catch (error) {
@@ -358,12 +371,12 @@ Guidelines:
    */
   private async executeTool(
     toolName: string,
-    parameters: Record<string, any>
+    parameters: Record<string, unknown>
   ): Promise<{
     toolName: string
     serverId: string
-    parameters: Record<string, any>
-    result: any
+    parameters: Record<string, unknown>
+    result: unknown
     executionTime: number
   }> {
     const startTime = Date.now()
@@ -391,7 +404,7 @@ Guidelines:
 
       return {
         toolName,
-        serverId: (tool as any).serverId || 'unknown',
+        serverId: (tool as { serverId?: string }).serverId || 'unknown',
         parameters,
         result,
         executionTime,
@@ -415,40 +428,22 @@ Guidelines:
    */
   private async shouldContinue(
     query: string,
-    toolsUsed: any[]
+    toolsUsed: unknown[]
   ): Promise<{ continue: boolean; reasoning: string }> {
-    if (toolsUsed.length >= 3) {
-      return { continue: false, reasoning: 'Maximum tools used, should respond now' }
+    // For small model, keep it simple - limit to 1 tool max and then respond
+    if (toolsUsed.length >= 1) {
+      return { continue: false, reasoning: 'One tool used, now responding' }
     }
 
-    const systemPrompt = `Based on the user query and tools already used, decide whether to continue using more tools or respond to the user.
+    // Simple heuristic - continue only if query explicitly asks for file operations
+    const needsTools =
+      query.toLowerCase().includes('file') ||
+      query.toLowerCase().includes('read') ||
+      query.toLowerCase().includes('write')
 
-Tools used: ${toolsUsed.map((t) => `${t.toolName} (result: ${JSON.stringify(t.result)})`).join('; ')}
-
-Respond with JSON:
-{
-  "continue": true/false,
-  "reasoning": "explanation"
-}`
-
-    try {
-      const messages = [
-        { role: 'system' as const, content: systemPrompt },
-        { role: 'user' as const, content: query },
-      ]
-
-      const response = await this.model.invoke(messages)
-      const responseText =
-        typeof response.content === 'string' ? response.content : String(response.content)
-
-      try {
-        return JSON.parse(responseText)
-      } catch {
-        return { continue: false, reasoning: 'Fallback: stopping to provide response' }
-      }
-    } catch (error) {
-      console.error('Error in continue decision:', error)
-      return { continue: false, reasoning: 'Error in decision making' }
+    return {
+      continue: needsTools && toolsUsed.length === 0,
+      reasoning: needsTools ? 'Query needs file operations' : 'Can answer directly',
     }
   }
 
@@ -457,10 +452,10 @@ Respond with JSON:
    */
   private async generateResponse(
     query: string,
-    availableTools: Array<{ name: string; description: string }>,
-    toolsUsed: any[]
+    _availableTools: Array<{ name: string; description: string }>,
+    toolsUsed: unknown[]
   ): Promise<string> {
-    const systemPrompt = this.createSystemPrompt(availableTools, toolsUsed)
+    const systemPrompt = this.createSystemPrompt([], toolsUsed)
 
     try {
       const messages = [
@@ -469,7 +464,12 @@ Respond with JSON:
       ]
 
       const response = await this.model.invoke(messages)
-      return typeof response.content === 'string' ? response.content : String(response.content)
+      let content = typeof response.content === 'string' ? response.content : String(response.content)
+
+      // Clean up qwen3 model artifacts
+      content = this.cleanResponse(content)
+
+      return content
     } catch (error) {
       console.error('Error generating response:', error)
       return 'I apologize, but I encountered an error while generating a response.'
@@ -480,31 +480,35 @@ Respond with JSON:
    * Create system prompt with tool information and usage history
    */
   private createSystemPrompt(
-    tools: Array<{ name: string; description: string }>,
-    toolsUsed: any[] = []
+    _tools: Array<{ name: string; description: string }>,
+    toolsUsed: unknown[] = []
   ): string {
-    const toolsList =
-      tools.length > 0
-        ? tools.map((tool) => `- ${tool.name}: ${tool.description}`).join('\n')
-        : 'No tools currently available.'
-
     const toolsUsedInfo =
       toolsUsed.length > 0
-        ? `\n\nTools used in this conversation:\n${toolsUsed.map((t) => `- ${t.toolName}: ${JSON.stringify(t.result)}`).join('\n')}`
+        ? `\nTool results: ${toolsUsed.map((t) => `${(t as { toolName: string; result: unknown }).toolName} returned: ${JSON.stringify((t as { toolName: string; result: unknown }).result)}`).join(', ')}`
         : ''
 
-    return `You are a helpful AI assistant powered by Llama 3.1. You can help users with various tasks using available tools.
+    return `You are a helpful AI assistant. Answer the user's question directly and clearly.${toolsUsedInfo}
 
-Available Tools:
-${toolsList}${toolsUsedInfo}
+Be concise and helpful.`
+  }
 
-Instructions:
-- Be helpful, accurate, and concise
-- Use the information from executed tools to provide informed responses
-- Reference tool results when relevant to answer user questions
-- If tools provided useful information, incorporate it into your response
-- Always provide clear and useful responses
-- If you encounter limitations, explain them clearly`
+  /**
+   * Clean up model response artifacts
+   */
+  private cleanResponse(content: string): string {
+    // Remove think tags and content
+    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+
+    // Remove extra whitespace
+    content = content.replace(/\n\s*\n/g, '\n').trim()
+
+    // If response is empty after cleaning, provide a fallback
+    if (!content) {
+      content = 'I understand your request. How can I help you?'
+    }
+
+    return content
   }
 
   /**
@@ -513,6 +517,7 @@ Instructions:
   async cleanup(): Promise<void> {
     console.log('🧹 Cleaning up LangGraph Agent...')
     this.isInitialized = false
+    this.isInitializing = false
     this.removeAllListeners()
     console.log('✅ LangGraph Agent cleanup completed')
   }

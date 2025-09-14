@@ -59,11 +59,8 @@ export function useMCPServers(): {
 
   useEffect(() => {
     fetchServers()
-
-    // Refresh every 10 seconds
-    const interval = setInterval(fetchServers, 10000)
-
-    return () => clearInterval(interval)
+    // Removed periodic refresh to prevent chat reset
+    // User can manually refresh via the refresh() method if needed
   }, [fetchServers])
 
   const getServerByStatus = useCallback(

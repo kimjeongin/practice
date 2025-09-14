@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { db } from '../lib/database/db'
+import { getInitializationManager } from '../lib/agent/services/initialization-manager.service'
 // Import agent IPC handlers (this will automatically register them)
 import '../lib/agent/ipc/agent-ipc.handlers'
 
@@ -54,16 +54,54 @@ function createWindow(): void {
   })
 }
 
-// Initialize application services
+// Initialize application services using centralized manager
 async function initializeServices(): Promise<void> {
   try {
-    console.log('🚀 Initializing application services...')
+    console.log('🚀 Initializing application services with centralized manager...')
 
-    // 1. Initialize database first
-    console.log('🗄️ Setting up database...')
-    await db.initialize()
+    const initManager = getInitializationManager()
 
-    console.log('✅ All services initialized successfully')
+    // Set up progress monitoring
+    initManager.on('progress', (progress) => {
+      console.log(`📊 Initialization Progress: ${progress.stage} (${progress.progress}%) - ${progress.message}`)
+
+      // Forward progress to renderer processes
+      const windows = BrowserWindow.getAllWindows()
+      windows.forEach(window => {
+        if (!window.isDestroyed()) {
+          window.webContents.send('agent:init-progress', progress)
+        }
+      })
+    })
+
+    initManager.on('initialized', (status) => {
+      console.log('✅ System initialization completed - notifying renderer')
+
+      // Forward completion to renderer processes
+      const windows = BrowserWindow.getAllWindows()
+      windows.forEach(window => {
+        if (!window.isDestroyed()) {
+          window.webContents.send('agent:init-completed', status)
+        }
+      })
+    })
+
+    initManager.on('failed', (failureInfo) => {
+      console.error(`❌ Initialization failed at stage: ${failureInfo.stage}`, failureInfo.error)
+
+      // Forward failure to renderer processes
+      const windows = BrowserWindow.getAllWindows()
+      windows.forEach(window => {
+        if (!window.isDestroyed()) {
+          window.webContents.send('agent:init-failed', failureInfo)
+        }
+      })
+    })
+
+    // Start the initialization sequence
+    await initManager.initialize()
+
+    console.log('✅ All services initialized successfully with centralized manager')
   } catch (error) {
     console.error('❌ Failed to initialize services:', error)
 
@@ -129,9 +167,10 @@ async function cleanupServices(): Promise<void> {
 
     await cleanupNotification
 
-    // Step 1: Close database connections
-    console.log('🗄️ Closing database connections...')
-    await db.close()
+    // Step 1: Clean up initialization manager
+    console.log('📋 Cleaning up initialization manager...')
+    const initManager = getInitializationManager()
+    await initManager.cleanup()
 
     // Step 2: Force cleanup any remaining processes
     console.log('🧹 Performing final cleanup...')

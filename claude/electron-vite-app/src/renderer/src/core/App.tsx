@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useClientHost } from '../shared/hooks/useClientHost'
 import { AgentChat } from '../features/agent/components/AgentChat'
+import { InitializationProgress } from '../features/agent/components/InitializationProgress'
 import ErrorBoundary from '../shared/components/ErrorBoundary'
 import LoadingSpinner from '../shared/components/LoadingSpinner'
 
@@ -13,6 +14,8 @@ function App(): React.JSX.Element {
   } = useClientHost()
 
   const [isShuttingDown, setIsShuttingDown] = useState(false)
+  const [showInitProgress, setShowInitProgress] = useState(true)
+  const [systemReady, setSystemReady] = useState(false)
 
   // Handle app shutdown notifications
   useEffect(() => {
@@ -33,6 +36,21 @@ function App(): React.JSX.Element {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
   }, [servers])
+
+  // Handle initialization completion
+  const handleInitializationComplete = () => {
+    setShowInitProgress(false)
+    setSystemReady(true)
+  }
+
+  // Show initialization progress first
+  if (showInitProgress && !systemReady) {
+    return (
+      <ErrorBoundary>
+        <InitializationProgress onComplete={handleInitializationComplete} />
+      </ErrorBoundary>
+    )
+  }
 
   // Show loading spinner during initial client host setup
   if (clientHostLoading) {

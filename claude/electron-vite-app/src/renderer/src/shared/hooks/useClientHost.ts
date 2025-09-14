@@ -220,15 +220,8 @@ export function useClientHost(): {
     initializeData()
   }, [loadServers, loadStatus])
 
-  // Refresh data periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadServers()
-      loadStatus()
-    }, 30000) // Refresh every 30 seconds
-
-    return () => clearInterval(interval)
-  }, [loadServers, loadStatus])
+  // Removed periodic refresh to prevent chat reset
+  // Data will be refreshed on user actions or component mount only
 
   return {
     // State
