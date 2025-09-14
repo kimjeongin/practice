@@ -34,21 +34,24 @@ export class ChunkingService {
     filePath?: string,
     targetContextTokens?: number
   ): Promise<string> {
-    const documentSample = fullDocument.substring(0, 500) // Limit document context
-    const chunkSample = chunk.substring(0, 150) // Limit chunk preview
+    const prompt = `<document>
+${fullDocument}
+</document>
 
-    const prompt = `Describe this chunk in one sentence:
-Doc: "${documentSample}..."
-Chunk: "${chunkSample}..."
-Description:`
+Here is the chunk we want to situate within the whole document:
+<chunk>
+${chunk}
+</chunk>
 
-    const maxTokens = targetContextTokens || 50
+Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Explain what this chunk is about and how it relates to the broader document. Answer only with the succinct context and nothing else.`
+
+    const maxTokens = targetContextTokens || 80
 
     try {
       const response = await this.generateWithOllama({
         model: this.model,
         prompt,
-        maxTokens
+        maxTokens,
       })
 
       return response.trim()
@@ -56,9 +59,9 @@ Description:`
       logger.warn('Context generation failed', {
         error: error instanceof Error ? error.message : String(error),
         filePath,
-        component: 'ChunkingService'
+        component: 'ChunkingService',
       })
-      
+
       // Fallback to simple context
       const fileType = filePath ? this.getFileTypeFromPath(filePath) : 'text'
       return `[Content from ${fileType} file]`
@@ -74,7 +77,7 @@ Description:`
     const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -82,13 +85,21 @@ Description:`
         },
         body: JSON.stringify({
           model: request.model,
-          prompt: request.prompt,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a document analysis expert. Generate contextual explanations that situate text chunks within their broader document context to improve search retrieval. Be precise and concise.',
+            },
+            {
+              role: 'user',
+              content: request.prompt,
+            },
+          ],
           stream: false,
           options: {
             temperature: 0.1,
             top_p: 0.8,
-            num_predict: request.maxTokens,
-            stop: ['\n\n', 'Doc:', 'Chunk:'], // Early stopping
             think: false,
           },
         }),
@@ -99,8 +110,8 @@ Description:`
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
       }
 
-      const data = (await response.json()) as { response: string }
-      return data.response
+      const data = (await response.json()) as { message: { content: string } }
+      return data.message.content
     } finally {
       clearTimeout(timeoutId)
     }
@@ -111,7 +122,7 @@ Description:`
    */
   private getFileTypeFromPath(filePath: string): string {
     const ext = filePath.split('.').pop()?.toLowerCase()
-    
+
     switch (ext) {
       case 'md':
       case 'markdown':
@@ -168,7 +179,7 @@ Description:`
     } catch (error) {
       logger.warn('Ollama chunking service unavailable', {
         error: error instanceof Error ? error.message : String(error),
-        component: 'ChunkingService'
+        component: 'ChunkingService',
       })
       return false
     }

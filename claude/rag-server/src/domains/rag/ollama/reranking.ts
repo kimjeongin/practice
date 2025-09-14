@@ -200,13 +200,29 @@ export class OllamaRerankingService {
         component: 'OllamaRerankingService',
       })
 
+      const chatRequestBody = {
+        model: requestBody.model,
+        messages: [
+          {
+            role: 'system' as const,
+            content: 'You are a document reranking expert. Analyze the provided documents and rank them by relevance to the query. Always respond with valid JSON in the exact format requested.',
+          },
+          {
+            role: 'user' as const,
+            content: requestBody.prompt,
+          },
+        ],
+        stream: requestBody.stream || false,
+        options: requestBody.options,
+      }
+
       const response = await TimeoutWrapper.withTimeout(
-        fetch(`${this.ollamaBaseUrl}/api/generate`, {
+        fetch(`${this.ollamaBaseUrl}/api/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(chatRequestBody),
         }),
         { timeoutMs: 120000, operation: 'reranking_generation' }
       )
@@ -218,23 +234,23 @@ export class OllamaRerankingService {
       const result = (await response.json()) as any
 
       logger.debug('📥 Reranking response received', {
-        responseLength: result.response?.length || 0,
-        responsePreview: result.response?.substring(0, 200) + '...' || 'No response',
+        responseLength: result.message?.content?.length || 0,
+        responsePreview: result.message?.content?.substring(0, 200) + '...' || 'No response',
         done: result.done,
         model: result.model,
         component: 'OllamaRerankingService',
       })
 
       logger.info('✅ Reranking generation completed', {
-        model: requestBody.model,
-        responseLength: result.response?.length || 0,
+        model: chatRequestBody.model,
+        responseLength: result.message?.content?.length || 0,
         done: result.done,
         component: 'OllamaRerankingService',
       })
 
       return {
-        text: result.response || '',
-        model: requestBody.model,
+        text: result.message?.content || '',
+        model: chatRequestBody.model,
         done: result.done,
         totalDuration: result.total_duration,
         loadDuration: result.load_duration,

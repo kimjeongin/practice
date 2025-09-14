@@ -42,11 +42,11 @@ export class EmbeddingService extends Embeddings {
     // Use batch processing for better efficiency
     const results = await this.embedDocuments([query])
     const result = results[0]
-    
+
     if (!result || result.length === 0) {
       throw new Error('Failed to generate embedding: empty result from batch processing')
     }
-    
+
     return result
   }
 
@@ -75,7 +75,7 @@ export class EmbeddingService extends Embeddings {
 
     try {
       const embeddings = await this.performBatchEmbeddingWithChunking(batch.texts)
-      
+
       // Cache results
       for (let i = 0; i < batch.texts.length; i++) {
         const cacheKey = this.getCacheKey(batch.texts[i]!)
@@ -98,32 +98,31 @@ export class EmbeddingService extends Embeddings {
   private async performBatchEmbeddingWithChunking(documents: string[]): Promise<number[][]> {
     const allEmbeddings: number[][] = []
     const optimalBatchSize = this.getOptimalBatchSize(documents)
-    
+
     if (documents.length > 50) {
       logger.debug('🔄 Processing large batch with chunking', {
         totalDocuments: documents.length,
         batchesNeeded: Math.ceil(documents.length / optimalBatchSize),
-        component: 'EmbeddingService'
+        component: 'EmbeddingService',
       })
     }
-    
+
     // Process documents in chunks
     for (let i = 0; i < documents.length; i += optimalBatchSize) {
       const chunk = documents.slice(i, i + optimalBatchSize)
-      
-      
+
       const chunkEmbeddings = await this.performBatchEmbedding(chunk)
       allEmbeddings.push(...chunkEmbeddings)
     }
-    
+
     if (documents.length > 50) {
       logger.debug('✅ Large batch processing completed', {
         totalInput: documents.length,
         totalOutput: allEmbeddings.length,
-        component: 'EmbeddingService'
+        component: 'EmbeddingService',
       })
     }
-    
+
     return allEmbeddings
   }
 
@@ -133,8 +132,7 @@ export class EmbeddingService extends Embeddings {
   private async performBatchEmbedding(documents: string[]): Promise<number[][]> {
     // This method now handles single batch - chunking is done at higher level
     const inputTexts = documents
-    
-    
+
     try {
       const response = await fetch(`${this.baseUrl}/api/embed`, {
         method: 'POST',
@@ -149,22 +147,36 @@ export class EmbeddingService extends Embeddings {
 
       if (!response.ok) {
         const errorText = await response.text()
-        logger.error('Ollama API error response', new Error(`${response.status} ${response.statusText}: ${errorText}`))
+        logger.error(
+          'Ollama API error response',
+          new Error(`${response.status} ${response.statusText}: ${errorText}`)
+        )
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
       }
 
       const data = (await response.json()) as { embeddings: number[][] }
 
-
       if (!data.embeddings || !Array.isArray(data.embeddings)) {
-        logger.error('Invalid response structure', new Error(`Response data: ${JSON.stringify(data)}`))
+        logger.error(
+          'Invalid response structure',
+          new Error(`Response data: ${JSON.stringify(data)}`)
+        )
         throw new Error('Invalid batch embedding data received from Ollama')
       }
 
       // Check if input/output count matches
       if (data.embeddings.length !== inputTexts.length) {
-        logger.error('Input/output count mismatch', new Error(`Input: ${inputTexts.length}, Output: ${data.embeddings.length}, Texts: ${inputTexts.map(t => `"${t.substring(0, 50)}..."`).join(', ')}`))
-        throw new Error(`Ollama returned ${data.embeddings.length} embeddings for ${inputTexts.length} inputs`)
+        logger.error(
+          'Input/output count mismatch',
+          new Error(
+            `Input: ${inputTexts.length}, Output: ${data.embeddings.length}, Texts: ${inputTexts
+              .map((t) => `"${t.substring(0, 50)}..."`)
+              .join(', ')}`
+          )
+        )
+        throw new Error(
+          `Ollama returned ${data.embeddings.length} embeddings for ${inputTexts.length} inputs`
+        )
       }
 
       // Validate embeddings but don't filter - preserve array length
@@ -175,7 +187,6 @@ export class EmbeddingService extends Embeddings {
           throw new Error(`Invalid embedding received at index ${i}`)
         }
       }
-
 
       return data.embeddings
     } catch (error) {
@@ -197,13 +208,13 @@ export class EmbeddingService extends Embeddings {
 
     // Calculate average text length in characters
     const avgLength = documents.reduce((sum, doc) => sum + doc.length, 0) / documents.length
-    
+
     // Estimate tokens (conservative: 3 chars per token for multilingual)
     const avgTokens = Math.ceil(avgLength / 3)
-    
+
     // Calculate how many documents can fit in model context
     const maxDocsInBatch = Math.floor(this.cachedModelInfo.maxTokens / avgTokens)
-    
+
     // Use conservative limit but ensure minimum batch size
     return Math.max(1, Math.min(maxDocsInBatch, this.adaptiveBatchSize, documents.length))
   }
@@ -232,16 +243,19 @@ export class EmbeddingService extends Embeddings {
       }
     }
 
-
     // Process uncached documents in batches
     if (documentsToEmbed.length > 0) {
       const newEmbeddings = await this.embedBatch(documentsToEmbed)
-      
+
       // Validate batch results
       if (!newEmbeddings || newEmbeddings.length !== documentsToEmbed.length) {
-        throw new Error(`Embedding batch size mismatch: expected ${documentsToEmbed.length}, got ${newEmbeddings?.length || 0}`)
+        throw new Error(
+          `Embedding batch size mismatch: expected ${documentsToEmbed.length}, got ${
+            newEmbeddings?.length || 0
+          }`
+        )
       }
-      
+
       // Place new embeddings in correct positions
       for (let i = 0; i < cacheIndices.length; i++) {
         const embedding = newEmbeddings[i]
@@ -273,7 +287,7 @@ export class EmbeddingService extends Embeddings {
     let hash = 0
     for (let i = 0; i < text.length; i++) {
       const char = text.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
+      hash = (hash << 5) - hash + char
       hash = hash & hash // Convert to 32bit integer
     }
     return `${this.model}:${hash}`
@@ -344,11 +358,18 @@ export class EmbeddingService extends Embeddings {
       }
 
       const data = (await response.json()) as {
-        model_info: { 'bert.context_length': number; 'bert.embedding_length': number }
+        model_info: {
+          'bert.context_length': number
+          'bert.embedding_length': number
+          'qwen3.context_length': number
+          'qwen3.embedding_length': number
+        }
       }
       return {
-        maxTokens: data.model_info['bert.context_length'],
-        dimensions: data.model_info['bert.embedding_length'],
+        maxTokens:
+          data.model_info['bert.context_length'] || data.model_info['qwen3.context_length'],
+        dimensions:
+          data.model_info['bert.embedding_length'] || data.model_info['qwen3.embedding_length'],
       }
     } catch (error) {
       logger.warn(
@@ -418,7 +439,7 @@ export class EmbeddingService extends Embeddings {
 
       // Adjust batch size based on model capacity
       this.adaptiveBatchSize = Math.min(
-        this.adaptiveBatchSize, 
+        this.adaptiveBatchSize,
         Math.max(1, Math.floor(modelDetails.maxTokens / 100)) // Conservative estimate
       )
 
