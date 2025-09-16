@@ -2,34 +2,8 @@ import { logger } from '@/shared/logger/index.js'
 import { resolve } from 'path'
 
 /**
- * Configuration Factory - Performance Optimized (v2024.12)
- * Manages server configuration with research-backed optimizations for RAG operations
- *
- * Performance Optimizations Applied:
- *
- * 🚀 Concurrency Management:
- * - MAX_CONCURRENT_PROCESSING: 3→2 (reduces resource contention)
- * - EMBEDDING_CONCURRENCY: 3→4 (optimizes Ollama API usage)
- *
- * 📦 Batch Processing:
- * - EMBEDDING_BATCH_SIZE: 8→12 (improves throughput by 50%)
- * - Adaptive batch sizing based on model token limits
- * - Automatic chunking for large document sets (285+ chunks)
- *
- * ⚡ Response Time:
- * - WATCHER_DEBOUNCE_DELAY: 300ms→200ms (faster file change detection)
- * - WATCHER_MAX_PROCESSING_QUEUE: 100→50 (prevents memory bloat)
- *
- * 🧠 Embedding Enhancements:
- * - LRU cache with 1000-item capacity (near-instant repeated processing)
- * - Connection pooling and queue management
- * - Automatic fallback for failed embeddings
- *
- * Expected Performance Gains:
- * - 30-50% faster file processing
- * - 40-60% improved embedding generation
- * - 90%+ cache hit rates for repeated content
- * - Stable processing of 285+ chunk documents
+ * Configuration Factory for RAG MCP Server
+ * 환경변수 기반 서버 설정 관리
  */
 
 export interface VectorStoreConfig {
@@ -50,57 +24,56 @@ export interface MCPTransportConfig {
 }
 
 export interface ServerConfig {
-  // Basic configuration
-  nodeEnv: string
-  documentsDir: string
-  dataDir: string
-  logLevel: string
+  // 기본 설정
+  nodeEnv: string              // 환경: development|production (기본값: development)
+  documentsDir: string         // 문서 디렉토리 경로 (기본값: ./documents)
+  dataDir: string              // 데이터 디렉토리 경로 (기본값: ./.data)
+  logLevel: string             // 로그 레벨 (기본값: info)
 
-  // Document processing (optimized chunking)
-  chunkSize: number
-  chunkOverlap: number
-  chunkingStrategy: 'contextual' | 'normal'
-  contextualChunkingModel: string
-  minChunkSize: number
+  // 문서 처리 설정
+  chunkSize: number                    // 청크 크기 (기본값: 800)
+  chunkOverlap: number                 // 청크 중복 크기 (기본값: 100)
+  chunkingStrategy: 'contextual' | 'normal'  // 청킹 전략 (기본값: normal)
+  contextualChunkingModel: string     // 컨텍스트 청킹용 모델 (기본값: qwen3:1.7b)
+  minChunkSize: number                // 최소 청크 크기 (기본값: 500)
 
-  // File watcher configuration (performance optimized)
-  watcherDebounceDelay: number // Reduced to 200ms for faster response
-  watcherMaxScanDepth: number
-  watcherMaxProcessingQueue: number // Reduced to 50 to prevent memory issues
+  // 파일 감시자 설정
+  watcherDebounceDelay: number        // 디바운스 지연시간 ms (기본값: 200)
+  watcherMaxScanDepth: number         // 최대 스캔 깊이 (기본값: 5)
+  watcherMaxProcessingQueue: number   // 최대 처리 큐 크기 (기본값: 50)
 
-  // Processing configuration (optimized concurrency)
-  maxConcurrentProcessing: number // Reduced to 2 to prevent resource contention
-  maxErrorHistory: number
+  // 처리 동시성 설정
+  maxConcurrentProcessing: number     // 최대 동시 처리 수 (기본값: 2)
+  maxErrorHistory: number             // 최대 에러 히스토리 수 (기본값: 1000)
+  embeddingConcurrency: number        // 임베딩 동시성 (기본값: 4)
 
-  // Embedding configuration (performance optimized)
-  embeddingConcurrency: number // Increased to 4 for better throughput
+  // 검색 설정
+  semanticScoreThreshold: number      // 시맨틱 점수 임계값 (기본값: 0.5)
 
-  // Search configuration
-  semanticScoreThreshold: number
+  // LLM 재랭킹 설정
+  enableLLMReranking: boolean         // LLM 재랭킹 활성화 (기본값: true)
+  llmRerankingModel: string           // 재랭킹용 모델 (기본값: qwen3:1.7b)
+  llmRerankingTimeout: number         // 재랭킹 타임아웃 ms (기본값: 120000)
+  hybridSemanticRatio: number         // 하이브리드 시맨틱 비율 (기본값: 0.7)
+  hybridKeywordRatio: number          // 하이브리드 키워드 비율 (기본값: 0.3)
+  hybridTotalResultsForReranking: number  // 재랭킹할 결과 수 (기본값: 20)
 
-  // LLM Reranking configuration
-  enableLLMReranking: boolean
-  llmRerankingModel: string
-  llmRerankingTimeout: number
-  hybridSemanticRatio: number
-  hybridKeywordRatio: number
-  hybridTotalResultsForReranking: number
+  // Ollama 설정
+  embeddingModel: string              // 임베딩 모델 (기본값: bge-m3:567m)
+  embeddingBatchSize: number          // 임베딩 배치 크기 (기본값: 12)
+  ollamaBaseUrl: string               // Ollama 서버 URL (기본값: http://localhost:11434)
 
-  // Ollama configuration
-  embeddingModel: string
-  embeddingBatchSize: number
-  ollamaBaseUrl: string
+  // 벡터 저장소 설정
+  vectorStore: VectorStoreConfig      // LanceDB 설정
 
-  // Vector store
-  vectorStore: VectorStoreConfig
-
-  // MCP Transport
-  mcp: MCPTransportConfig
+  // MCP 전송 설정
+  mcp: MCPTransportConfig             // MCP 서버 설정
 }
 
 export class ConfigFactory {
   /**
-   * Get current configuration based on NODE_ENV
+   * 현재 환경에 맞는 설정 반환
+   * NODE_ENV에 따라 개발/운영 설정 자동 선택
    */
   static getCurrentConfig(): ServerConfig {
     const nodeEnv = process.env['NODE_ENV'] || 'development'
@@ -113,7 +86,8 @@ export class ConfigFactory {
   }
 
   /**
-   * Create base configuration from environment variables
+   * 환경변수 기반 기본 설정 생성
+   * .env 파일의 값들을 읽어 설정 객체 생성
    */
   private static createBaseConfig(): ServerConfig {
     return {
@@ -122,66 +96,65 @@ export class ConfigFactory {
       dataDir: process.env['DATA_DIR'] || './.data',
       logLevel: process.env['LOG_LEVEL'] || 'info',
 
-      // Document processing (optimized for balanced performance)
-      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '800'), // Optimal balance for semantic coherence
-      chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'), // 25% overlap for context preservation
-      chunkingStrategy: (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'normal', // Normal for speed, contextual for quality
-      contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:1.7b', // Lightweight model for context generation
-      minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '500'), // Minimum viable chunk size
+      // 문서 처리 설정
+      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '800'),        // 청크 크기: 800토큰
+      chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'),   // 청크 중복: 100토큰 (12.5%)
+      chunkingStrategy: (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'normal',
+      contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:1.7b',
+      minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '500'),  // 최소 청크 크기: 500토큰
 
-      // File watcher configuration (performance optimized)
-      watcherDebounceDelay: parseInt(process.env['WATCHER_DEBOUNCE_DELAY'] || '200'), // Fast response to file changes
-      watcherMaxScanDepth: parseInt(process.env['WATCHER_MAX_SCAN_DEPTH'] || '5'), // Reasonable directory depth
-      watcherMaxProcessingQueue: parseInt(process.env['WATCHER_MAX_PROCESSING_QUEUE'] || '50'), // Memory-conscious queue size
+      // 파일 감시자 설정
+      watcherDebounceDelay: parseInt(process.env['WATCHER_DEBOUNCE_DELAY'] || '200'),     // 디바운스: 200ms
+      watcherMaxScanDepth: parseInt(process.env['WATCHER_MAX_SCAN_DEPTH'] || '5'),       // 스캔 깊이: 5단계
+      watcherMaxProcessingQueue: parseInt(process.env['WATCHER_MAX_PROCESSING_QUEUE'] || '50'), // 큐 크기: 50개
 
-      // Processing configuration (anti-contention optimized)
-      maxConcurrentProcessing: parseInt(process.env['MAX_CONCURRENT_PROCESSING'] || '2'), // Prevents resource bottlenecks
-      maxErrorHistory: parseInt(process.env['MAX_ERROR_HISTORY'] || '1000'), // Sufficient error tracking
+      // 처리 동시성 설정
+      maxConcurrentProcessing: parseInt(process.env['MAX_CONCURRENT_PROCESSING'] || '2'), // 동시 처리: 2개
+      maxErrorHistory: parseInt(process.env['MAX_ERROR_HISTORY'] || '1000'),              // 에러 히스토리: 1000개
+      embeddingConcurrency: parseInt(process.env['EMBEDDING_CONCURRENCY'] || '4'),        // 임베딩 동시성: 4개
 
-      // Embedding configuration (throughput optimized)
-      embeddingConcurrency: parseInt(process.env['EMBEDDING_CONCURRENCY'] || '4'), // Balanced Ollama API usage
+      // 검색 설정
+      semanticScoreThreshold: parseFloat(process.env['SEMANTIC_SCORE_THRESHOLD'] || '0.5'), // 시맨틱 임계값: 0.5
 
-      // Search configuration
-      semanticScoreThreshold: parseFloat(process.env['SEMANTIC_SCORE_THRESHOLD'] || '0.5'),
-
-      // LLM Reranking configuration
-      enableLLMReranking: process.env['ENABLE_LLM_RERANKING'] !== 'false', // Enable by default
-      llmRerankingModel: process.env['LLM_RERANKING_MODEL'] || 'qwen3:1.7b', // Default to qwen3:4b
-      llmRerankingTimeout: parseInt(process.env['LLM_RERANKING_TIMEOUT_MS'] || '120000'), // 120 second timeout
-      hybridSemanticRatio: parseFloat(process.env['HYBRID_SEMANTIC_RATIO'] || '0.7'), // 70% semantic
-      hybridKeywordRatio: parseFloat(process.env['HYBRID_KEYWORD_RATIO'] || '0.3'), // 30% keyword
+      // LLM 재랭킹 설정
+      enableLLMReranking: process.env['ENABLE_LLM_RERANKING'] !== 'false',               // 기본 활성화
+      llmRerankingModel: process.env['LLM_RERANKING_MODEL'] || 'qwen3:1.7b',             // 재랭킹 모델
+      llmRerankingTimeout: parseInt(process.env['LLM_RERANKING_TIMEOUT_MS'] || '120000'), // 타임아웃: 120초
+      hybridSemanticRatio: parseFloat(process.env['HYBRID_SEMANTIC_RATIO'] || '0.7'),    // 시맨틱 비율: 70%
+      hybridKeywordRatio: parseFloat(process.env['HYBRID_KEYWORD_RATIO'] || '0.3'),      // 키워드 비율: 30%
       hybridTotalResultsForReranking: parseInt(
         process.env['HYBRID_TOTAL_RESULTS_FOR_RERANKING'] || '20'
-      ), // 20 results for reranking
+      ), // 재랭킹 결과 수: 20개
 
-      // Ollama configuration (performance optimized)
-      embeddingModel: process.env['EMBEDDING_MODEL'] || 'bge-m3:567m', // High-quality multilingual model
-      embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '12'), // Increased from 8 for better throughput
-      ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434', // Local Ollama instance
+      // Ollama 설정
+      embeddingModel: process.env['EMBEDDING_MODEL'] || 'bge-m3:567m',           // 임베딩 모델
+      embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '12'), // 배치 크기: 12개
+      ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434', // Ollama URL
 
-      // Vector store
+      // 벡터 저장소 설정
       vectorStore: {
         provider: 'lancedb',
         config: {
-          uri: process.env['LANCEDB_URI'] || resolve('./.data/lancedb'),
+          uri: process.env['LANCEDB_URI'] || resolve('./.data/lancedb'), // LanceDB 경로
         },
       },
 
-      // MCP Transport
+      // MCP 전송 설정
       mcp: {
-        type: (process.env['MCP_TRANSPORT'] as 'stdio' | 'streamable-http') || 'stdio',
-        port: parseInt(process.env['MCP_PORT'] || '3000'),
-        host: process.env['MCP_HOST'] || 'localhost',
-        enableCors: process.env['MCP_ENABLE_CORS'] !== 'false',
-        sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),
-        allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],
-        enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true',
+        type: (process.env['MCP_TRANSPORT'] as 'stdio' | 'streamable-http') || 'stdio', // 전송 방식: stdio
+        port: parseInt(process.env['MCP_PORT'] || '3000'),                              // 포트: 3000
+        host: process.env['MCP_HOST'] || 'localhost',                                   // 호스트: localhost
+        enableCors: process.env['MCP_ENABLE_CORS'] !== 'false',                        // CORS: 활성화
+        sessionTimeout: parseInt(process.env['MCP_SESSION_TIMEOUT'] || '300000'),      // 세션 타임아웃: 5분
+        allowedOrigins: process.env['MCP_ALLOWED_ORIGINS']?.split(',') || ['*'],       // 허용 Origin: 모든 도메인
+        enableDnsRebindingProtection: process.env['MCP_DNS_REBINDING_PROTECTION'] === 'true', // DNS 보호: 비활성화
       },
     }
   }
 
   /**
-   * Create development configuration
+   * 개발 환경 설정 생성
+   * 디버그 로그 레벨 적용
    */
   static createDevelopmentConfig(): ServerConfig {
     const baseConfig = ConfigFactory.createBaseConfig()
@@ -194,7 +167,8 @@ export class ConfigFactory {
   }
 
   /**
-   * Create production configuration
+   * 운영 환경 설정 생성
+   * HTTP 전송 방식 및 외부 접근 허용
    */
   static createProductionConfig(): ServerConfig {
     const baseConfig = ConfigFactory.createBaseConfig()
@@ -218,7 +192,8 @@ export class ConfigFactory {
   }
 
   /**
-   * Validate configuration
+   * 설정 유효성 검증
+   * 필수 값 및 범위 확인
    */
   static validateConfig(config: ServerConfig): void {
     const errors: string[] = []
