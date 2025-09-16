@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { getInitializationManager } from '../lib/agent/services/initialization-manager.service'
+import { cleanupService } from './services/cleanup.service'
 // Import agent IPC handlers (this will automatically register them)
 import '../lib/agent/ipc/agent-ipc.handlers'
 
@@ -130,6 +131,9 @@ app.whenReady().then(async () => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
+  // Register cleanup handlers first
+  cleanupService.registerCleanupHandlers()
+
   // Initialize all application services
   await initializeServices()
 
@@ -142,136 +146,9 @@ app.whenReady().then(async () => {
   })
 })
 
-// Comprehensive cleanup of all services
-async function cleanupServices(): Promise<void> {
-  try {
-    console.log('🧹 Starting comprehensive service cleanup...')
-
-    // Show cleanup progress to user
-    const cleanupNotification = new Promise<void>((resolve) => {
-      // Create a simple notification window or use existing main window
-      const windows = BrowserWindow.getAllWindows()
-      if (windows.length > 0) {
-        windows[0].webContents
-          .executeJavaScript(
-            `
-          console.log('Application services are shutting down...')
-        `
-          )
-          .catch(() => {})
-      }
-
-      // Add a small delay to show the message
-      setTimeout(resolve, 500)
-    })
-
-    await cleanupNotification
-
-    // Step 1: Clean up initialization manager
-    console.log('📋 Cleaning up initialization manager...')
-    const initManager = getInitializationManager()
-    await initManager.cleanup()
-
-    // Step 2: Force cleanup any remaining processes
-    console.log('🧹 Performing final cleanup...')
-    // Give a moment for all connections to properly close
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    console.log('✅ All services have been successfully terminated')
-  } catch (error) {
-    console.warn('⚠️ Warning during service cleanup:', error)
-    // Even if cleanup fails partially, we should continue with app termination
-  }
-}
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', async () => {
-  if (process.platform !== 'darwin') {
-    console.log('💭 All windows closed - initiating shutdown sequence...')
-    await cleanupServices()
-    app.quit()
-  }
-})
-
-// Handle app quit event - this is the most important cleanup trigger
-app.on('before-quit', async (event) => {
-  // Prevent default quit to allow proper cleanup
-  event.preventDefault()
-
-  console.log('🚀 Application shutdown initiated - cleaning up MCP services...')
-
-  try {
-    // Perform comprehensive cleanup
-    await cleanupServices()
-
-    // Additional safety measures
-    const windows = BrowserWindow.getAllWindows()
-    windows.forEach((window) => {
-      try {
-        if (!window.isDestroyed()) {
-          window.destroy()
-        }
-      } catch (error) {
-        console.warn('Warning closing window:', error)
-      }
-    })
-
-    console.log('✅ Shutdown sequence completed successfully')
-  } catch (error) {
-    console.warn('⚠️ Warning during shutdown cleanup:', error)
-  } finally {
-    // Ensure app terminates even if cleanup partially fails
-    console.log('🔄 Forcing application exit...')
-    app.exit(0)
-  }
-})
-
-// Additional cleanup handlers for various termination scenarios
-process.on('SIGTERM', async () => {
-  console.log('📟 SIGTERM received - performing graceful shutdown...')
-  await cleanupServices()
-  process.exit(0)
-})
-
-process.on('SIGINT', async () => {
-  console.log('📟 SIGINT received - performing graceful shutdown...')
-  await cleanupServices()
-  process.exit(0)
-})
-
-// Handle uncaught exceptions with cleanup
-process.on('uncaughtException', async (error) => {
-  console.error('😨 Uncaught exception:', error)
-  try {
-    await cleanupServices()
-  } catch (cleanupError) {
-    console.error('Error during emergency cleanup:', cleanupError)
-  }
-  process.exit(1)
-})
-
-// Handle unhandled promise rejections with cleanup
-process.on('unhandledRejection', async (reason, promise) => {
-  console.error('😨 Unhandled rejection at:', promise, 'reason:', reason)
-  try {
-    await cleanupServices()
-  } catch (cleanupError) {
-    console.error('Error during emergency cleanup:', cleanupError)
-  }
-  process.exit(1)
-})
-
-// Handle macOS-specific quit behavior
-app.on('will-quit', async (event) => {
-  console.log('🍎 macOS: Will quit event triggered')
-  event.preventDefault()
-  await cleanupServices()
-  app.exit(0)
-})
+// All cleanup handlers are now managed by the CleanupService
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
 
-console.log('✅ Agent application initialized with comprehensive cleanup handlers')
+console.log('✅ Agent application initialized with centralized cleanup service')

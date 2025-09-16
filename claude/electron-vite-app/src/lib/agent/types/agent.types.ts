@@ -6,6 +6,7 @@
 export type OllamaModel =
   | 'llama3.1:8b'
   | 'deepseek-r1:8b'
+  | 'deepseek-r1:1.5b'
   | 'mistral:7b'
   | 'qwen2.5:7b'
   | 'qwen3:4b'

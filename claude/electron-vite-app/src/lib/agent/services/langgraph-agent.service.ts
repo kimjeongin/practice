@@ -3,6 +3,7 @@ import { ChatOllama } from '@langchain/ollama'
 import { AgentExecutionResult, AgentConfig } from '../types/agent.types'
 import { ConversationManager, getConversationManager } from './conversation-manager.service'
 import { MCPLoaderService, getMCPLoaderService } from './mcp-loader.service'
+import { getDefaultModel, getModelConfig } from '../../config/model.config'
 
 /**
  * Simplified LangGraph Agent Service
@@ -15,13 +16,26 @@ export class LangGraphAgentService extends EventEmitter {
   private mcpLoader?: MCPLoaderService
   private isInitialized = false
   private isInitializing = false
+  private stats: {
+    totalQueries: number
+    toolUsageCount: Record<string, number>
+    averageResponseTime: number
+    successfulResponses: number
+    errors: number
+  }
 
   constructor(config: AgentConfig = {}) {
     super()
+
+    // Get default model and its configuration
+    const defaultModel = getDefaultModel()
+    const modelConfig = getModelConfig(config.model || defaultModel)
+
     this.config = {
       type: 'main',
-      model: 'qwen3:1.7b',
-      temperature: 0.3, // Lower temperature for more focused responses
+      model: config.model || defaultModel,
+      temperature: config.temperature || modelConfig?.temperature || 0.3,
+      maxTokens: config.maxTokens || modelConfig?.maxTokens || 4096,
       ...config,
     }
 
@@ -30,6 +44,14 @@ export class LangGraphAgentService extends EventEmitter {
       model: this.config.model!,
       temperature: this.config.temperature,
     })
+
+    this.stats = {
+      totalQueries: 0,
+      toolUsageCount: {},
+      averageResponseTime: 0,
+      successfulResponses: 0,
+      errors: 0,
+    }
   }
 
   /**
@@ -110,6 +132,9 @@ export class LangGraphAgentService extends EventEmitter {
       options,
     })
 
+    // Update stats
+    this.stats.totalQueries++
+
     try {
       if (!this.isInitialized) {
         console.error('❌ Agent not initialized, attempting to reinitialize...')
@@ -162,6 +187,17 @@ export class LangGraphAgentService extends EventEmitter {
             toolName: decision.toolName,
             reasoning: decision.reasoning,
           })
+
+          // Emit thinking status with tool selection info
+          if (decision.action === 'use_tool' && decision.toolName) {
+            this.emit('thinking', {
+              phase: 'tool_selected',
+              message: `Selected ${decision.toolName} tool for execution`,
+              toolName: decision.toolName,
+              reasoning: decision.reasoning,
+              toolParameters: decision.parameters
+            })
+          }
 
           if (decision.action === 'respond') {
             // Generate final response
@@ -234,6 +270,18 @@ export class LangGraphAgentService extends EventEmitter {
       const totalTime = Date.now() - startTime
       console.log(`✅ Query processing completed in ${totalTime}ms`)
 
+      // Update stats
+      this.stats.successfulResponses++
+      this.stats.averageResponseTime =
+        (this.stats.averageResponseTime * (this.stats.successfulResponses - 1) + totalTime) /
+        this.stats.successfulResponses
+
+      // Track tool usage
+      toolsUsed.forEach((tool) => {
+        this.stats.toolUsageCount[tool.toolName] =
+          (this.stats.toolUsageCount[tool.toolName] || 0) + 1
+      })
+
       return {
         success: true,
         response: finalResponse,
@@ -245,6 +293,9 @@ export class LangGraphAgentService extends EventEmitter {
     } catch (error) {
       const totalTime = Date.now() - startTime
       console.error('❌ Query processing failed:', error)
+
+      // Update error stats
+      this.stats.errors++
 
       // Reset internal state on critical errors
       if (
@@ -320,17 +371,48 @@ export class LangGraphAgentService extends EventEmitter {
     parameters?: Record<string, unknown>
     reasoning: string
   }> {
+    // Enhanced heuristics for tool selection
+    const queryLower = query.toLowerCase()
+
+    // RAG/Search keywords
+    const searchKeywords = [
+      'search', 'find', 'look for', 'document', 'file', 'information about',
+      '에 대해', '찾아', '검색', '문서', '파일', '정보'
+    ]
+
+    // Check if query needs search tool
+    const needsSearch = searchKeywords.some((keyword) => queryLower.includes(keyword))
+
+    if (needsSearch && availableTools.find(tool => tool.name === 'search')) {
+      console.log('🎯 Query needs search tool based on keywords')
+
+      // Extract search parameters
+      const searchParams = this.extractSearchParameters(query)
+
+      return {
+        action: 'use_tool',
+        toolName: 'search',
+        parameters: searchParams,
+        reasoning: `Query contains search-related keywords and we have search capability. Extracted search query: "${searchParams.query}"`
+      }
+    }
+
+    // Fallback to model decision for complex cases
     const systemPrompt = `You are a helpful AI assistant. Analyze the user query and decide what to do.
 
-Available tools: ${availableTools.map((tool) => tool.name).join(', ') || 'None'}
+Available tools:
+${availableTools.map((tool, idx) => `${idx + 1}. ${tool.name}: ${tool.description || 'No description'}`).join('\n') || 'None available'}
 
 Respond ONLY with valid JSON in this exact format:
-{"action": "respond", "reasoning": "I can answer this directly"}
+{"action": "respond", "reasoning": "I can answer this directly without tools"}
 
 OR if you need to use a tool:
-{"action": "use_tool", "toolName": "tool_name", "parameters": {}, "reasoning": "why use this tool"}
+{"action": "use_tool", "toolName": "search", "parameters": {"query": "search terms here"}, "reasoning": "User is asking for information that needs to be searched"}
 
-Use "respond" for most queries unless you specifically need file operations or other tools.`
+Guidelines:
+- Use "search" tool for questions about specific topics, documents, or when user asks to find information
+- Use "respond" for general questions, greetings, or when you can answer without external data
+- Korean queries like "파이썬에 대해 알려줘" or "문서에서 찾아줘" should use search tool`
 
     try {
       const messages = [
@@ -347,13 +429,25 @@ Use "respond" for most queries unless you specifically need file operations or o
 
       // Try to parse JSON response
       try {
-        return JSON.parse(responseText)
-      } catch {
-        // Fallback - default to respond for small model
-        console.log('📝 Could not parse decision JSON, defaulting to respond')
-        return {
-          action: 'respond',
-          reasoning: 'Using direct response for better reliability',
+        const decision = JSON.parse(responseText)
+        console.log('🤖 Model decision:', decision)
+        return decision
+      } catch (parseError) {
+        console.warn('📝 Could not parse decision JSON, using fallback logic', parseError)
+
+        // Better fallback logic
+        if (needsSearch) {
+          return {
+            action: 'use_tool',
+            toolName: 'search',
+            parameters: this.extractSearchParameters(query),
+            reasoning: 'Fallback: Query appears to need search based on keyword analysis',
+          }
+        } else {
+          return {
+            action: 'respond',
+            reasoning: 'Fallback: Using direct response as no search indicators found',
+          }
         }
       }
     } catch (error) {
@@ -362,6 +456,22 @@ Use "respond" for most queries unless you specifically need file operations or o
         action: 'respond',
         reasoning: 'Error in decision making, providing direct response',
       }
+    }
+  }
+
+  /**
+   * Extract search parameters from query
+   */
+  private extractSearchParameters(query: string): Record<string, unknown> {
+    // Simple parameter extraction
+    const cleanQuery = query
+      .replace(/search for|find|look for|에 대해|찾아|검색/gi, '')
+      .replace(/in documents?|문서에서/gi, '')
+      .trim()
+
+    return {
+      query: cleanQuery || query,
+      limit: 5
     }
   }
 
@@ -457,6 +567,16 @@ Use "respond" for most queries unless you specifically need file operations or o
     const systemPrompt = this.createSystemPrompt([], toolsUsed)
 
     try {
+      // Emit thinking status for response generation
+      this.emit('thinking', {
+        phase: 'generating_response',
+        message: 'Generating final response based on tool results...',
+        reasoning:
+          toolsUsed.length > 0
+            ? `Using results from ${toolsUsed.length} tool(s) to compose answer`
+            : 'Generating direct response without tools',
+      })
+
       const messages = [
         { role: 'system' as const, content: systemPrompt },
         { role: 'user' as const, content: query },
@@ -483,14 +603,55 @@ Use "respond" for most queries unless you specifically need file operations or o
     _tools: Array<{ name: string; description: string }>,
     toolsUsed: unknown[] = []
   ): string {
-    const toolsUsedInfo =
-      toolsUsed.length > 0
-        ? `\nTool results: ${toolsUsed.map((t) => `${(t as { toolName: string; result: unknown }).toolName} returned: ${JSON.stringify((t as { toolName: string; result: unknown }).result)}`).join(', ')}`
-        : ''
+    let systemPrompt = 'You are a helpful AI assistant. Answer the user\'s question directly and clearly.'
 
-    return `You are a helpful AI assistant. Answer the user's question directly and clearly.${toolsUsedInfo}
+    if (toolsUsed.length > 0) {
+      systemPrompt += '\n\nContext from tools:'
 
-Be concise and helpful.`
+      toolsUsed.forEach((toolResult, index) => {
+        const typedResult = toolResult as {
+          toolName: string
+          result: unknown
+          parameters?: Record<string, unknown>
+        }
+
+        systemPrompt += `\n\n${index + 1}. Tool: ${typedResult.toolName}`
+
+        if (typedResult.parameters) {
+          systemPrompt += `\n   Parameters: ${JSON.stringify(typedResult.parameters, null, 2)}`
+        }
+
+        // Format the result based on its structure
+        if (typeof typedResult.result === 'object' && typedResult.result !== null) {
+          const resultObj = typedResult.result as Record<string, unknown>
+
+          // Handle MCP tool result format
+          if ('content' in resultObj && Array.isArray(resultObj.content)) {
+            const content = resultObj.content as Array<{ type: string; text?: string }>
+            const textContent = content
+              .filter(item => item.type === 'text' && item.text)
+              .map(item => item.text)
+              .join('\n')
+
+            if (textContent) {
+              systemPrompt += `\n   Result: ${textContent}`
+            } else {
+              systemPrompt += `\n   Result: ${JSON.stringify(resultObj, null, 2)}`
+            }
+          } else {
+            systemPrompt += `\n   Result: ${JSON.stringify(resultObj, null, 2)}`
+          }
+        } else {
+          systemPrompt += `\n   Result: ${String(typedResult.result)}`
+        }
+      })
+
+      systemPrompt += '\n\nPlease use the above information from the tools to provide a comprehensive and accurate answer. If the tool results contain relevant information, incorporate it naturally into your response. If the results are empty or not relevant, acknowledge this and provide the best answer you can based on your knowledge.'
+    }
+
+    systemPrompt += '\n\nBe concise, helpful, and accurate in your response.'
+
+    return systemPrompt
   }
 
   /**
@@ -509,6 +670,34 @@ Be concise and helpful.`
     }
 
     return content
+  }
+
+  /**
+   * Get agent statistics and performance metrics
+   */
+  getStats() {
+    return {
+      ...this.stats,
+      successRate: this.stats.totalQueries > 0 ?
+        (this.stats.successfulResponses / this.stats.totalQueries) * 100 : 0,
+      topTools: Object.entries(this.stats.toolUsageCount)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5)
+        .reduce((acc, [tool, count]) => ({ ...acc, [tool]: count }), {}),
+    }
+  }
+
+  /**
+   * Reset statistics
+   */
+  resetStats() {
+    this.stats = {
+      totalQueries: 0,
+      toolUsageCount: {},
+      averageResponseTime: 0,
+      successfulResponses: 0,
+      errors: 0,
+    }
   }
 
   /**

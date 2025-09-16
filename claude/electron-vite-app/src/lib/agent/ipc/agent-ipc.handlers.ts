@@ -4,6 +4,7 @@ import { AgentConfig } from '../types/agent.types'
 import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 import { getMCPLoaderService, MCPServerConfig } from '../services/mcp-loader.service'
 import { getInitializationManager } from '../services/initialization-manager.service'
+import { getDefaultModel, getModelConfig } from '../../config/model.config'
 
 /**
  * IPC Handlers for Agent System
@@ -299,13 +300,12 @@ ipcMain.handle(AGENT_IPC_CHANNELS.IS_SYSTEM_READY, async () => {
 })
 
 // Get MCP servers status
-ipcMain.handle('agent:get-mcp-servers', async () => {
+ipcMain.handle(AGENT_IPC_CHANNELS.GET_MCP_SERVERS, async () => {
   try {
     const mcpLoader = getMCPLoaderService()
 
     const connections = mcpLoader.getConnections()
     const availableTools = mcpLoader.getTools()
-    const status = mcpLoader.getStatus()
 
     // Clean connections data to avoid serialization issues
     const cleanConnections = connections.map((conn) => ({
@@ -338,7 +338,7 @@ ipcMain.handle('agent:get-mcp-servers', async () => {
 })
 
 // Add MCP server
-ipcMain.handle('agent:add-mcp-server', async (_, serverConfig: MCPServerConfig) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.ADD_MCP_SERVER, async (_, serverConfig: MCPServerConfig) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -358,7 +358,7 @@ ipcMain.handle('agent:add-mcp-server', async (_, serverConfig: MCPServerConfig) 
 })
 
 // Remove MCP server
-ipcMain.handle('agent:remove-mcp-server', async (_, serverId: string) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.REMOVE_MCP_SERVER, async (_, serverId: string) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -378,7 +378,7 @@ ipcMain.handle('agent:remove-mcp-server', async (_, serverId: string) => {
 })
 
 // Connect to MCP server
-ipcMain.handle('agent:connect-mcp-server', async (_, serverId: string) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.CONNECT_MCP_SERVER, async (_, serverId: string) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -398,7 +398,7 @@ ipcMain.handle('agent:connect-mcp-server', async (_, serverId: string) => {
 })
 
 // Disconnect from MCP server
-ipcMain.handle('agent:disconnect-mcp-server', async (_, serverId: string) => {
+ipcMain.handle(AGENT_IPC_CHANNELS.DISCONNECT_MCP_SERVER, async (_, serverId: string) => {
   try {
     const mcpLoader = getMCPLoaderService()
 
@@ -419,7 +419,7 @@ ipcMain.handle('agent:disconnect-mcp-server', async (_, serverId: string) => {
 
 // Update MCP server
 ipcMain.handle(
-  'agent:update-mcp-server',
+  AGENT_IPC_CHANNELS.UPDATE_MCP_SERVER,
   async (_, serverId: string, updates: Partial<MCPServerConfig>) => {
     try {
       const mcpLoader = getMCPLoaderService()
@@ -450,11 +450,11 @@ ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_, query: string) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'qwen3:1.7b',
+        model: getDefaultModel(),
         prompt: query,
         stream: false,
         options: {
-          temperature: 0.3,
+          temperature: getModelConfig(getDefaultModel())?.temperature || 0.3,
           num_predict: 256,
         },
       }),

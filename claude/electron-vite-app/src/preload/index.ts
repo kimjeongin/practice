@@ -55,28 +55,28 @@ const agentAPI = {
 
   // Get MCP server connections status
   getMCPServers: async (): Promise<any> => {
-    return ipcRenderer.invoke('agent:get-mcp-servers')
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_MCP_SERVERS)
   },
 
   // MCP Server Management
   addMCPServer: async (serverConfig: any): Promise<any> => {
-    return ipcRenderer.invoke('agent:add-mcp-server', serverConfig)
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.ADD_MCP_SERVER, serverConfig)
   },
 
   removeMCPServer: async (serverId: string): Promise<any> => {
-    return ipcRenderer.invoke('agent:remove-mcp-server', serverId)
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REMOVE_MCP_SERVER, serverId)
   },
 
   connectMCPServer: async (serverId: string): Promise<any> => {
-    return ipcRenderer.invoke('agent:connect-mcp-server', serverId)
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CONNECT_MCP_SERVER, serverId)
   },
 
   disconnectMCPServer: async (serverId: string): Promise<any> => {
-    return ipcRenderer.invoke('agent:disconnect-mcp-server', serverId)
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.DISCONNECT_MCP_SERVER, serverId)
   },
 
   updateMCPServer: async (serverId: string, updates: any): Promise<any> => {
-    return ipcRenderer.invoke('agent:update-mcp-server', serverId, updates)
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UPDATE_MCP_SERVER, serverId, updates)
   },
 
   // Cleanup

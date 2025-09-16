@@ -29,6 +29,14 @@ export const AGENT_IPC_CHANNELS = {
   INIT_PROGRESS: 'agent:init-progress',
   INIT_COMPLETED: 'agent:init-completed',
   INIT_FAILED: 'agent:init-failed',
+
+  // MCP Server Management
+  GET_MCP_SERVERS: 'agent:get-mcp-servers',
+  ADD_MCP_SERVER: 'agent:add-mcp-server',
+  REMOVE_MCP_SERVER: 'agent:remove-mcp-server',
+  CONNECT_MCP_SERVER: 'agent:connect-mcp-server',
+  DISCONNECT_MCP_SERVER: 'agent:disconnect-mcp-server',
+  UPDATE_MCP_SERVER: 'agent:update-mcp-server',
 } as const
 
 // General IPC Channels
