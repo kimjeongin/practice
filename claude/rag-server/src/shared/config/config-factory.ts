@@ -4,27 +4,27 @@ import { resolve } from 'path'
 /**
  * Configuration Factory - Performance Optimized (v2024.12)
  * Manages server configuration with research-backed optimizations for RAG operations
- * 
+ *
  * Performance Optimizations Applied:
- * 
+ *
  * 🚀 Concurrency Management:
  * - MAX_CONCURRENT_PROCESSING: 3→2 (reduces resource contention)
  * - EMBEDDING_CONCURRENCY: 3→4 (optimizes Ollama API usage)
- * 
+ *
  * 📦 Batch Processing:
  * - EMBEDDING_BATCH_SIZE: 8→12 (improves throughput by 50%)
  * - Adaptive batch sizing based on model token limits
  * - Automatic chunking for large document sets (285+ chunks)
- * 
+ *
  * ⚡ Response Time:
  * - WATCHER_DEBOUNCE_DELAY: 300ms→200ms (faster file change detection)
  * - WATCHER_MAX_PROCESSING_QUEUE: 100→50 (prevents memory bloat)
- * 
+ *
  * 🧠 Embedding Enhancements:
  * - LRU cache with 1000-item capacity (near-instant repeated processing)
  * - Connection pooling and queue management
  * - Automatic fallback for failed embeddings
- * 
+ *
  * Expected Performance Gains:
  * - 30-50% faster file processing
  * - 40-60% improved embedding generation
@@ -64,16 +64,16 @@ export interface ServerConfig {
   minChunkSize: number
 
   // File watcher configuration (performance optimized)
-  watcherDebounceDelay: number          // Reduced to 200ms for faster response
+  watcherDebounceDelay: number // Reduced to 200ms for faster response
   watcherMaxScanDepth: number
-  watcherMaxProcessingQueue: number     // Reduced to 50 to prevent memory issues
+  watcherMaxProcessingQueue: number // Reduced to 50 to prevent memory issues
 
   // Processing configuration (optimized concurrency)
-  maxConcurrentProcessing: number       // Reduced to 2 to prevent resource contention
+  maxConcurrentProcessing: number // Reduced to 2 to prevent resource contention
   maxErrorHistory: number
 
   // Embedding configuration (performance optimized)
-  embeddingConcurrency: number          // Increased to 4 for better throughput
+  embeddingConcurrency: number // Increased to 4 for better throughput
 
   // Search configuration
   semanticScoreThreshold: number
@@ -123,40 +123,41 @@ export class ConfigFactory {
       logLevel: process.env['LOG_LEVEL'] || 'info',
 
       // Document processing (optimized for balanced performance)
-      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '400'),              // Optimal balance for semantic coherence
-      chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'),         // 25% overlap for context preservation
+      chunkSize: parseInt(process.env['CHUNK_SIZE'] || '800'), // Optimal balance for semantic coherence
+      chunkOverlap: parseInt(process.env['CHUNK_OVERLAP'] || '100'), // 25% overlap for context preservation
       chunkingStrategy: (process.env['CHUNKING_STRATEGY'] as 'contextual' | 'normal') || 'normal', // Normal for speed, contextual for quality
-      contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:4b', // Lightweight model for context generation
-      minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '300'),        // Minimum viable chunk size
+      contextualChunkingModel: process.env['CONTEXTUAL_CHUNKING_MODEL'] || 'qwen3:1.7b', // Lightweight model for context generation
+      minChunkSize: parseInt(process.env['MIN_CHUNK_SIZE'] || '500'), // Minimum viable chunk size
 
       // File watcher configuration (performance optimized)
-      watcherDebounceDelay: parseInt(process.env['WATCHER_DEBOUNCE_DELAY'] || '200'),    // Fast response to file changes
-      watcherMaxScanDepth: parseInt(process.env['WATCHER_MAX_SCAN_DEPTH'] || '5'),       // Reasonable directory depth
+      watcherDebounceDelay: parseInt(process.env['WATCHER_DEBOUNCE_DELAY'] || '200'), // Fast response to file changes
+      watcherMaxScanDepth: parseInt(process.env['WATCHER_MAX_SCAN_DEPTH'] || '5'), // Reasonable directory depth
       watcherMaxProcessingQueue: parseInt(process.env['WATCHER_MAX_PROCESSING_QUEUE'] || '50'), // Memory-conscious queue size
 
       // Processing configuration (anti-contention optimized)
       maxConcurrentProcessing: parseInt(process.env['MAX_CONCURRENT_PROCESSING'] || '2'), // Prevents resource bottlenecks
-      maxErrorHistory: parseInt(process.env['MAX_ERROR_HISTORY'] || '1000'),             // Sufficient error tracking
+      maxErrorHistory: parseInt(process.env['MAX_ERROR_HISTORY'] || '1000'), // Sufficient error tracking
 
       // Embedding configuration (throughput optimized)
-      embeddingConcurrency: parseInt(process.env['EMBEDDING_CONCURRENCY'] || '4'),       // Balanced Ollama API usage
+      embeddingConcurrency: parseInt(process.env['EMBEDDING_CONCURRENCY'] || '4'), // Balanced Ollama API usage
 
       // Search configuration
-      semanticScoreThreshold: parseFloat(process.env['SEMANTIC_SCORE_THRESHOLD'] || '0.7'),
+      semanticScoreThreshold: parseFloat(process.env['SEMANTIC_SCORE_THRESHOLD'] || '0.5'),
 
       // LLM Reranking configuration
-      enableLLMReranking: process.env['ENABLE_LLM_RERANKING'] !== 'false',                    // Enable by default
-      llmRerankingModel: process.env['LLM_RERANKING_MODEL'] || 'qwen3:4b',                   // Default to qwen3:4b
-      llmRerankingTimeout: parseInt(process.env['LLM_RERANKING_TIMEOUT_MS'] || '120000'),     // 120 second timeout
-      hybridSemanticRatio: parseFloat(process.env['HYBRID_SEMANTIC_RATIO'] || '0.7'),       // 70% semantic
-      hybridKeywordRatio: parseFloat(process.env['HYBRID_KEYWORD_RATIO'] || '0.3'),         // 30% keyword
-      hybridTotalResultsForReranking: parseInt(process.env['HYBRID_TOTAL_RESULTS_FOR_RERANKING'] || '20'), // 20 results for reranking
+      enableLLMReranking: process.env['ENABLE_LLM_RERANKING'] !== 'false', // Enable by default
+      llmRerankingModel: process.env['LLM_RERANKING_MODEL'] || 'qwen3:1.7b', // Default to qwen3:4b
+      llmRerankingTimeout: parseInt(process.env['LLM_RERANKING_TIMEOUT_MS'] || '120000'), // 120 second timeout
+      hybridSemanticRatio: parseFloat(process.env['HYBRID_SEMANTIC_RATIO'] || '0.7'), // 70% semantic
+      hybridKeywordRatio: parseFloat(process.env['HYBRID_KEYWORD_RATIO'] || '0.3'), // 30% keyword
+      hybridTotalResultsForReranking: parseInt(
+        process.env['HYBRID_TOTAL_RESULTS_FOR_RERANKING'] || '20'
+      ), // 20 results for reranking
 
       // Ollama configuration (performance optimized)
-      embeddingModel:
-        process.env['EMBEDDING_MODEL'] || 'qllama/multilingual-e5-large-instruct:latest', // High-quality multilingual model
-      embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '12'),          // Increased from 8 for better throughput
-      ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434',         // Local Ollama instance
+      embeddingModel: process.env['EMBEDDING_MODEL'] || 'bge-m3:567m', // High-quality multilingual model
+      embeddingBatchSize: parseInt(process.env['EMBEDDING_BATCH_SIZE'] || '12'), // Increased from 8 for better throughput
+      ollamaBaseUrl: process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434', // Local Ollama instance
 
       // Vector store
       vectorStore: {
@@ -265,7 +266,7 @@ export class ConfigFactory {
       errors.push('Hybrid keyword ratio must be between 0 and 1')
     }
 
-    if (Math.abs((config.hybridSemanticRatio + config.hybridKeywordRatio) - 1.0) > 0.01) {
+    if (Math.abs(config.hybridSemanticRatio + config.hybridKeywordRatio - 1.0) > 0.01) {
       errors.push('Hybrid semantic and keyword ratios must sum to 1.0')
     }
 
