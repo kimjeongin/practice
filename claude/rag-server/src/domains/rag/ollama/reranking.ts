@@ -205,7 +205,8 @@ export class OllamaRerankingService {
         messages: [
           {
             role: 'system' as const,
-            content: 'You are a document reranking expert. Analyze the provided documents and rank them by relevance to the query. Always respond with valid JSON in the exact format requested.',
+            content:
+              'You are a document reranking expert. Analyze the provided documents and rank them by relevance to the query. Always respond with valid JSON in the exact format requested.',
           },
           {
             role: 'user' as const,
@@ -260,17 +261,23 @@ export class OllamaRerankingService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')
-      
-      logger.error('❌ Reranking generation failed', error instanceof Error ? error : new Error(String(error)), {
-        model: options.model || this.defaultModel,
-        promptLength: prompt.length,
-        isTimeout,
-        ollamaUrl: this.ollamaBaseUrl,
-        component: 'OllamaRerankingService',
-      })
+
+      logger.error(
+        '❌ Reranking generation failed',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          model: options.model || this.defaultModel,
+          promptLength: prompt.length,
+          isTimeout,
+          ollamaUrl: this.ollamaBaseUrl,
+          component: 'OllamaRerankingService',
+        }
+      )
 
       const structuredError = new StructuredError(
-        `Reranking generation failed: ${errorMessage}${isTimeout ? ' (TIMEOUT - Consider increasing LLM_RERANKING_TIMEOUT_MS)' : ''}`,
+        `Reranking generation failed: ${errorMessage}${
+          isTimeout ? ' (TIMEOUT - Consider increasing LLM_RERANKING_TIMEOUT_MS)' : ''
+        }`,
         ErrorCode.LLM_ERROR,
         'HIGH',
         {
@@ -353,7 +360,7 @@ export class OllamaRerankingService {
 
   private createRerankingPrompt(query: string, documents: SearchResult[], topK: number): string {
     const documentsText = documents
-      .map((doc, index) => `Document ${index + 1} (ID: ${doc.id}):\n${doc.content.substring(0, 300)}...`)
+      .map((doc, index) => `Document ${index + 1} (ID: ${doc.id}):\n${doc.content}`)
       .join('\n\n')
 
     return `You are a helpful assistant that selects and ranks the most relevant documents for a query.
