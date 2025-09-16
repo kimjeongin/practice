@@ -26,7 +26,7 @@ export class SearchService implements ISearchService {
   private languageDetector: LanguageDetector
   private koreanTokenizer: KoreanTokenizer
 
-  constructor(private vectorStore: LanceDBProvider, private config: ServerConfig) {
+  constructor(private vectorStore: LanceDBProvider, config: ServerConfig) {
     // Initialize hybrid search configuration
     this.hybridConfig = {
       semanticRatio: config.hybridSemanticRatio,

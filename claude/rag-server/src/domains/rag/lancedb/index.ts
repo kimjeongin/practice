@@ -190,13 +190,12 @@ export class LanceDBProvider implements IVectorStoreProvider {
           component: 'LanceDBProvider',
         })
 
-        for (const { column, config, description } of ftsConfigs) {
+        for (const { column, config } of ftsConfigs) {
           try {
             await this.table.createIndex(column, { config })
             logger.info('📇 Optimized FTS index created on existing table', {
               tableName: this.tableName,
               column,
-              description,
               component: 'LanceDBProvider',
             })
           } catch (error) {
@@ -204,7 +203,6 @@ export class LanceDBProvider implements IVectorStoreProvider {
             logger.debug('📇 FTS index creation skipped (likely already exists)', {
               tableName: this.tableName,
               column,
-              description,
               component: 'LanceDBProvider',
             })
           }
@@ -218,7 +216,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
           mode: 'overwrite',
         })
 
-        for (const { column, config, description } of ftsConfigs) {
+        for (const { column, config } of ftsConfigs) {
           await this.table.createIndex(column, { config })
         }
 

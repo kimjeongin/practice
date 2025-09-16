@@ -41,7 +41,7 @@ export class OllamaRerankingService {
   private isInitialized = false
   private availableModels: string[] = []
 
-  constructor(private config: ServerConfig) {
+  constructor(config: ServerConfig) {
     this.ollamaBaseUrl = config.ollamaBaseUrl
     this.defaultModel = config.llmRerankingModel || 'qwen3:4b'
 

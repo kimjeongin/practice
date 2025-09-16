@@ -98,5 +98,4 @@ export class InformationHandler {
     ]
   }
 
-  // extractVectorDBInfo method removed - now using RAGService.getRagInfo() for comprehensive information
 }

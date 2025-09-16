@@ -3,12 +3,10 @@
  * GPT Best Practice approach: 5 fields instead of 77 complex fields
  */
 
-import * as lancedb from '@lancedb/lancedb'
 import * as arrow from 'apache-arrow'
 import { logger } from '@/shared/logger/index.js'
 import type {
   RAGDocumentRecord,
-  RAGSearchResult,
   DocumentMetadata,
   VectorDocument,
   VectorSearchResult,

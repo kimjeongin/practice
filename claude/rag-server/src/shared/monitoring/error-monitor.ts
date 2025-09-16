@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events'
-import { StructuredError, ErrorCode, ErrorUtils } from '@/shared/errors/index.js'
+import { StructuredError, ErrorCode } from '@/shared/errors/index.js'
 import { logger } from '@/shared/logger/index.js'
 import { ConfigFactory } from '@/shared/config/config-factory.js'
 
@@ -194,7 +194,7 @@ export class ErrorMonitor extends EventEmitter {
       }
     >()
 
-    for (const [component, errorCount] of this.componentErrors.entries()) {
+    for (const [component] of this.componentErrors.entries()) {
       const componentRecentErrors = recentErrors.filter((e) => e.context.component === component)
       const lastError =
         componentRecentErrors.length > 0

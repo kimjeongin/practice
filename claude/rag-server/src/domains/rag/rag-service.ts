@@ -48,8 +48,6 @@ export class RAGService {
   // Internal RAG services (concrete classes - domain internal)
   private searchService?: SearchService
   private documentProcessor?: DocumentProcessor
-
-  private config?: ServerConfig
   private isInitialized = false
 
   constructor() {
@@ -71,7 +69,6 @@ export class RAGService {
         component: 'RAGService',
       })
 
-      this.config = config
 
       // Initialize LanceDB provider
       logger.debug('Initializing LanceDB provider...')
@@ -321,27 +318,7 @@ export class RAGService {
     return this.isInitialized && !!this.vectorStoreProvider?.isHealthy()
   }
 
-  // Backward compatibility methods (for MCP handlers)
-  // Note: These are provided for backward compatibility with existing MCP handlers
-  // In future versions, handlers should use RAGService methods directly
 
-  /**
-   * Get search service for MCP handler compatibility
-   * @deprecated Use search() method instead
-   */
-  getSearchService(): SearchService {
-    this.ensureInitialized()
-    return this.searchService!
-  }
-
-  /**
-   * Get vector store provider for MCP handler compatibility
-   * @deprecated Use RAGService methods instead
-   */
-  getVectorStoreProvider(): LanceDBProvider {
-    this.ensureInitialized()
-    return this.vectorStoreProvider as LanceDBProvider
-  }
 
   // Internal helper methods
 

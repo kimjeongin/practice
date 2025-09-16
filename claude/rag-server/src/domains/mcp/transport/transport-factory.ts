@@ -188,7 +188,7 @@ export class TransportFactory {
     })
 
     // Health check endpoint
-    app.get('/health', async (request, reply) => {
+    app.get('/health', async (_request, reply) => {
       reply.send({
         status: 'healthy',
         transport: 'streamable-http',

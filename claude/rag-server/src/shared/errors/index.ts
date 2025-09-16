@@ -101,40 +101,7 @@ export class StructuredError extends Error {
   }
 }
 
-/**
- * File processing related errors
- */
-export class FileProcessingError extends StructuredError {
-  constructor(message: string, filePath: string, operation: string, originalError?: Error) {
-    super(message, ErrorCode.FILE_PARSE_ERROR, 'HIGH', {
-      filePath,
-      operation,
-      originalError: originalError?.message,
-      stack: originalError?.stack,
-    }, originalError)
-    this.name = 'FileProcessingError'
-  }
-}
 
-/**
- * Vector store related errors
- */
-export class VectorStoreError extends StructuredError {
-  constructor(
-    message: string,
-    operation: string,
-    context: ErrorContext = {},
-    originalError?: Error
-  ) {
-    super(message, ErrorCode.VECTOR_STORE_ERROR, 'HIGH', {
-      ...context,
-      operation,
-      originalError: originalError?.message,
-      stack: originalError?.stack,
-    }, originalError)
-    this.name = 'VectorStoreError'
-  }
-}
 
 /**
  * Search related errors
@@ -170,51 +137,8 @@ export class TimeoutError extends StructuredError {
   }
 }
 
-/**
- * Database related errors
- */
-export class DatabaseError extends StructuredError {
-  constructor(message: string, operation: string, originalError?: Error) {
-    super(message, ErrorCode.DATABASE_ERROR, 'HIGH', {
-      operation,
-      originalError: originalError?.message,
-      stack: originalError?.stack,
-    }, originalError)
-    this.name = 'DatabaseError'
-  }
-}
 
-/**
- * Embedding related errors
- */
-export class EmbeddingError extends StructuredError {
-  constructor(message: string, model: string, originalError?: Error) {
-    super(message, ErrorCode.EMBEDDING_ERROR, 'HIGH', {
-      model,
-      originalError: originalError?.message,
-      stack: originalError?.stack,
-    }, originalError)
-    this.name = 'EmbeddingError'
-  }
-}
 
-/**
- * Configuration related errors
- */
-export class ConfigurationError extends StructuredError {
-  constructor(message: string, configKey: string, expectedType?: string) {
-    super(
-      message,
-      ErrorCode.CONFIG_ERROR,
-      'CRITICAL',
-      {
-        configKey,
-        expectedType,
-      }
-    )
-    this.name = 'ConfigurationError'
-  }
-}
 
 /**
  * Error utility functions

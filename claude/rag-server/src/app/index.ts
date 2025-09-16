@@ -9,8 +9,6 @@ import { logger } from '@/shared/logger/index.js'
 import { MCPServer } from '@/domains/mcp/server/server.js'
 import { SearchHandler } from '@/domains/mcp/handlers/search.js'
 import { InformationHandler } from '@/domains/mcp/handlers/information.js'
-// SearchService and RAGWorkflow removed as part of VectorStore-only architecture
-// These will be refactored in Phase 7 to work with VectorStore-only architecture
 
 /**
  * Initialize all dependencies and create MCPServer instance
@@ -114,7 +112,7 @@ async function initializeServices(config: any) {
   logger.info('🚀 FileWatcher started, directory sync running in background')
 
   // Initialize MCP handlers using RAGService directly
-  const searchHandler = new SearchHandler(ragService, config)
+  const searchHandler = new SearchHandler(ragService)
   const informationHandler = new InformationHandler(ragService)
 
   // Create MCP Server

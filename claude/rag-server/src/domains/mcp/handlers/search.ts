@@ -2,7 +2,6 @@ import type { SearchOptions, SearchType } from '@/domains/rag/core/types.js'
 import { RAGService } from '@/domains/rag/index.js'
 import { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@/shared/logger/index.js'
-import type { ServerConfig } from '@/shared/config/config-factory.js'
 
 // Search tool arguments
 export interface SearchArgs {
@@ -12,7 +11,7 @@ export interface SearchArgs {
 }
 
 export class SearchHandler {
-  constructor(private ragService: RAGService, private config?: ServerConfig) {}
+  constructor(private ragService: RAGService) {}
 
   async handleSearch(args: SearchArgs) {
     const { query, topK = 5, searchType = 'semantic' } = args

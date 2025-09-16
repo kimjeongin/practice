@@ -133,8 +133,7 @@ export class MCPServer {
   }
 
   private setupResources(): void {
-    // Resources functionality temporarily removed - VectorStore-only architecture
-    // Files are now managed through VectorStore metadata rather than database
+    // Resources functionality not implemented - files managed through vector store metadata
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
       return {
         resources: [],

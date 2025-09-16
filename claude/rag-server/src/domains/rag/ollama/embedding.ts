@@ -11,7 +11,6 @@ import { logger } from '@/shared/logger/index.js'
 export class EmbeddingService extends Embeddings {
   private baseUrl: string
   private model: string
-  private config: ServerConfig
   private cachedModelInfo: EmbeddingModelInfo | null = null
   private adaptiveBatchSize: number
   private maxConcurrentRequests: number
@@ -22,7 +21,6 @@ export class EmbeddingService extends Embeddings {
 
   constructor(config: ServerConfig) {
     super({})
-    this.config = config
     this.baseUrl = config.ollamaBaseUrl || 'http://localhost:11434'
     this.model = config.embeddingModel
     this.adaptiveBatchSize = config.embeddingBatchSize
