@@ -195,7 +195,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.HEALTH_CHECK, async () => {
             ),
           ])
           if (modelsResponse.ok) {
-            const modelsData = await modelsResponse.json() as { models?: Array<{ name: string }> }
+            const modelsData = (await modelsResponse.json()) as { models?: Array<{ name: string }> }
             availableModels = modelsData.models?.map((m) => m.name) || []
             console.log('🏥 IPC: Available models:', availableModels.length)
           }
@@ -308,7 +308,7 @@ ipcMain.handle('agent:get-mcp-servers', async () => {
     const status = mcpLoader.getStatus()
 
     // Clean connections data to avoid serialization issues
-    const cleanConnections = connections.map(conn => ({
+    const cleanConnections = connections.map((conn) => ({
       id: conn.config.id,
       name: conn.config.name,
       description: conn.config.description,
@@ -324,7 +324,7 @@ ipcMain.handle('agent:get-mcp-servers', async () => {
       data: {
         servers: cleanConnections,
         totalServers: cleanConnections.length,
-        connectedServers: cleanConnections.filter(s => s.status === 'connected').length,
+        connectedServers: cleanConnections.filter((s) => s.status === 'connected').length,
         totalTools: availableTools.length,
       },
     }
@@ -418,24 +418,27 @@ ipcMain.handle('agent:disconnect-mcp-server', async (_, serverId: string) => {
 })
 
 // Update MCP server
-ipcMain.handle('agent:update-mcp-server', async (_, serverId: string, updates: Partial<MCPServerConfig>) => {
-  try {
-    const mcpLoader = getMCPLoaderService()
+ipcMain.handle(
+  'agent:update-mcp-server',
+  async (_, serverId: string, updates: Partial<MCPServerConfig>) => {
+    try {
+      const mcpLoader = getMCPLoaderService()
 
-    await mcpLoader.updateServer(serverId, updates)
+      await mcpLoader.updateServer(serverId, updates)
 
-    return {
-      success: true,
-      data: { serverId, updates },
-    }
-  } catch (error) {
-    console.error('Failed to update MCP server:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      return {
+        success: true,
+        data: { serverId, updates },
+      }
+    } catch (error) {
+      console.error('Failed to update MCP server:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
     }
   }
-})
+)
 
 // Test simple query (without conversation persistence)
 ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_, query: string) => {
@@ -447,7 +450,7 @@ ipcMain.handle(AGENT_IPC_CHANNELS.TEST_QUERY, async (_, query: string) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'qwen3:0.6b',
+        model: 'qwen3:1.7b',
         prompt: query,
         stream: false,
         options: {

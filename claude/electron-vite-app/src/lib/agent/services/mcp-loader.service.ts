@@ -130,11 +130,10 @@ export class MCPLoaderService extends EventEmitter {
         name: 'RAG Server',
         description: 'RAG-based document search and Q&A',
         command: 'node',
-        args: ['/Users/jeongin/workspace/practice/claude/rag-server/dist/app/index.js'],
+        args: ['../rag-server/dist/app/index.js'],
         env: {
-          NODE_ENV: 'production',
-          DOCUMENTS_DIR: 'Users/jeongin/workspace/practice/claude/rag-server/documents',
-          DATA_DIR: 'Users/jeongin/workspace/practice/claude/rag-server/.data',
+          DOCUMENTS_DIR: '../rag-server/documents',
+          DATA_DIR: '../rag-server/.data',
         },
         transport: 'stdio',
         enabled: true, // Disable RAG server - path doesn't exist
@@ -256,7 +255,7 @@ export class MCPLoaderService extends EventEmitter {
         transport = new StdioClientTransport({
           command: connection.config.command,
           args: connection.config.args || [],
-          env: { ...baseEnv, ...connection.config.env },
+          env: { ...connection.config.env },
         })
       } else {
         throw new Error('Only stdio transport is currently supported')

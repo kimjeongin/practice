@@ -10,6 +10,7 @@ export type OllamaModel =
   | 'qwen2.5:7b'
   | 'qwen3:4b'
   | 'qwen3:0.6b'
+  | 'qwen3:1.7b'
 
 // Agent types based on capabilities
 export type AgentType = 'main' | 'reasoning' | 'fast'

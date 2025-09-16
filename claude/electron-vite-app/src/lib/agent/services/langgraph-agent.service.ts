@@ -20,9 +20,8 @@ export class LangGraphAgentService extends EventEmitter {
     super()
     this.config = {
       type: 'main',
-      model: 'qwen3:0.6b',
+      model: 'qwen3:1.7b',
       temperature: 0.3, // Lower temperature for more focused responses
-      maxTokens: 512, // Reduce tokens for smaller model
       ...config,
     }
 
@@ -464,7 +463,8 @@ Use "respond" for most queries unless you specifically need file operations or o
       ]
 
       const response = await this.model.invoke(messages)
-      let content = typeof response.content === 'string' ? response.content : String(response.content)
+      let content =
+        typeof response.content === 'string' ? response.content : String(response.content)
 
       // Clean up qwen3 model artifacts
       content = this.cleanResponse(content)

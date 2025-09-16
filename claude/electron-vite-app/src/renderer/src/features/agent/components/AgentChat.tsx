@@ -3,7 +3,7 @@ import { useAgent } from '../hooks/useAgent'
 import { useMCPServers } from '../../../hooks/useMCPServers'
 import { MCPServerStatus } from '../../../components/mcp-servers/MCPServerStatus'
 
-// Import interface for type  
+// Import interface for type
 interface AgentExecutionResult {
   success: boolean
   response: string
@@ -91,7 +91,7 @@ export function AgentChat(): React.JSX.Element {
 
       await initialize({
         type: 'main',
-        model: 'qwen3:0.6b',
+        model: 'qwen3:1.7b',
         temperature: 0.3,
         maxTokens: 512,
       })
@@ -147,7 +147,7 @@ Type your message below to get started! I can help with research, analysis, and 
       }
 
       // Only add welcome message if no messages exist, preserve existing history
-      setMessages(prev => prev.length === 0 ? [welcomeMessage] : prev)
+      setMessages((prev) => (prev.length === 0 ? [welcomeMessage] : prev))
       hasShownWelcome.current = true
       console.log('✅ Welcome message displayed')
     }
@@ -176,7 +176,7 @@ Please resolve these issues and refresh the application.`,
       }
 
       // Only show failure message if no other messages exist
-      setMessages(prev => prev.length === 0 ? [failureMessage] : prev)
+      setMessages((prev) => (prev.length === 0 ? [failureMessage] : prev))
       hasShownWelcome.current = true // Prevent welcome message after error
       console.error('❌ Agent System initialization failure message displayed')
     }
@@ -359,7 +359,7 @@ Please resolve these issues and refresh the application.`,
             messageId: assistantMessageId,
             previousCount: prev.length,
             newCount: newMessages.length,
-            hasToolsUsed: !!(queryResult?.toolsUsed?.length),
+            hasToolsUsed: !!queryResult?.toolsUsed?.length,
             toolCount: queryResult?.toolsUsed?.length || 0,
           })
           return newMessages
@@ -553,7 +553,10 @@ Please resolve these issues and refresh the application.`,
                         .flatMap((server) =>
                           Array(server.toolCount)
                             .fill(null)
-                            .map((): { serverId: string; serverName: string } => ({ serverId: server.id, serverName: server.name }))
+                            .map((): { serverId: string; serverName: string } => ({
+                              serverId: server.id,
+                              serverName: server.name,
+                            }))
                         )
                         .find((t) => t.serverId)
 

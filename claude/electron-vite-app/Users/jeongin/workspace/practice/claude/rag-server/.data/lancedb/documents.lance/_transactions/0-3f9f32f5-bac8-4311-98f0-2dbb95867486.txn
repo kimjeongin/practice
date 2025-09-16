@@ -1,0 +1,4 @@
+$3f9f32f5-bac8-4311-98f0-2dbb95867486²¦:vector ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:10248Zdefault&text ÿÿÿÿÿÿÿÿÿ*string8Zdefault1contextual_text ÿÿÿÿÿÿÿÿÿ*string8Zdefault(doc_id ÿÿÿÿÿÿÿÿÿ*string8Zdefault)chunk_id ÿÿÿÿÿÿÿÿÿ*int328Zdefault*metadata ÿÿÿÿÿÿÿÿÿ*string8Zdefault,
+model_name ÿÿÿÿÿÿÿÿÿ*string8Zdefault*language ÿÿÿÿÿÿÿÿÿ*string8Zdefault0tokenized_text ÿÿÿÿÿÿÿÿÿ*string8Zdefault4initial_consonants	 ÿÿÿÿÿÿÿÿÿ*string8Zdefault"'
+lance.auto_cleanup.older_than14days"!
+lance.auto_cleanup.interval20
