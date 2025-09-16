@@ -93,7 +93,8 @@ export class RAGService {
 
       // Initialize SearchService with dependencies (passing concrete classes)
       logger.debug('Initializing search service...')
-      this.searchService = new SearchService(this.vectorStoreProvider as LanceDBProvider)
+      this.searchService = new SearchService(this.vectorStoreProvider as LanceDBProvider, config)
+      await this.searchService.initialize()
 
       // Initialize DocumentProcessor
       logger.debug('Initializing document processor...')

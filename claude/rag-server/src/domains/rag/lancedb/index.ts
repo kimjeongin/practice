@@ -13,7 +13,6 @@ import type {
   VectorStoreInfo,
   RAGDocumentRecord,
   RAGSearchResult,
-  HybridSearchConfig,
 } from '@/domains/rag/core/types.js'
 import { EmbeddingService } from '@/domains/rag/ollama/embedding.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
@@ -37,7 +36,6 @@ import {
 import { LANCEDB_CONSTANTS, type LanceDBConnectionOptions } from './config.js'
 import { LanguageDetector } from '@/shared/utils/language-detector.js'
 import { KoreanTokenizer } from '@/domains/rag/services/korean-tokenizer.js'
-import { RerankingService } from '@/domains/rag/services/reranking.js'
 
 export class LanceDBProvider implements IVectorStoreProvider {
   private db: lancedb.Connection | null = null
@@ -50,11 +48,8 @@ export class LanceDBProvider implements IVectorStoreProvider {
   private connectionOptions: LanceDBConnectionOptions
   private tableName: string
   private embeddingDimensions: number
-  private reranker: lancedb.rerankers.RRFReranker | null = null
   private languageDetector: LanguageDetector
   private koreanTokenizer: KoreanTokenizer
-  private rerankingService: RerankingService | null = null
-  private hybridConfig: HybridSearchConfig
 
   constructor(
     private config: ServerConfig,
@@ -73,23 +68,9 @@ export class LanceDBProvider implements IVectorStoreProvider {
     this.languageDetector = new LanguageDetector()
     this.koreanTokenizer = new KoreanTokenizer()
 
-    // Initialize hybrid search configuration
-    this.hybridConfig = {
-      semanticRatio: config.hybridSemanticRatio,
-      keywordRatio: config.hybridKeywordRatio,
-      totalResultsForReranking: config.hybridTotalResultsForReranking,
-    }
-
-    // Initialize reranking service if enabled
-    if (config.enableLLMReranking) {
-      this.rerankingService = new RerankingService(config)
-    }
-
     logger.info('🚀 LanceDB Provider initialized (simplified)', {
       uri: this.connectionOptions.uri,
       tableName: this.tableName,
-      enableLLMReranking: config.enableLLMReranking,
-      hybridConfig: this.hybridConfig,
       component: 'LanceDBProvider',
     })
   }
@@ -128,14 +109,6 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
       // Create or open table
       await this._initializeTable()
-
-      // Initialize reranking service if enabled
-      if (this.rerankingService) {
-        await this.rerankingService.initialize()
-        logger.info('✅ Reranking Service initialized', {
-          component: 'LanceDBProvider',
-        })
-      }
 
       this.isInitialized = true
       logger.info('✅ LanceDB Provider initialized successfully', {
@@ -378,79 +351,8 @@ export class LanceDBProvider implements IVectorStoreProvider {
       endTiming()
     }
   }
-  async search(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]> {
-    await this.initialize()
 
-    if (!this.table || !this.embeddingBridge) {
-      throw new Error('LanceDB provider not properly initialized')
-    }
-
-    const searchType = options.searchType
-    const endTiming = startTiming('lancedb_search', {
-      query: query.substring(0, 50),
-      topK: options.topK,
-      searchType,
-      component: 'LanceDBProvider',
-    })
-
-    try {
-      logger.debug('🔍 Performing LanceDB search', {
-        query: query.substring(0, 100),
-        topK: options.topK,
-        searchType,
-        component: 'LanceDBProvider',
-      })
-
-      let results: VectorSearchResult[]
-
-      switch (searchType) {
-        case 'semantic':
-          results = await this.performSemanticSearch(query, options)
-          break
-        case 'keyword':
-          results = await this.performKeywordSearch(query, options)
-          break
-        case 'hybrid':
-          results = await this.performHybridSearch(query, options)
-          break
-        default:
-          throw new Error(`Unsupported search type: ${searchType}`)
-      }
-
-      logger.info('✅ LanceDB search completed', {
-        query: query.substring(0, 100),
-        searchType,
-        resultsCount: results.length,
-        topScore: results[0]?.score || 0,
-        component: 'LanceDBProvider',
-      })
-
-      return results
-    } catch (error) {
-      logger.error(
-        '❌ LanceDB search failed',
-        error instanceof Error ? error : new Error(String(error)),
-        {
-          query: query.substring(0, 100),
-          searchType,
-          component: 'LanceDBProvider',
-        }
-      )
-      errorMonitor.recordError(
-        error instanceof StructuredError
-          ? error
-          : new StructuredError(String(error), ErrorCode.VECTOR_STORE_ERROR)
-      )
-      throw error
-    } finally {
-      endTiming()
-    }
-  }
-
-  private async performSemanticSearch(
-    query: string,
-    options: VectorSearchOptions
-  ): Promise<VectorSearchResult[]> {
+  async semanticSearch(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]> {
     if (!this.table || !this.embeddingBridge) {
       throw new Error('Table or embedding bridge not initialized')
     }
@@ -489,10 +391,7 @@ export class LanceDBProvider implements IVectorStoreProvider {
     return results
   }
 
-  private async performKeywordSearch(
-    query: string,
-    options: VectorSearchOptions
-  ): Promise<VectorSearchResult[]> {
+  async keywordSearch(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]> {
     if (!this.table) {
       throw new Error('Table not initialized')
     }
@@ -575,164 +474,6 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
     // Convert results and adjust scores for FTS
     return rawResults.map((result) => convertRAGResultToVectorSearchResult(result))
-  }
-
-  private async performHybridSearch(
-    query: string,
-    options: VectorSearchOptions
-  ): Promise<VectorSearchResult[]> {
-    if (!this.table || !this.embeddingBridge) {
-      throw new Error('Table or embedding bridge not initialized')
-    }
-
-    try {
-      logger.debug('🔍 Starting hybrid search with configuration', {
-        query: query.substring(0, 50),
-        config: this.hybridConfig,
-        hasReranking: !!this.rerankingService,
-        component: 'LanceDBProvider',
-      })
-
-      // Step 1: Get semantic and keyword results based on configured ratios
-      const semanticCount = Math.ceil(this.hybridConfig.totalResultsForReranking * this.hybridConfig.semanticRatio)
-      const keywordCount = Math.ceil(this.hybridConfig.totalResultsForReranking * this.hybridConfig.keywordRatio)
-
-      logger.debug('📊 Fetching separate search results', {
-        semanticCount,
-        keywordCount,
-        totalForReranking: this.hybridConfig.totalResultsForReranking,
-        component: 'LanceDBProvider',
-      })
-
-      // Perform searches in parallel
-      const [semanticResults, keywordResults] = await Promise.all([
-        this.performSemanticSearch(query, {
-          topK: semanticCount,
-          searchType: 'semantic',
-        }),
-        this.performKeywordSearch(query, {
-          topK: keywordCount,
-          searchType: 'keyword',
-        }),
-      ])
-
-      logger.debug('📊 Search results retrieved', {
-        semanticResultsCount: semanticResults.length,
-        keywordResultsCount: keywordResults.length,
-        component: 'LanceDBProvider',
-      })
-
-      // Step 2: Combine and deduplicate results with ratio-based scoring
-      const combinedResults = this.combineAndDeduplicateResults(
-        semanticResults,
-        keywordResults,
-        this.hybridConfig
-      )
-
-      logger.debug('🔄 Results combined and deduplicated', {
-        combinedCount: combinedResults.length,
-        component: 'LanceDBProvider',
-      })
-
-      // Step 3: Apply LLM reranking if service is available
-      let finalResults: VectorSearchResult[]
-      if (this.rerankingService && combinedResults.length > 1) {
-        logger.info('🤖 Applying LLM reranking', {
-          query: query.substring(0, 100),
-          combinedCount: combinedResults.length,
-          topK: options.topK,
-          component: 'LanceDBProvider',
-        })
-
-        const rerankedResults = await this.rerankingService.rerankDocuments(
-          query,
-          combinedResults,
-          options.topK
-        )
-
-        finalResults = rerankedResults
-      } else {
-        // Without reranking, just take top K from combined results
-        finalResults = combinedResults.slice(0, options.topK)
-      }
-
-      logger.info('✅ Hybrid search completed', {
-        query: query.substring(0, 100),
-        semanticCount: semanticResults.length,
-        keywordCount: keywordResults.length,
-        combinedCount: combinedResults.length,
-        finalCount: finalResults.length,
-        topScore: finalResults[0]?.score || 0,
-        hasReranking: !!this.rerankingService,
-        component: 'LanceDBProvider',
-      })
-
-      return finalResults
-    } catch (error) {
-      logger.error(
-        'Hybrid search failed, falling back to semantic search',
-        error instanceof Error ? error : new Error(String(error))
-      )
-      // Fallback to semantic search
-      return await this.performSemanticSearch(query, options)
-    }
-  }
-
-  /**
-   * Combine semantic and keyword results with deduplication and ratio-based scoring
-   */
-  private combineAndDeduplicateResults(
-    semanticResults: VectorSearchResult[],
-    keywordResults: VectorSearchResult[],
-    config: HybridSearchConfig
-  ): VectorSearchResult[] {
-    const resultMap = new Map<string, VectorSearchResult>()
-
-    // Add semantic results
-    for (const result of semanticResults) {
-      resultMap.set(result.id, {
-        ...result,
-        searchType: 'semantic',
-      })
-    }
-
-    // Add keyword results, handling duplicates
-    for (const result of keywordResults) {
-      const existingResult = resultMap.get(result.id)
-
-      if (existingResult) {
-        // Document exists from semantic search - combine scores with ratio
-        const combinedScore =
-          existingResult.score * config.semanticRatio + result.score * config.keywordRatio
-
-        resultMap.set(result.id, {
-          ...existingResult,
-          score: combinedScore,
-          searchType: 'hybrid', // Mark as hybrid since it appeared in both
-        })
-      } else {
-        // New document from keyword search
-        resultMap.set(result.id, {
-          ...result,
-          searchType: 'keyword',
-        })
-      }
-    }
-
-    // Convert to array and sort by combined score
-    const combinedResults = Array.from(resultMap.values()).sort((a, b) => b.score - a.score)
-
-    logger.debug('🔄 Results combined with ratio-based scoring', {
-      semanticOnlyCount: combinedResults.filter((r) => r.searchType === 'semantic').length,
-      keywordOnlyCount: combinedResults.filter((r) => r.searchType === 'keyword').length,
-      hybridCount: combinedResults.filter((r) => r.searchType === 'hybrid').length,
-      totalCombined: combinedResults.length,
-      semanticRatio: config.semanticRatio,
-      keywordRatio: config.keywordRatio,
-      component: 'LanceDBProvider',
-    })
-
-    return combinedResults
   }
 
   async removeDocumentsByFileId(fileId: string): Promise<void> {

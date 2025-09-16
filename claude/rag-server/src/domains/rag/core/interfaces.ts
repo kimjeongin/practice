@@ -42,7 +42,8 @@ export interface IEmbeddingService {
 export interface IVectorStoreProvider {
   // Core operations
   addDocuments(documents: VectorDocument[]): Promise<void>
-  search(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]>
+  semanticSearch(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]>
+  keywordSearch(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]>
   removeDocumentsByFileId(fileId: string): Promise<void>
   removeAllDocuments(): Promise<void>
 
