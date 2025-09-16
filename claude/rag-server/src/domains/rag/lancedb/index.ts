@@ -391,86 +391,38 @@ export class LanceDBProvider implements IVectorStoreProvider {
     return results
   }
 
-  async keywordSearch(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]> {
+  async fullTextSearch(
+    searchText: string,
+    columns: string[],
+    limit: number
+  ): Promise<VectorSearchResult[]> {
     if (!this.table) {
       throw new Error('Table not initialized')
     }
 
-    // Detect query language to determine search strategy
-    const languageResult = this.languageDetector.detectLanguage(query)
-    const queryLanguage = languageResult.language
-
-    logger.debug('🔍 Keyword search language detection', {
-      query: query.substring(0, 50),
-      detectedLanguage: queryLanguage,
-      confidence: languageResult.confidence,
+    logger.debug('🔍 Performing full-text search', {
+      searchText: searchText.substring(0, 50),
+      columns,
+      limit,
       component: 'LanceDBProvider',
     })
 
-    let rawResults: RAGSearchResult[] = []
+    // Execute FTS query
+    const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+      this.table
+        .query()
+        .fullTextSearch(searchText.toLowerCase(), { columns })
+        .limit(limit)
+        .toArray(),
+      { timeoutMs: 30000, operation: 'full_text_search' }
+    )
 
-    if (queryLanguage === 'ko') {
-      // Korean keyword search: search tokenized_text and initial_consonants
-      const tokenizedQuery = this.koreanTokenizer.tokenizeKorean(query).join(' ')
-      const initialQuery = this.koreanTokenizer.extractInitials(query)
-
-      // Primary search on tokenized Korean text
-      const tokenizedResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
-        this.table
-          .query()
-          .fullTextSearch(tokenizedQuery.toLowerCase(), { columns: ['tokenized_text'] })
-          .limit(options.topK)
-          .toArray(),
-        { timeoutMs: 30000, operation: 'korean_tokenized_search' }
-      )
-
-      // Secondary search on initial consonants if available
-      if (initialQuery && initialQuery.length > 0) {
-        const initialResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
-          this.table
-            .query()
-            .fullTextSearch(initialQuery.toLowerCase(), { columns: ['initial_consonants'] })
-            .limit(Math.ceil(options.topK / 2))
-            .toArray(),
-          { timeoutMs: 30000, operation: 'korean_initial_search' }
-        )
-
-        // Combine and deduplicate results
-        const combinedResults = [...tokenizedResults, ...initialResults]
-        const uniqueResults = combinedResults.filter(
-          (result, index, arr) =>
-            index ===
-            arr.findIndex((r) => r.doc_id === result.doc_id && r.chunk_id === result.chunk_id)
-        )
-
-        rawResults = uniqueResults.slice(0, options.topK)
-      } else {
-        rawResults = tokenizedResults
-      }
-
-      logger.debug('🇰🇷 Korean keyword search completed', {
-        tokenizedQuery,
-        initialQuery,
-        resultsCount: rawResults.length,
-        component: 'LanceDBProvider',
-      })
-    } else {
-      // English keyword search: search text column only
-      rawResults = await TimeoutWrapper.withTimeout(
-        this.table
-          .query()
-          .fullTextSearch(query.toLowerCase(), { columns: ['text'] })
-          .limit(options.topK)
-          .toArray(),
-        { timeoutMs: 30000, operation: 'english_keyword_search' }
-      )
-
-      logger.debug('🇺🇸 English keyword search completed', {
-        query: query.substring(0, 50),
-        resultsCount: rawResults.length,
-        component: 'LanceDBProvider',
-      })
-    }
+    logger.debug('✅ Full-text search completed', {
+      searchText: searchText.substring(0, 50),
+      columns,
+      resultsCount: rawResults.length,
+      component: 'LanceDBProvider',
+    })
 
     // Convert results and adjust scores for FTS
     return rawResults.map((result) => convertRAGResultToVectorSearchResult(result))

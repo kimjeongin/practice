@@ -8,7 +8,7 @@ import type {
   SearchOptions,
   SearchResult,
   VectorSearchResult,
-  HybridSearchConfig
+  HybridSearchConfig,
 } from '@/domains/rag/core/types.js'
 import { LanceDBProvider } from '@/domains/rag/lancedb/index.js'
 import { SearchError } from '@/shared/errors/index.js'
@@ -17,15 +17,16 @@ import { errorMonitor } from '@/shared/monitoring/error-monitor.js'
 import { TimeoutWrapper } from '@/shared/utils/resilience.js'
 import { RerankingService } from '@/domains/rag/services/reranking.js'
 import type { ServerConfig } from '@/shared/config/config-factory.js'
+import { LanguageDetector } from '@/shared/utils/language-detector.js'
+import { KoreanTokenizer } from '@/domains/rag/services/korean-tokenizer.js'
 
 export class SearchService implements ISearchService {
   private rerankingService: RerankingService | null = null
   private hybridConfig: HybridSearchConfig
+  private languageDetector: LanguageDetector
+  private koreanTokenizer: KoreanTokenizer
 
-  constructor(
-    private vectorStore: LanceDBProvider,
-    private config: ServerConfig
-  ) {
+  constructor(private vectorStore: LanceDBProvider, private config: ServerConfig) {
     // Initialize hybrid search configuration
     this.hybridConfig = {
       semanticRatio: config.hybridSemanticRatio,
@@ -37,6 +38,10 @@ export class SearchService implements ISearchService {
     if (config.enableLLMReranking) {
       this.rerankingService = new RerankingService(config)
     }
+
+    // Initialize language processing services
+    this.languageDetector = new LanguageDetector()
+    this.koreanTokenizer = new KoreanTokenizer()
 
     logger.info('✅ SearchService initialized', {
       hybridConfig: this.hybridConfig,
@@ -111,7 +116,7 @@ export class SearchService implements ISearchService {
         results = await this.vectorStore.semanticSearch(query, options)
         break
       case 'keyword':
-        results = await this.vectorStore.keywordSearch(query, options)
+        results = await this.keywordSearch(query, options)
         break
       case 'hybrid':
         results = await this.hybridSearch(query, options)
@@ -131,10 +136,7 @@ export class SearchService implements ISearchService {
     }))
   }
 
-  private async hybridSearch(
-    query: string,
-    options: SearchOptions
-  ): Promise<VectorSearchResult[]> {
+  private async hybridSearch(query: string, options: SearchOptions): Promise<VectorSearchResult[]> {
     try {
       logger.debug('🔍 Starting hybrid search with configuration', {
         query: query.substring(0, 50),
@@ -164,7 +166,7 @@ export class SearchService implements ISearchService {
           topK: semanticCount,
           searchType: 'semantic',
         }),
-        this.vectorStore.keywordSearch(query, {
+        this.keywordSearch(query, {
           topK: keywordCount,
           searchType: 'keyword',
         }),
@@ -287,5 +289,84 @@ export class SearchService implements ISearchService {
     })
 
     return combinedResults
+  }
+
+  private async keywordSearch(
+    query: string,
+    options: SearchOptions
+  ): Promise<VectorSearchResult[]> {
+    // Detect query language to determine search strategy
+    const languageResult = this.languageDetector.detectLanguage(query)
+    const queryLanguage = languageResult.language
+
+    logger.debug('🔍 Keyword search language detection', {
+      query: query.substring(0, 50),
+      detectedLanguage: queryLanguage,
+      confidence: languageResult.confidence,
+      component: 'SearchService',
+    })
+
+    if (queryLanguage === 'ko') {
+      return await this.koreanKeywordSearch(query, options)
+    } else {
+      const results = await this.vectorStore.fullTextSearch(
+        query.toLowerCase(),
+        ['text'],
+        options.topK
+      )
+
+      logger.debug('other language keyword search completed', {
+        query: query.substring(0, 50),
+        resultsCount: results.length,
+        component: 'SearchService',
+      })
+      return results
+    }
+  }
+
+  private async koreanKeywordSearch(
+    query: string,
+    options: SearchOptions
+  ): Promise<VectorSearchResult[]> {
+    // Korean keyword search: search tokenized_text and initial_consonants
+    const tokenizedQuery = this.koreanTokenizer.tokenizeKorean(query).join(' ')
+    const initialQuery = this.koreanTokenizer.extractInitials(query)
+
+    // Primary search on tokenized Korean text
+    const tokenizedResults = await this.vectorStore.fullTextSearch(
+      tokenizedQuery.toLowerCase(),
+      ['tokenized_text'],
+      options.topK
+    )
+
+    let finalResults: VectorSearchResult[]
+
+    // Secondary search on initial consonants if available
+    if (initialQuery && initialQuery.length > 0) {
+      const initialResults = await this.vectorStore.fullTextSearch(
+        initialQuery.toLowerCase(),
+        ['initial_consonants'],
+        Math.ceil(options.topK / 2)
+      )
+
+      // Combine and deduplicate results
+      const combinedResults = [...tokenizedResults, ...initialResults]
+      const uniqueResults = combinedResults.filter(
+        (result, index, arr) => index === arr.findIndex((r) => r.id === result.id)
+      )
+
+      finalResults = uniqueResults.slice(0, options.topK)
+    } else {
+      finalResults = tokenizedResults
+    }
+
+    logger.debug('🇰🇷 Korean keyword search completed', {
+      tokenizedQuery,
+      initialQuery,
+      resultsCount: finalResults.length,
+      component: 'SearchService',
+    })
+
+    return finalResults
   }
 }

@@ -43,7 +43,7 @@ export interface IVectorStoreProvider {
   // Core operations
   addDocuments(documents: VectorDocument[]): Promise<void>
   semanticSearch(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]>
-  keywordSearch(query: string, options: VectorSearchOptions): Promise<VectorSearchResult[]>
+  fullTextSearch(searchText: string, columns: string[], limit: number): Promise<VectorSearchResult[]>
   removeDocumentsByFileId(fileId: string): Promise<void>
   removeAllDocuments(): Promise<void>
 
