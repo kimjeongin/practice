@@ -1,5 +1,4 @@
 import { logger } from '@/shared/logger/index.js'
-import { resolve } from 'path'
 
 /**
  * Configuration Factory for RAG MCP Server
@@ -27,7 +26,6 @@ export interface ServerConfig {
   // 기본 설정
   nodeEnv: string              // 환경: development|production (기본값: development)
   documentsDir: string         // 문서 디렉토리 경로 (기본값: ./documents)
-  dataDir: string              // 데이터 디렉토리 경로 (기본값: ./.data)
   logLevel: string             // 로그 레벨 (기본값: info)
 
   // 문서 처리 설정
@@ -93,7 +91,6 @@ export class ConfigFactory {
     return {
       nodeEnv: process.env['NODE_ENV'] || 'development',
       documentsDir: process.env['DOCUMENTS_DIR'] || './documents',
-      dataDir: process.env['DATA_DIR'] || './.data',
       logLevel: process.env['LOG_LEVEL'] || 'info',
 
       // 문서 처리 설정
@@ -135,7 +132,7 @@ export class ConfigFactory {
       vectorStore: {
         provider: 'lancedb',
         config: {
-          uri: process.env['LANCEDB_URI'] || resolve('./.data/lancedb'), // LanceDB 경로
+          uri: process.env['VECTORDB_URL'] || './.lancedb', // LanceDB 경로
         },
       },
 
@@ -180,7 +177,7 @@ export class ConfigFactory {
       vectorStore: {
         provider: 'lancedb',
         config: {
-          uri: process.env['LANCEDB_URI'] || `${baseConfig.dataDir}/lancedb`,
+          uri: process.env['VECTORDB_URL'] || './.lancedb',
         },
       },
       mcp: {
@@ -201,10 +198,6 @@ export class ConfigFactory {
     // Basic validation
     if (!config.documentsDir) {
       errors.push('Documents directory is required')
-    }
-
-    if (!config.dataDir) {
-      errors.push('Data directory is required')
     }
 
     // Document processing validation

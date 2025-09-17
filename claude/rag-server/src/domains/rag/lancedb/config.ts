@@ -33,12 +33,3 @@ export interface LanceDBConnectionOptions {
   }
 }
 
-/**
- * Default connection configuration
- */
-export const DEFAULT_CONNECTION_OPTIONS: LanceDBConnectionOptions = {
-  uri: './.data/lancedb',
-  storageOptions: {
-    timeout: '30s',
-  },
-}

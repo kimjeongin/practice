@@ -53,11 +53,11 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
   constructor(
     private config: ServerConfig,
-    connectionOptions: Partial<LanceDBConnectionOptions> = {},
+    connectionOptions: LanceDBConnectionOptions,
     tableName: string = LANCEDB_CONSTANTS.DEFAULT_TABLE_NAME
   ) {
     this.connectionOptions = {
-      uri: connectionOptions.uri || './.data/lancedb',
+      uri: connectionOptions.uri,
       storageOptions: connectionOptions.storageOptions || { timeout: '30s' },
     }
 
