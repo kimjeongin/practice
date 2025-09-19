@@ -167,19 +167,6 @@ export class LanceDBProvider implements IVectorStoreProvider {
           }),
           description: 'Korean tokenized content',
         },
-        {
-          column: 'initial_consonants',
-          config: lancedb.Index.fts({
-            baseTokenizer: 'ngram',
-            ngramMinLength: 1,
-            ngramMaxLength: 3,
-            withPosition: false,
-            lowercase: false,
-            stem: false,
-            removeStopWords: false,
-          }),
-          description: 'Korean initial consonants',
-        },
       ]
 
       if (tableExists) {
@@ -279,22 +266,18 @@ export class LanceDBProvider implements IVectorStoreProvider {
             modelName: doc.modelName || currentModelName,
             language: detectedLanguage,
             tokenized_text: '',
-            initial_consonants: '',
           }
 
           // Apply Korean-specific processing if detected as Korean
           if (detectedLanguage === 'ko') {
             const tokens = this.koreanTokenizer.tokenizeKorean(doc.content)
-            const initials = this.koreanTokenizer.extractInitials(doc.content)
 
             enhancedDoc.tokenized_text = tokens.join(' ')
-            enhancedDoc.initial_consonants = initials
 
             logger.debug('🇰🇷 Korean document processed', {
               docId: doc.doc_id,
               chunkId: doc.chunk_id,
               tokenCount: tokens.length,
-              hasInitials: initials.length > 0,
               component: 'LanceDBProvider',
             })
           }

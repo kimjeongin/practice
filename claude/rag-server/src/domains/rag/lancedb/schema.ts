@@ -32,7 +32,6 @@ export function createLanceDBSchema(embeddingDimensions: number = 768) {
     // Multilingual fields for simplified ko/en support
     new arrow.Field('language', new arrow.Utf8()), // 'ko' | 'en'
     new arrow.Field('tokenized_text', new arrow.Utf8()), // Korean tokenized text (Korean FTS)
-    new arrow.Field('initial_consonants', new arrow.Utf8()), // Korean initial consonants (ㄱㄴㄷ search)
   ])
 }
 
@@ -41,10 +40,9 @@ export function createLanceDBSchema(embeddingDimensions: number = 768) {
  * Enhanced to support multilingual fields (ko/en)
  */
 export function convertVectorDocumentToRAGRecord(
-  document: VectorDocument & { 
+  document: VectorDocument & {
     language?: 'ko' | 'en';
-    tokenized_text?: string; 
-    initial_consonants?: string; 
+    tokenized_text?: string;
   }
 ): RAGDocumentRecord {
   // Normalize metadata
@@ -77,7 +75,6 @@ export function convertVectorDocumentToRAGRecord(
     // Multilingual fields
     language: document.language || 'en', // Default to English
     tokenized_text: document.tokenized_text || '', // Empty for English documents
-    initial_consonants: document.initial_consonants || '', // Empty for English documents
   }
 }
 

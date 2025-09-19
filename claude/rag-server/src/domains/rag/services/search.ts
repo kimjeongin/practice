@@ -328,45 +328,22 @@ export class SearchService implements ISearchService {
     query: string,
     options: SearchOptions
   ): Promise<VectorSearchResult[]> {
-    // Korean keyword search: search tokenized_text and initial_consonants
+    // Korean keyword search: search tokenized_text only
     const tokenizedQuery = this.koreanTokenizer.tokenizeKorean(query).join(' ')
-    const initialQuery = this.koreanTokenizer.extractInitials(query)
 
-    // Primary search on tokenized Korean text
+    // Search on tokenized Korean text
     const tokenizedResults = await this.vectorStore.fullTextSearch(
       tokenizedQuery.toLowerCase(),
       ['tokenized_text'],
       options.topK
     )
 
-    let finalResults: VectorSearchResult[]
-
-    // Secondary search on initial consonants if available
-    if (initialQuery && initialQuery.length > 0) {
-      const initialResults = await this.vectorStore.fullTextSearch(
-        initialQuery.toLowerCase(),
-        ['initial_consonants'],
-        Math.ceil(options.topK / 2)
-      )
-
-      // Combine and deduplicate results
-      const combinedResults = [...tokenizedResults, ...initialResults]
-      const uniqueResults = combinedResults.filter(
-        (result, index, arr) => index === arr.findIndex((r) => r.id === result.id)
-      )
-
-      finalResults = uniqueResults.slice(0, options.topK)
-    } else {
-      finalResults = tokenizedResults
-    }
-
     logger.debug('🇰🇷 Korean keyword search completed', {
       tokenizedQuery,
-      initialQuery,
-      resultsCount: finalResults.length,
+      resultsCount: tokenizedResults.length,
       component: 'SearchService',
     })
 
-    return finalResults
+    return tokenizedResults
   }
 }

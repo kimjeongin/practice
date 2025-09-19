@@ -1,9 +1,7 @@
 /**
  * Korean Tokenizer Service
- * Simplified Korean text tokenization using es-hangul
+ * Simplified Korean text tokenization
  */
-
-import { getChoseong } from 'es-hangul';
 
 export class KoreanTokenizer {
   /**
@@ -56,45 +54,6 @@ export class KoreanTokenizer {
     );
   }
 
-  /**
-   * Extract initial consonants (choseong) for Korean text
-   * Used for ㄱㄴㄷ search functionality
-   */
-  extractInitials(text: string): string {
-    if (!text || text.trim().length === 0) {
-      return '';
-    }
-
-    // Extract only Korean characters and spaces
-    const koreanText = text.replace(/[^가-힣\s]/g, ' ');
-    const words = koreanText.trim().split(/\s+/).filter(word => word.length > 0);
-    
-    if (words.length === 0) {
-      return '';
-    }
-
-    // Extract initial consonants from each Korean word
-    const initialConsonants = words
-      .map(word => getChoseong(word))
-      .filter(initial => initial.length > 0)
-      .join(' ');
-    
-    return initialConsonants;
-  }
-
-  /**
-   * Extract individual initial consonant characters
-   * For granular initial consonant searching
-   */
-  extractInitialCharacters(text: string): string[] {
-    const initialString = this.extractInitials(text);
-    if (!initialString) {
-      return [];
-    }
-
-    // Split into individual consonant characters and remove duplicates
-    return [...new Set(initialString.replace(/\s+/g, '').split(''))];
-  }
 
   /**
    * Check if text contains Korean characters
@@ -110,17 +69,14 @@ export class KoreanTokenizer {
     originalLength: number;
     tokens: string[];
     tokenCount: number;
-    initialConsonants: string;
     hasKorean: boolean;
   } {
     const tokens = this.tokenizeKorean(text);
-    const initialConsonants = this.extractInitials(text);
-    
+
     return {
       originalLength: text.length,
       tokens,
       tokenCount: tokens.length,
-      initialConsonants,
       hasKorean: this.hasKorean(text),
     };
   }
