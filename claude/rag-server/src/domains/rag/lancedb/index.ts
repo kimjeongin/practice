@@ -442,6 +442,22 @@ export class LanceDBProvider implements IVectorStoreProvider {
       // Delete documents with matching doc_id
       await this.table.delete(`doc_id = '${fileId}'`)
 
+      // Optimize table to update FTS indexes for real-time search
+      try {
+        await this.table.optimize()
+        logger.info('📇 FTS indexes optimized after document deletion', {
+          fileId,
+          component: 'LanceDBProvider',
+        })
+      } catch (optimizeError) {
+        logger.warn('⚠️ FTS index optimization failed after deletion, search may include stale data', {
+          fileId,
+          error: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
+          component: 'LanceDBProvider',
+        })
+        // Don't throw error - document deletion was successful, only optimization failed
+      }
+
       logger.info('✅ Documents removed successfully', {
         fileId,
         component: 'LanceDBProvider',
@@ -473,6 +489,20 @@ export class LanceDBProvider implements IVectorStoreProvider {
 
       // Delete all documents
       await this.table.delete('true')
+
+      // Optimize table to update FTS indexes for real-time search
+      try {
+        await this.table.optimize()
+        logger.info('📇 FTS indexes optimized after removing all documents', {
+          component: 'LanceDBProvider',
+        })
+      } catch (optimizeError) {
+        logger.warn('⚠️ FTS index optimization failed after removing all documents, search may include stale data', {
+          error: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
+          component: 'LanceDBProvider',
+        })
+        // Don't throw error - document deletion was successful, only optimization failed
+      }
 
       logger.info('✅ All documents removed successfully', {
         component: 'LanceDBProvider',
