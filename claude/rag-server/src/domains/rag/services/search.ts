@@ -178,11 +178,10 @@ export class SearchService implements ISearchService {
         component: 'SearchService',
       })
 
-      // Step 2: Combine and deduplicate results with ratio-based scoring
+      // Step 2: Combine and deduplicate results with positional bias optimization
       const combinedResults = this.combineResults(
         semanticResults,
-        keywordResults,
-        this.hybridConfig
+        keywordResults
       )
 
       logger.debug('🔄 Results combined and deduplicated', {
@@ -235,56 +234,67 @@ export class SearchService implements ISearchService {
   }
 
   /**
-   * Combine semantic and keyword results with deduplication and ratio-based scoring
+   * Combine semantic and keyword results with positional bias optimization
+   * Order: keyword-only → semantic-only → hybrid (both searches)
+   * Within each group: lower scores first, higher scores last (LLM prefers later positions)
    */
   private combineResults(
     semanticResults: VectorSearchResult[],
-    keywordResults: VectorSearchResult[],
-    config: HybridSearchConfig
+    keywordResults: VectorSearchResult[]
   ): VectorSearchResult[] {
-    const resultMap = new Map<string, VectorSearchResult>()
+    const semanticMap = new Map<string, VectorSearchResult>()
+    const keywordMap = new Map<string, VectorSearchResult>()
 
-    // Add semantic results
+    // Build maps for easy lookup
     for (const result of semanticResults) {
-      resultMap.set(result.id, {
-        ...result,
-        searchType: 'semantic',
-      })
+      semanticMap.set(result.id, { ...result, searchType: 'semantic' })
     }
 
-    // Add keyword results, handling duplicates
     for (const result of keywordResults) {
-      const existingResult = resultMap.get(result.id)
+      keywordMap.set(result.id, { ...result, searchType: 'keyword' })
+    }
 
-      if (existingResult) {
-        // Document exists from semantic search - combine scores with ratio
-        const combinedScore =
-          existingResult.score * config.semanticRatio + result.score * config.keywordRatio
+    // Categorize results into three groups
+    const keywordOnly: VectorSearchResult[] = []
+    const semanticOnly: VectorSearchResult[] = []
+    const hybrid: VectorSearchResult[] = []
 
-        resultMap.set(result.id, {
-          ...existingResult,
-          score: combinedScore,
-          searchType: 'hybrid', // Mark as hybrid since it appeared in both
+    // Process keyword results
+    for (const [id, result] of keywordMap) {
+      if (semanticMap.has(id)) {
+        // Document appears in both - use semantic score as primary
+        const semanticResult = semanticMap.get(id)!
+        hybrid.push({
+          ...semanticResult,
+          score: semanticResult.score, // Keep semantic score as primary
+          searchType: 'hybrid',
         })
       } else {
-        // New document from keyword search
-        resultMap.set(result.id, {
-          ...result,
-          searchType: 'keyword',
-        })
+        // Keyword only
+        keywordOnly.push(result)
       }
     }
 
-    // Convert to array and sort by combined score
-    const combinedResults = Array.from(resultMap.values()).sort((a, b) => b.score - a.score)
+    // Process semantic-only results
+    for (const [id, result] of semanticMap) {
+      if (!keywordMap.has(id)) {
+        semanticOnly.push(result)
+      }
+    }
 
-    logger.debug('🔄 Results combined with ratio-based scoring', {
-      semanticOnlyCount: combinedResults.filter((r) => r.searchType === 'semantic').length,
-      keywordOnlyCount: combinedResults.filter((r) => r.searchType === 'keyword').length,
-      hybridCount: combinedResults.filter((r) => r.searchType === 'hybrid').length,
+    // Sort each group: lower scores first, higher scores last (for LLM positional bias)
+    keywordOnly.sort((a, b) => a.score - b.score)
+    semanticOnly.sort((a, b) => a.score - b.score)
+    hybrid.sort((a, b) => a.score - b.score)
+
+    // Combine in order: keyword-only → semantic-only → hybrid
+    const combinedResults = [...keywordOnly, ...semanticOnly, ...hybrid]
+
+    logger.debug('🔄 Results combined with positional bias optimization', {
+      keywordOnlyCount: keywordOnly.length,
+      semanticOnlyCount: semanticOnly.length,
+      hybridCount: hybrid.length,
       totalCombined: combinedResults.length,
-      semanticRatio: config.semanticRatio,
-      keywordRatio: config.keywordRatio,
       component: 'SearchService',
     })
 
