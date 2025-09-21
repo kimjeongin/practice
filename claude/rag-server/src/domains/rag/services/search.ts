@@ -202,7 +202,7 @@ export class SearchService implements ISearchService {
       try {
         finalResults = await this.rerankingService.rerankDocuments(
           query,
-          combinedResults,
+          combinedResults.reverse(),
           options.topK
         )
       } catch (rerankingError) {
@@ -284,12 +284,12 @@ export class SearchService implements ISearchService {
     }
 
     // Sort each group: lower scores first, higher scores last (for LLM positional bias)
-    keywordOnly.sort((a, b) => a.score - b.score)
-    semanticOnly.sort((a, b) => a.score - b.score)
-    hybrid.sort((a, b) => a.score - b.score)
+    keywordOnly.sort((a, b) => b.score - a.score)
+    semanticOnly.sort((a, b) => b.score - a.score)
+    hybrid.sort((a, b) => b.score - a.score)
 
-    // Combine in order: keyword-only → semantic-only → hybrid
-    const combinedResults = [...keywordOnly, ...semanticOnly, ...hybrid]
+    // Combine in order: hybrid → semantic-only → keyword-only
+    const combinedResults = [...hybrid, ...semanticOnly, ...keywordOnly]
 
     logger.debug('🔄 Results combined with positional bias optimization', {
       keywordOnlyCount: keywordOnly.length,
