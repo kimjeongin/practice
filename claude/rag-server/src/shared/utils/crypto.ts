@@ -10,6 +10,3 @@ export function calculateFileHash(filePath: string): string {
   }
 }
 
-export function calculateStringHash(content: string): string {
-  return createHash('sha256').update(content, 'utf-8').digest('hex')
-}

@@ -4,7 +4,7 @@
  */
 
 import pTimeout from 'p-timeout'
-import { TimeoutError, ErrorUtils } from '@/shared/errors/index.js'
+import { TimeoutError } from '@/shared/errors/index.js'
 import { logger } from '@/shared/logger/index.js'
 
 export interface TimeoutOptions {
