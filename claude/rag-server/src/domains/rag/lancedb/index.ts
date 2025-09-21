@@ -409,6 +409,61 @@ export class LanceDBProvider implements IVectorStoreProvider {
     return rawResults.map((result) => convertRAGResultToVectorSearchResult(result))
   }
 
+  async hybridSearch(
+    query: string,
+    columns: string[],
+    limit: number
+  ): Promise<VectorSearchResult[]> {
+    if (!this.table || !this.embeddingBridge) {
+      throw new Error('Table or embedding bridge not initialized')
+    }
+
+    logger.debug('🔍 Performing LanceDB native hybrid search', {
+      query: query.substring(0, 50),
+      columns,
+      limit,
+      component: 'LanceDBProvider',
+    })
+
+    try {
+      // Generate query embedding
+      const queryVector = await this.embeddingBridge.embedQuery(query)
+
+      // LanceDB native hybrid search using query() API with language-specific column
+      const rawResults: RAGSearchResult[] = await TimeoutWrapper.withTimeout(
+        this.table
+          .query()
+          .fullTextSearch(query.toLowerCase(), { columns: columns })
+          .nearestTo(queryVector)
+          .limit(limit)
+          .toArray(),
+        { timeoutMs: 30000, operation: 'hybrid_search' }
+      )
+
+      logger.debug('✅ LanceDB native hybrid search completed', {
+        query: query.substring(0, 50),
+        column: columns[0],
+        resultsCount: rawResults.length,
+        component: 'LanceDBProvider',
+      })
+
+      // Convert results
+      return rawResults.map(convertRAGResultToVectorSearchResult)
+    } catch (error) {
+      logger.error(
+        '❌ LanceDB native hybrid search failed',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          query: query.substring(0, 50),
+          columns,
+          limit,
+          component: 'LanceDBProvider',
+        }
+      )
+      throw error
+    }
+  }
+
   async removeDocumentsByFileId(fileId: string): Promise<void> {
     await this.initialize()
 
@@ -433,11 +488,14 @@ export class LanceDBProvider implements IVectorStoreProvider {
           component: 'LanceDBProvider',
         })
       } catch (optimizeError) {
-        logger.warn('⚠️ FTS index optimization failed after deletion, search may include stale data', {
-          fileId,
-          error: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
-          component: 'LanceDBProvider',
-        })
+        logger.warn(
+          '⚠️ FTS index optimization failed after deletion, search may include stale data',
+          {
+            fileId,
+            error: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
+            component: 'LanceDBProvider',
+          }
+        )
         // Don't throw error - document deletion was successful, only optimization failed
       }
 
@@ -480,10 +538,13 @@ export class LanceDBProvider implements IVectorStoreProvider {
           component: 'LanceDBProvider',
         })
       } catch (optimizeError) {
-        logger.warn('⚠️ FTS index optimization failed after removing all documents, search may include stale data', {
-          error: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
-          component: 'LanceDBProvider',
-        })
+        logger.warn(
+          '⚠️ FTS index optimization failed after removing all documents, search may include stale data',
+          {
+            error: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
+            component: 'LanceDBProvider',
+          }
+        )
         // Don't throw error - document deletion was successful, only optimization failed
       }
 

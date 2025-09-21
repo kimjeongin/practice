@@ -176,25 +176,15 @@ export class RerankingService {
 
       return rerankingResults
     } catch (error) {
-      logger.error('❌ LLM reranking failed, falling back to original scores', 
+      logger.error('❌ LLM reranking failed',
         error instanceof Error ? error : new Error(String(error)), {
         query: query.substring(0, 100),
         documentCount: documents.length,
         component: 'RerankingService',
       })
 
-      // Fallback to original results without reranking
-      return documents.slice(0, topK).map(doc => ({
-        id: doc.id,
-        content: doc.content,
-        score: doc.score,
-        relevanceScore: doc.score,
-        finalScore: doc.score,
-        metadata: doc.metadata,
-        chunkIndex: doc.chunkIndex,
-        searchType: doc.searchType,
-        reasoning: 'Fallback: LLM reranking failed',
-      }))
+      // Re-throw the error instead of providing fallback
+      throw error
     } finally {
       endTiming()
     }

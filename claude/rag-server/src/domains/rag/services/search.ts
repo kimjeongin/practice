@@ -137,100 +137,101 @@ export class SearchService implements ISearchService {
   }
 
   private async hybridSearch(query: string, options: SearchOptions): Promise<VectorSearchResult[]> {
-    try {
-      logger.debug('🔍 Starting hybrid search with configuration', {
-        query: query.substring(0, 50),
-        config: this.hybridConfig,
-        hasReranking: !!this.rerankingService,
-        component: 'SearchService',
-      })
+    logger.debug('🔍 Starting hybrid search with configuration', {
+      query: query.substring(0, 50),
+      config: this.hybridConfig,
+      hasReranking: !!this.rerankingService,
+      component: 'SearchService',
+    })
 
-      // Step 1: Get semantic and keyword results based on configured ratios
-      const semanticCount = Math.ceil(
-        this.hybridConfig.totalResultsForReranking * this.hybridConfig.semanticRatio
-      )
-      const keywordCount = Math.ceil(
-        this.hybridConfig.totalResultsForReranking * this.hybridConfig.keywordRatio
-      )
+    // Step 1: Get semantic and keyword results based on configured ratios
+    const semanticCount = Math.ceil(
+      this.hybridConfig.totalResultsForReranking * this.hybridConfig.semanticRatio
+    )
+    const keywordCount = Math.ceil(
+      this.hybridConfig.totalResultsForReranking * this.hybridConfig.keywordRatio
+    )
 
-      logger.debug('📊 Fetching separate search results', {
-        semanticCount,
-        keywordCount,
-        totalForReranking: this.hybridConfig.totalResultsForReranking,
-        component: 'SearchService',
-      })
+    logger.debug('📊 Fetching separate search results', {
+      semanticCount,
+      keywordCount,
+      totalForReranking: this.hybridConfig.totalResultsForReranking,
+      component: 'SearchService',
+    })
 
-      // Perform searches in parallel
-      const [semanticResults, keywordResults] = await Promise.all([
-        this.vectorStore.semanticSearch(query, {
-          topK: semanticCount,
-          searchType: 'semantic',
-        }),
-        this.keywordSearch(query, {
-          topK: keywordCount,
-          searchType: 'keyword',
-        }),
-      ])
+    // Perform searches in parallel
+    const [semanticResults, keywordResults] = await Promise.all([
+      this.vectorStore.semanticSearch(query, {
+        topK: semanticCount,
+        searchType: 'semantic',
+      }),
+      this.keywordSearch(query, {
+        topK: keywordCount,
+        searchType: 'keyword',
+      }),
+    ])
 
-      logger.debug('📊 Search results retrieved', {
-        semanticResultsCount: semanticResults.length,
-        keywordResultsCount: keywordResults.length,
-        component: 'SearchService',
-      })
+    logger.debug('📊 Search results retrieved', {
+      semanticResultsCount: semanticResults.length,
+      keywordResultsCount: keywordResults.length,
+      component: 'SearchService',
+    })
 
-      // Step 2: Combine and deduplicate results with positional bias optimization
-      const combinedResults = this.combineResults(
-        semanticResults,
-        keywordResults
-      )
+    // Step 2: Combine and deduplicate results with positional bias optimization
+    const combinedResults = this.combineResults(semanticResults, keywordResults)
 
-      logger.debug('🔄 Results combined and deduplicated', {
+    logger.debug('🔄 Results combined and deduplicated', {
+      combinedCount: combinedResults.length,
+      component: 'SearchService',
+    })
+
+    if (combinedResults.length < 2) {
+      return [...combinedResults]
+    }
+
+    // Step 3: Apply LLM reranking if service is available
+    let finalResults: VectorSearchResult[]
+    if (this.rerankingService) {
+      logger.info('🤖 Applying LLM reranking', {
+        query: query.substring(0, 100),
         combinedCount: combinedResults.length,
+        topK: options.topK,
         component: 'SearchService',
       })
 
-      // Step 3: Apply LLM reranking if service is available
-      let finalResults: VectorSearchResult[]
-      if (this.rerankingService && combinedResults.length > 1) {
-        logger.info('🤖 Applying LLM reranking', {
-          query: query.substring(0, 100),
-          combinedCount: combinedResults.length,
-          topK: options.topK,
-          component: 'SearchService',
-        })
-
-        const rerankedResults = await this.rerankingService.rerankDocuments(
+      try {
+        finalResults = await this.rerankingService.rerankDocuments(
           query,
           combinedResults,
           options.topK
         )
+      } catch (rerankingError) {
+        logger.warn('🔄 LLM reranking failed, falling back to native hybrid search', {
+          query: query.substring(0, 100),
+          error: rerankingError instanceof Error ? rerankingError.message : String(rerankingError),
+          component: 'SearchService',
+        })
 
-        finalResults = rerankedResults
-      } else {
-        // Without reranking, just take top K from combined results
-        finalResults = combinedResults.slice(0, options.topK)
+        // Fallback to native hybrid search
+        finalResults = await this.nativeHybridSearch(query, options)
       }
-
-      logger.info('✅ Hybrid search completed', {
-        query: query.substring(0, 100),
-        semanticCount: semanticResults.length,
-        keywordCount: keywordResults.length,
-        combinedCount: combinedResults.length,
-        finalCount: finalResults.length,
-        topScore: finalResults[0]?.score || 0,
-        hasReranking: !!this.rerankingService,
-        component: 'SearchService',
-      })
-
-      return finalResults
-    } catch (error) {
-      logger.error(
-        'Hybrid search failed, falling back to semantic search',
-        error instanceof Error ? error : new Error(String(error))
-      )
-      // Fallback to semantic search
-      return await this.vectorStore.semanticSearch(query, options)
+    } else {
+      // Without reranking, just take top K from combined results
+      finalResults = await this.nativeHybridSearch(query, options)
     }
+
+    logger.info('✅ Hybrid search completed', {
+      query: query.substring(0, 100),
+      semanticCount: semanticResults.length,
+      keywordCount: keywordResults.length,
+      combinedCount: combinedResults.length,
+      finalCount: finalResults.length,
+      topScore: finalResults[0]?.score || 0,
+      hasReranking: !!this.rerankingService,
+      component: 'SearchService',
+    })
+
+    return finalResults
   }
 
   /**
@@ -355,5 +356,41 @@ export class SearchService implements ISearchService {
     })
 
     return tokenizedResults
+  }
+
+  private async nativeHybridSearch(
+    query: string,
+    options: SearchOptions
+  ): Promise<VectorSearchResult[]> {
+    // Detect query language to determine search strategy
+    const languageResult = this.languageDetector.detectLanguage(query)
+    const queryLanguage = languageResult.language
+
+    logger.debug('🔍 Native hybrid search language detection', {
+      query: query.substring(0, 50),
+      detectedLanguage: queryLanguage,
+      confidence: languageResult.confidence,
+      component: 'SearchService',
+    })
+
+    // Determine columns based on language
+    let columns: string[]
+    if (queryLanguage === 'ko') {
+      columns = ['tokenized_text']
+    } else {
+      columns = ['text']
+    }
+
+    // Call LanceDB native hybrid search
+    const results = await this.vectorStore.hybridSearch(query, columns, options.topK)
+
+    logger.debug('🔄 Native hybrid search completed', {
+      query: query.substring(0, 50),
+      columns,
+      resultsCount: results.length,
+      component: 'SearchService',
+    })
+
+    return results
   }
 }
