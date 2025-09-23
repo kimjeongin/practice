@@ -1,0 +1,35 @@
+# Target Python 3.12
+target-version = "py312"
+line-length = 88
+
+[lint]
+# Enable specific rule sets
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "S",   # flake8-bandit
+    "B",   # flake8-bugbear
+    "C90", # mccabe complexity
+]
+
+# Ignore specific rules
+ignore = [
+    "S101",  # Use of assert (common in tests)
+    "S301",  # Use of pickle (may be needed for data serialization)
+]
+
+[lint.per-file-ignores]
+# Allow specific violations in test files
+"tests/**/*.py" = ["S101", "S106"]
+
+[lint.mccabe]
+# Maximum cyclomatic complexity
+max-complexity = 10
+
+[lint.isort]
+# Import sorting configuration
+known-first-party = ["system_trading"]
