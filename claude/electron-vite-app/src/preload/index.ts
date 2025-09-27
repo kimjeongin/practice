@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { AGENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
+import { AGENT_IPC_CHANNELS, API_CLIENT_IPC_CHANNELS } from '@shared/constants/ipc-channels'
 
 // Agent API implementation
 const agentAPI = {
@@ -85,9 +85,54 @@ const agentAPI = {
   },
 }
 
+// API Client implementation
+const apiClientAPI = {
+  // Health check
+  healthCheck: async (): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.HEALTH_CHECK)
+  },
+
+  // Authentication
+  login: async (username: string, password: string): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.LOGIN, username, password)
+  },
+
+  logout: async (): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.LOGOUT)
+  },
+
+  getLoginStatus: async (): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.GET_LOGIN_STATUS)
+  },
+
+  // User management
+  getUsers: async (): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.GET_USERS)
+  },
+
+  createUser: async (name: string, email: string): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.CREATE_USER, name, email)
+  },
+
+  // Protected data
+  getProtectedData: async (): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.GET_PROTECTED_DATA)
+  },
+
+  // File upload
+  uploadFile: async (fileName: string, content: string, title?: string, description?: string): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.UPLOAD_FILE, fileName, content, title, description)
+  },
+
+  uploadMultipleFiles: async (files: Array<{ name: string; content: string }>, category?: string): Promise<any> => {
+    return ipcRenderer.invoke(API_CLIENT_IPC_CHANNELS.UPLOAD_MULTIPLE_FILES, files, category)
+  },
+}
+
 // Custom APIs for renderer
 const api = {
   agent: agentAPI,
+  apiClient: apiClientAPI,
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

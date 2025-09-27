@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { useClientHost } from '../shared/hooks/useClientHost'
 import { AgentChat } from '../features/agent/components/AgentChat'
 import { InitializationProgress } from '../features/agent/components/InitializationProgress'
+import { ApiClientTest } from '../features/api-client/components/ApiClientTest'
+import { SSETestPage } from '../features/api-client/SSETestPage'
 import ErrorBoundary from '../shared/components/ErrorBoundary'
 import LoadingSpinner from '../shared/components/LoadingSpinner'
 
@@ -16,6 +18,7 @@ function App(): React.JSX.Element {
   const [isShuttingDown, setIsShuttingDown] = useState(false)
   const [showInitProgress, setShowInitProgress] = useState(true)
   const [systemReady, setSystemReady] = useState(false)
+  const [activeTab, setActiveTab] = useState<'agent' | 'api' | 'sse'>('agent')
 
   // Handle app shutdown notifications
   useEffect(() => {
@@ -111,7 +114,48 @@ function App(): React.JSX.Element {
             </div>
           )}
 
-          <AgentChat />
+          {/* Tab Navigation */}
+          <div className="mb-6">
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('agent')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'agent'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Agent Chat
+                </button>
+                <button
+                  onClick={() => setActiveTab('api')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'api'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  API Client Test
+                </button>
+                <button
+                  onClick={() => setActiveTab('sse')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'sse'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  SSE Test
+                </button>
+              </nav>
+            </div>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'agent' && <AgentChat />}
+          {activeTab === 'api' && <ApiClientTest />}
+          {activeTab === 'sse' && <SSETestPage />}
 
           {/* Footer */}
           <div className="mt-8 text-center text-sm text-gray-600">

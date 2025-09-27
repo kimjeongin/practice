@@ -4,8 +4,11 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { getInitializationManager } from '../lib/agent/services/initialization-manager.service'
 import { cleanupService } from './services/cleanup.service'
+import { getApiClientService } from './services/api-client.service'
 // Import agent IPC handlers (this will automatically register them)
 import '../lib/agent/ipc/agent-ipc.handlers'
+// Import API client IPC handlers
+import './ipc/api-client.handlers'
 
 function createWindow(): void {
   console.log('🔨 Creating main window...')
@@ -53,6 +56,12 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('✅ Renderer finished loading')
   })
+
+  // Initialize API client service with main window for SSE
+  const apiClientService = getApiClientService(mainWindow)
+  console.log('🔗 API Client Service initialized with main window')
+
+  return mainWindow
 }
 
 // Initialize application services using centralized manager

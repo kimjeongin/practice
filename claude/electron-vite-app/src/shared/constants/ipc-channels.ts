@@ -44,3 +44,24 @@ export const GENERAL_IPC_CHANNELS = {
   GET_VERSION: 'app:get-version',
   QUIT_APP: 'app:quit',
 } as const
+
+// API Client IPC Channels
+export const API_CLIENT_IPC_CHANNELS = {
+  HEALTH_CHECK: 'api:health-check',
+  LOGIN: 'api:login',
+  LOGOUT: 'api:logout',
+  GET_USERS: 'api:get-users',
+  CREATE_USER: 'api:create-user',
+  GET_PROTECTED_DATA: 'api:get-protected-data',
+  UPLOAD_FILE: 'api:upload-file',
+  UPLOAD_MULTIPLE_FILES: 'api:upload-multiple-files',
+  GET_LOGIN_STATUS: 'api:get-login-status',
+
+  // SSE (Server-Sent Events) Channels
+  SSE_CONNECT_BASIC: 'api:sse-connect-basic',
+  SSE_CONNECT_CUSTOM: 'api:sse-connect-custom',
+  SSE_CONNECT_PROTECTED: 'api:sse-connect-protected',
+  SSE_DISCONNECT: 'api:sse-disconnect',
+  SSE_DISCONNECT_ALL: 'api:sse-disconnect-all',
+  SSE_GET_STATUS: 'api:sse-get-status',
+} as const

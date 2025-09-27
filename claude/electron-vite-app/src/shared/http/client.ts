@@ -1,268 +1,95 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
-import {
-  ApiResponse,
-  ApiError,
-  HttpClientConfig,
-  RequestConfig,
-  RequestInterceptor,
-  ResponseInterceptor
-} from './types';
+// client.ts
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 
-class HttpClient {
-  private instance: AxiosInstance;
+import { ApiResponse } from './types'
+import { TokenManager } from './token-manager'
 
-  constructor(config: HttpClientConfig = {}) {
-    this.instance = axios.create({
-      baseURL: config.baseURL || '',
-      timeout: config.timeout || 10000,
-      headers: {
-        'Content-Type': 'application/json',
-        ...config.headers,
-      },
-    });
+export abstract class BaseApiClient {
+  protected client: AxiosInstance
+  protected tokenManager: TokenManager
+  protected baseURL: string
 
-    this.setupInterceptors(config.interceptors);
-  }
+  constructor(baseURL: string, tokenManager: TokenManager) {
+    this.baseURL = baseURL
+    this.tokenManager = tokenManager
 
-  private setupInterceptors(interceptors?: HttpClientConfig['interceptors']) {
-    // Request interceptor
-    this.instance.interceptors.request.use(
-      (config) => {
-        // Add common request configurations
-        const token = this.getAuthToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+    this.client = axios.create({ baseURL })
+
+    // --- Request interceptor ---
+    this.client.interceptors.request.use((config) => {
+      const token = this.tokenManager.getAccessToken()
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
+      return config
+    })
+
+    // --- Response interceptor ---
+    this.client.interceptors.response.use(
+      (res) => res,
+      async (err) => {
+        if (err.response?.status === 401) {
+          try {
+            await this.tokenManager.refreshTokens(this.baseURL)
+            const newToken = this.tokenManager.getAccessToken()
+            if (newToken) {
+              err.config.headers.Authorization = `Bearer ${newToken}`
+              return this.client.request(err.config)
+            }
+          } catch {
+            this.tokenManager.clearTokens()
+          }
         }
-
-        // Log outbound requests in development
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`[HTTP] ${config.method?.toUpperCase()} ${config.url}`, {
-            params: config.params,
-            data: config.data,
-          });
-        }
-
-        return config;
-      },
-      (error) => {
-        console.error('[HTTP] Request error:', error);
-        return Promise.reject(this.handleError(error));
+        return Promise.reject(err)
       }
-    );
+    )
+  }
 
-    // Response interceptor
-    this.instance.interceptors.response.use(
-      (response: AxiosResponse) => {
-        // Log successful responses in development
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`[HTTP] ${response.status} ${response.config.url}`, response.data);
-        }
-
-        // Transform response data to standardized format
-        response.data = this.transformResponse(response);
-        return response;
-      },
-      (error: AxiosError) => {
-        console.error('[HTTP] Response error:', error);
-        return Promise.reject(this.handleError(error));
-      }
-    );
-
-    // Apply custom interceptors if provided
-    if (interceptors?.request) {
-      interceptors.request.forEach((interceptor: RequestInterceptor) => {
-        this.instance.interceptors.request.use(interceptor);
-      });
-    }
-
-    if (interceptors?.response) {
-      interceptors.response.forEach((interceptor: ResponseInterceptor) => {
-        this.instance.interceptors.response.use(
-          interceptor.onFulfilled,
-          interceptor.onRejected
-        );
-      });
+  /**
+   * 공통 request wrapper (JSON, 일반 요청)
+   */
+  protected async request<T>(config: AxiosRequestConfig): Promise<ApiResponse<T>> {
+    try {
+      const res: AxiosResponse<T> = await this.client.request<T>(config)
+      return this.wrapSuccess(res.data)
+    } catch (err: unknown) {
+      const status = (err as any).response?.status?.toString() ?? 'UNKNOWN'
+      const message =
+        (err as any).response?.data?.message ?? (err as any).message ?? 'Unknown error'
+      return this.wrapError(status, message)
     }
   }
 
-  private getAuthToken(): string | null {
-    // This can be customized based on your auth strategy
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('auth_token');
-    }
-    return null;
-  }
-
-  private transformResponse<T>(response: AxiosResponse): ApiResponse<T> {
-    // If response already has our standard format, use it
-    if (response.data && typeof response.data === 'object' && 'success' in response.data) {
-      return response.data as ApiResponse<T>;
-    }
-
-    // Otherwise, wrap it in our standard format
-    return {
-      success: true,
-      data: response.data,
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  private handleError(error: AxiosError): ApiError {
-    const apiError: ApiError = {
-      success: false,
-      message: 'An unexpected error occurred',
-      timestamp: new Date().toISOString(),
-    };
-
-    if (error.response) {
-      // Server responded with error status
-      apiError.code = error.response.status;
-      apiError.message = this.getErrorMessage(error.response);
-      apiError.details = error.response.data;
-    } else if (error.request) {
-      // Network error
-      apiError.message = 'Network error - please check your connection';
-      apiError.code = 'NETWORK_ERROR';
-    } else {
-      // Request configuration error
-      apiError.message = error.message || 'Request configuration error';
-      apiError.code = 'REQUEST_ERROR';
-    }
-
-    return apiError;
-  }
-
-  private getErrorMessage(response: AxiosResponse): string {
-    if (response.data && typeof response.data === 'object') {
-      if (response.data.message) return response.data.message;
-      if (response.data.error) return response.data.error;
-    }
-
-    switch (response.status) {
-      case 400:
-        return 'Bad Request';
-      case 401:
-        return 'Unauthorized - Please check your credentials';
-      case 403:
-        return 'Forbidden - You do not have permission';
-      case 404:
-        return 'Resource not found';
-      case 422:
-        return 'Validation error';
-      case 500:
-        return 'Internal server error';
-      case 502:
-        return 'Bad Gateway';
-      case 503:
-        return 'Service unavailable';
-      default:
-        return `HTTP Error ${response.status}`;
+  /**
+   * FormData 요청 wrapper (파일 업로드 등)
+   */
+  protected async formRequest<T>(
+    url: string,
+    formData: FormData,
+    method: 'POST' | 'PUT' = 'POST'
+  ): Promise<ApiResponse<T>> {
+    try {
+      const res = await this.client.request<T>({
+        url,
+        method,
+        data: formData,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return this.wrapSuccess(res.data)
+    } catch (err: unknown) {
+      const status = (err as any).response?.status?.toString() ?? 'UNKNOWN'
+      const message =
+        (err as any).response?.data?.message ?? (err as any).message ?? 'Unknown error'
+      return this.wrapError(status, message)
     }
   }
 
-  // GET request
-  async get<T = any>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
-    const response = await this.instance.get<T>(url, config);
-    return response.data as ApiResponse<T>;
+  // --- 공통 response wrapper ---
+  protected wrapSuccess<T>(data: T): ApiResponse<T> {
+    return { success: true, data }
   }
 
-  // POST request
-  async post<T = any, D = any>(url: string, data?: D, config?: RequestConfig): Promise<ApiResponse<T>> {
-    const response = await this.instance.post<T>(url, data, config);
-    return response.data as ApiResponse<T>;
-  }
-
-  // PUT request
-  async put<T = any, D = any>(url: string, data?: D, config?: RequestConfig): Promise<ApiResponse<T>> {
-    const response = await this.instance.put<T>(url, data, config);
-    return response.data as ApiResponse<T>;
-  }
-
-  // DELETE request
-  async delete<T = any>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
-    const response = await this.instance.delete<T>(url, config);
-    return response.data as ApiResponse<T>;
-  }
-
-  // PATCH request
-  async patch<T = any, D = any>(url: string, data?: D, config?: RequestConfig): Promise<ApiResponse<T>> {
-    const response = await this.instance.patch<T>(url, data, config);
-    return response.data as ApiResponse<T>;
-  }
-
-  // Form data request (for file uploads)
-  async postFormData<T = any>(url: string, formData: FormData, config?: RequestConfig): Promise<ApiResponse<T>> {
-    const formConfig: AxiosRequestConfig = {
-      ...config,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        ...config?.headers,
-      },
-    };
-
-    const response = await this.instance.post<T>(url, formData, formConfig);
-    return response.data as ApiResponse<T>;
-  }
-
-  // PUT with form data
-  async putFormData<T = any>(url: string, formData: FormData, config?: RequestConfig): Promise<ApiResponse<T>> {
-    const formConfig: AxiosRequestConfig = {
-      ...config,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        ...config?.headers,
-      },
-    };
-
-    const response = await this.instance.put<T>(url, formData, formConfig);
-    return response.data as ApiResponse<T>;
-  }
-
-  // Set auth token
-  setAuthToken(token: string | null): void {
-    if (token) {
-      this.instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('auth_token', token);
-      }
-    } else {
-      delete this.instance.defaults.headers.common['Authorization'];
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth_token');
-      }
-    }
-  }
-
-  // Update base URL
-  setBaseURL(baseURL: string): void {
-    this.instance.defaults.baseURL = baseURL;
-  }
-
-  // Add request interceptor
-  addRequestInterceptor(interceptor: RequestInterceptor): number {
-    return this.instance.interceptors.request.use(interceptor);
-  }
-
-  // Add response interceptor
-  addResponseInterceptor(interceptor: ResponseInterceptor): number {
-    return this.instance.interceptors.response.use(
-      interceptor.onFulfilled,
-      interceptor.onRejected
-    );
-  }
-
-  // Remove interceptor
-  removeInterceptor(type: 'request' | 'response', id: number): void {
-    if (type === 'request') {
-      this.instance.interceptors.request.eject(id);
-    } else {
-      this.instance.interceptors.response.eject(id);
-    }
+  protected wrapError(errorCode: string, message: string): ApiResponse<never> {
+    return { success: false, errorCode, message }
   }
 }
-
-// Create and export default instance
-const httpClient = new HttpClient();
-
-export { HttpClient, httpClient };
-export default httpClient;

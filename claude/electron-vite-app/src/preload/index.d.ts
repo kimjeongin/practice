@@ -111,11 +111,25 @@ interface AgentAPI {
   cleanup: () => Promise<IPCResponse<{ cleaned: boolean }>>
 }
 
+// API Client types
+interface ApiClientAPI {
+  healthCheck: () => Promise<any>
+  login: (username: string, password: string) => Promise<any>
+  logout: () => Promise<any>
+  getLoginStatus: () => Promise<any>
+  getUsers: () => Promise<any>
+  createUser: (name: string, email: string) => Promise<any>
+  getProtectedData: () => Promise<any>
+  uploadFile: (fileName: string, content: string, title?: string, description?: string) => Promise<any>
+  uploadMultipleFiles: (files: Array<{ name: string; content: string }>, category?: string) => Promise<any>
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
     api: {
       agent: AgentAPI
+      apiClient: ApiClientAPI
     }
   }
 }
